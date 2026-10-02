@@ -5,6 +5,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import whimsicalActivity from "../../extensions/whimsical-activity/index.ts";
+import { tty } from "./tty.ts";
 import type {
   ActivityDecorationController,
   ActivityDecorationUI,
@@ -80,8 +81,14 @@ function fixture(
   );
   const ui: {
     notify: (message: string) => void;
+    setWorkingMessage?: () => never;
+    setWorkingIndicator?: () => never;
   } & Partial<ActivityDecorationUI> = {
     notify: (message) => notifications.push(message),
+    ...(options.supported === false ? {} : {
+      setWorkingMessage: () => assert.fail("Advanced selection must not write stock text"),
+      setWorkingIndicator: () => assert.fail("Advanced selection must not write stock frames"),
+    }),
   };
   if (options.supported !== false)
     ui.registerActivityDecoration = (factory, overrides = {}) => {
@@ -142,35 +149,13 @@ function fixture(
     start,
     shutdown,
     busy,
+    agentStart: () => handlers.get("agent_start")!({ type: "agent_start" }, ctx),
+    agentEnd: () => handlers.get("agent_end")!({ type: "agent_end", messages: [] }, ctx),
     presentations,
     invocationOverrides,
     banks: () => banks,
     registrations: () => registrations,
     removals: () => removals,
-  };
-}
-
-function tty(input = true, output = true): () => void {
-  const previousInput = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
-  const previousOutput = Object.getOwnPropertyDescriptor(
-    process.stdout,
-    "isTTY",
-  );
-  Object.defineProperty(process.stdin, "isTTY", {
-    value: input,
-    configurable: true,
-  });
-  Object.defineProperty(process.stdout, "isTTY", {
-    value: output,
-    configurable: true,
-  });
-  return () => {
-    if (previousInput)
-      Object.defineProperty(process.stdin, "isTTY", previousInput);
-    else Reflect.deleteProperty(process.stdin, "isTTY");
-    if (previousOutput)
-      Object.defineProperty(process.stdout, "isTTY", previousOutput);
-    else Reflect.deleteProperty(process.stdout, "isTTY");
   };
 }
 
@@ -194,8 +179,10 @@ test("entry registers exactly the three explicit controls; valid factory is lazy
     assert.equal(f.controllers.length, 1);
     assert.deepEqual(f.invocationOverrides, [{}]);
     assert.equal(f.banks(), 0);
+    f.agentStart();
     f.busy();
     f.clock.advance(250);
+    f.agentEnd();
     const first = f.presentations.at(-1)?.label;
     assert.equal(f.banks(), 1);
     f.start();
@@ -274,6 +261,9 @@ test("AT21–AT22: disabled/hasUI false and declined native composition do not c
     assert.equal(disabled.banks(), 0);
     const declined = fixture({ declined: true });
     declined.start();
+    declined.agentStart();
+    declined.agentEnd();
+    declined.shutdown();
     assert.equal(declined.registrations(), 1);
     assert.equal(declined.controllers.length, 0);
     assert.equal(declined.banks(), 0);
@@ -292,7 +282,7 @@ test("AT22: unsupported eligible hosts diagnose once with no fallback editor or 
     f.start();
     f.shutdown();
     assert.equal(f.notifications.length, 1);
-    assert.match(f.notifications[0], /registerActivityDecoration/);
+    assert.match(f.notifications[0], /Update Pi; native UI is unchanged/);
     assert.equal(f.controllers.length, 0);
     assert.equal(f.banks(), 0);
     assert.equal(f.clock.pending().length, 0);

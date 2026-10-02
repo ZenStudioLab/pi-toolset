@@ -1,0 +1,17 @@
+# Tasks
+
+Selected reviewer: `oracle`.
+Selected default implementation specialist: `worker`.
+Focus mode: `normal`.
+
+The orchestrator owns OpenSpec, ADRs, review logs, reconciliation, checkboxes, and commits. Worker is explicitly assigned implementation, terminal-UI integration, tests, and user documentation modes for one coherent runtime boundary; it must load applicable design/testing guidance and supply real rendered verification. It must not edit specs/ADRs, stage, commit, delegate, or consume the Oracle gate. The old change's reviewer-model override is not inherited.
+
+## 1. Hybrid stock and advanced activity support
+
+- [x] 1.1 Orchestrator: create `docs/adr/0001-hybrid-activity-compatibility.md` before implementation, recording public-setter limitations, optional advanced ownership, feature differences, and historical native rationale; verify consistency against proposal/design/spec and exclude new host requirements.
+- [x] 1.2 Worker: implement exclusive backend selection and bounded stock lifecycle presentation in `extensions/whimsical-activity/`, keeping advanced controller/patch/bank intact; update focused entry/stock tests for normal/reduced/plain/ASCII/disable, missing APIs, declined advanced registration, malformed bank, repeated end/reset/shutdown, and headless no-ops; verify these tests and typechecking pass.
+- [x] 1.3 Worker: update released-host integration coverage and qualify real stock 0.99.2 lifecycle/native rendering with offline activity, including restoration, operational surfaces, narrow widths, and no input/editor replacement; run root `npm run check` and focused existing advanced lifecycle/render/preference suites from their actual workspace, retaining complete logs/captures and exit statuses under `/tmp`; verify no prompt/tool/provider changes or stock timers.
+- [x] 1.4 Worker: update the root/extension/optional-host READMEs and package description with ordinary installation, unreleased/current-0.1.x distinction, exact tested versions, feature matrix, duplicate-install guidance, and shared-setter limits; pack with scripts disabled into `/tmp`, inspect contents, and load the packed entry on a released host without a host checkout; verify advertised commands against actual CLI behavior and preserve versions/dependency pins/lockfile/licenses.
+- [x] 1.5 Oracle whole-wave review gate: independently review the entire completed numbered wave (tasks 1.1–1.4), never individual tasks; emit findings and exactly one advisory `PROPOSED_REVIEW_ACTION`. The caller reconciles every finding and alone emits authoritative `REVIEW_ACTION` and `CONSENSUS_STATUS`; only accepted sourced P0/P1 blockers authorize remediation. Permit at most four Oracle rounds and one recorded rebuild. Validate the frozen boundary and latest candidate revision before terminal PASS or HUMAN_DECISION. Mark this gate and the wave's completed tasks only after caller-owned PASS for that same whole-wave review, then commit scoped files with `[add-stock-pi-activity-support]` postfix. Do not push, tag, bump versions, or publish npm.
+
+Owner sequence: Orchestrator 1.1 → worker 1.2–1.4 → oracle 1.5 → caller reconciliation. Related writer tasks share the entry/lifecycle/test boundary and can use one writer; no concurrent writers or interim Oracle gates are needed. Proposal PASS automatically enters `/opsx-apply-loop add-stock-pi-activity-support` under the user's explicit follow-up authorization. `/<name>` may refer to either a registered command or a loaded skill, depending on the active toolset.

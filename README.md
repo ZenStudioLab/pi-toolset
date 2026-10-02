@@ -1,110 +1,86 @@
 # Pi Toolset
 
-ZenStudioLab's extensions and tools for [Pi](https://github.com/earendil-works/pi). Each extension lives in its own directory; this repository is not a distribution or fork of the Pi host.
+ZenStudioLab's extensions and tools for [Pi](https://github.com/earendil-works/pi). This repository is not a distribution or fork of the Pi host.
 
-## Extensions
+| Extension | Description |
+| --- | --- |
+| [Whimsical Activity](extensions/whimsical-activity/README.md) | Local activity words on Pi's native working surface, with optional advanced host integration. |
 
-| Extension | Description | Compatibility |
-| --- | --- | --- |
-| [Whimsical Activity](extensions/whimsical-activity/README.md) | Local activity words, animation settings, and observed foreground metadata on native status surfaces. | Requires the supplied patch against Pi v0.99.2; stock Pi is not supported for this feature. |
+## Stock Pi: try the unreleased checkout
 
-Only Whimsical is included initially. Future extensions can be added under `extensions/<name>/`; add their entry points explicitly to the `pi.extensions` package manifest. Third-party extensions from the original local setup are excluded.
+**Stock compatibility is UNRELEASED. The current npm version, 0.1.1, remains host-only** and requires the [optional patched Pi v0.99.2 host](extensions/whimsical-activity/host-patch/README.md). Installing today's registry package on stock Pi does not provide this checkout's behavior.
 
-## Installation
-
-**Whimsical Activity 0.1.1 is experimental and requires the patched Pi v0.99.2 source host.** Installing the npm package alone does not patch Pi. Stock Pi displays an unsupported-host warning in interactive mode and keeps its native UI unchanged.
-
-### First-time setup: prepare the host
-
-You need Node >=22.19.0, npm, Git, GitHub CLI (`gh`), and tar. The source-launch examples use a Bash-compatible shell.
-
-Clone the toolset into a new directory:
+To try this checkout with stock Pi, use Node >=22.19.0 and an installed Pi. From the cloned toolset root, in an interactive terminal:
 
 ```bash
-gh repo clone ZenStudioLab/pi-toolset
-cd pi-toolset
+pi --no-extensions -e "$PWD/extensions/whimsical-activity/index.ts"
 ```
 
-Complete **Prepare the source host** in the [Whimsical setup guide](extensions/whimsical-activity/host-patch/README.md). It checks out the exact supported Pi revision, applies the supplied patch, installs dependencies with lifecycle scripts disabled, and prepares the required provider catalogs. It does not replace your installed Pi executable.
+This local-entry command was checked on stock **0.99.2**. It needs no host checkout, patch, build, or toolset dependency installation. `--no-extensions` disables other discovered/configured extensions, but the explicit `-e` still loads. The trial does not register a package in settings; your usual Pi model/auth configuration still applies. Omit the entry on the next launch to stop loading it.
 
-After completing that setup, launch from the toolset root:
+Stock mode shows one bundled word per agent loop with Pi's native spinner. It adds no timers or settings and changes no prompts, tools, or provider requests. See the [feature comparison and invocation flags](extensions/whimsical-activity/README.md).
 
-```bash
-TOOLSET_ROOT="$PWD"
-(cd host/pi && env -u PI_PACKAGE_DIR ./pi-test.sh --no-extensions \
-  -e "$TOOLSET_ROOT/extensions/whimsical-activity/index.ts")
-```
+### Ordinary installation after a stock-capable release
 
-This loads only the local Whimsical entry for that session, without registering it in your global settings. Your usual Pi model/auth configuration still applies. Open Pi's settings menu, then **Activity indicator**, to customize the display.
-
-### Install the published npm package
-
-The package is available as [@zenstudiolab/pi-toolset](https://www.npmjs.com/package/@zenstudiolab/pi-toolset). If you already have the compatible patched host, register the published version with Pi's package manager—not `npm install -g`:
-
-```bash
-pi install npm:@zenstudiolab/pi-toolset@0.1.1
-pi list
-```
-
-Here, `pi` must run your compatible patched host. If your `pi` command still points to stock Pi, use the source launcher instead, from the toolset root:
-
-```bash
-env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh install npm:@zenstudiolab/pi-toolset@0.1.1
-env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh list
-env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh
-```
-
-Restart the patched host after installation. For this registered-package launch, do not add `--no-extensions` or the local `-e` entry: the former suppresses package loading and the latter can load a second copy. Unlike the isolated first-time launch, this launch also loads your other configured extensions.
-
-Installation is personal/global by default. To register only for one project, run the install command from that project's directory with `--local`; Pi loads project packages only after project trust is granted. Do not install both the local checkout and npm package as separate copies.
-
-### Update or remove
-
-The `@0.1.1` command pins that version. To follow new releases instead, install the unversioned source, then update it when desired:
+**The following registry workflow is for a future release containing stock support, not today's 0.1.1.** Check the release's compatibility notes first. Use Pi's package manager, not `npm install -g`:
 
 ```bash
 pi install npm:@zenstudiolab/pi-toolset
-pi update npm:@zenstudiolab/pi-toolset
+pi list
 ```
 
-Check each release's host compatibility before upgrading. Updating the package does not update or reapply the host patch. With the source launcher, replace `pi` in these commands with `env -u PI_PACKAGE_DIR /absolute/path/to/pi-toolset/host/pi/pi-test.sh`.
+Restart Pi without the local `-e` entry or `--no-extensions`. Installation is personal/global by default; add `--local` from the target project for a project-only declaration. Pi loads project packages after project trust is granted.
 
-To remove a pinned installation:
+To update an unversioned installation or remove it:
 
 ```bash
-pi remove npm:@zenstudiolab/pi-toolset@0.1.1
+pi update npm:@zenstudiolab/pi-toolset
+pi remove npm:@zenstudiolab/pi-toolset
 ```
 
-For an unversioned installation, omit `@0.1.1`. For a project-local installation, add `--local` and run from that project. Restart the host afterward. Removal unregisters the package; it does not reverse the host patch. For a temporary disable, turn **Activity indicator → Enabled** off in Pi's settings.
+For an existing pinned install, remove its exact source, for example `pi remove npm:@zenstudiolab/pi-toolset@0.1.1`. Add `--local` when removing a project-local declaration. Restart after removal. Updating a package does not apply or update a host patch.
+
+**Use only one copy:** local paths and npm packages are different sources. Remove old local/GitHub/npm declarations shown by `pi list` before switching installation methods. Do not combine a registered npm copy and an explicit local entry. Other extensions that write the same working-message/indicator setters can also interfere; stock Pi offers no exclusive ownership or previous-value getter. Cleanup restores defaults only for controls Whimsical changed, not another extension's prior values.
+
+### Optional advanced host
+
+For native saved settings, animation presets/colors, timed word rotation, width reservation, synchronous wait arbitration, and observed metadata, follow the [advanced host guide](extensions/whimsical-activity/host-patch/README.md). Only the documented patched 0.99.2 base is qualified. If the advanced registration API exists, it is authoritative even when it declines registration; stock never becomes a competing fallback.
 
 ### Troubleshooting
 
-- **Unsupported-host warning:** your running Pi lacks the native activity API. Prepare and launch the patched source host; reinstalling the npm package cannot add that API.
-- **No indicator:** use an interactive TTY session on the patched host, confirm the package appears in `pi list`, and check that Activity indicator is enabled. Print, JSON, RPC, and redirected modes intentionally show no decoration.
-- **Competing registration:** remove the duplicate local, GitHub, or npm installation and restart with one Whimsical entry.
+- **No decoration on npm 0.1.1 with stock Pi:** use the unreleased checkout trial above or the optional advanced host. Reinstalling 0.1.1 cannot add stock support.
+- **No indicator on this checkout:** use an interactive TTY (both stdin and stdout), check `--no-whimsical-activity`, and use one entry. Print, JSON, RPC, no-UI, and redirected sessions are silent no-ops.
+- **Working API warning:** update Pi to a qualified stock release. Only hosts missing required public setters are warned; an absent advanced API alone is normal.
+- **Flicker, unexpected resets, or competing registration:** disable other working-message extensions and remove duplicate installations. On advanced hosts also check **Activity indicator → Enabled**.
 
-## Development
+## Qualification and development
 
-Use Node >=22.19.0. First prepare `host/pi` as documented in the [integration guide](extensions/whimsical-activity/host-patch/README.md): root typechecking verifies compatibility against its actual source API.
+Tested with Node **22.19.0**:
 
-Then, from this repository root:
+- Stock **0.99.2**: real released loader, agent lifecycle with an offline controlled provider, InteractiveMode/native editor and status rendering, cancellation/restoration, native prompts/retry/compaction, narrow widths, and packed-entry loading outside this repository. An isolated real CLI terminal startup/quit also checked the local trial command.
+- Published **0.87.1** development packages: actual loader/runner integration plus focused unit tests. This is not a full interactive rendering qualification of 0.87.1.
+- Advanced **0.99.2**, base `005af57d88ee23b33778f343a9595b32e67ff788` plus supplied patch: focused native lifecycle/render/preference regressions.
+
+Peer ranges follow Pi's host-provided-package convention; they are not a claim that every Pi version is tested. No live provider calls are needed for these checks. Stock uses normal Pi layout and can omit/truncate words at narrow widths; it does not reserve the advanced fixed slot.
+
+**Developer-only requirement:** root typechecking imports actual advanced source types. Prepare `host/pi` using the [advanced guide](extensions/whimsical-activity/host-patch/README.md), then run from this repository root:
 
 ```bash
 npm ci --ignore-scripts
-env -u PI_PACKAGE_DIR npm run check
+npm run check
 ```
 
-Development dependencies remain pinned to the original 0.87.1 packages for unsupported-host regression checks. They do not supply the new native activity API. Runtime uses the patched 0.99.2 source host, not those development packages. Peer dependency ranges do not imply support for stock Pi.
+Development dependencies stay pinned to 0.87.1. Neither the development tests nor `host/pi` are required for ordinary package loading, and neither is published. The explicit released-host render harness can be rerun from the root with an existing read-only 0.99.2 installation (no dependency install needed):
 
-```text
-extensions/whimsical-activity/             Extension and its host-integration patch
-test/whimsical-activity/                   Existing extension regression suites
-test/fixtures/                            Pinned bank verification input
-host/pi/                                  Local upstream checkout; ignored, never published
+```bash
+# PI_RELEASE_DIR must be the installed @earendil-works/pi-coding-agent directory.
+CAPTURE_ROOT=$(mktemp -d)
+node --experimental-strip-types test/whimsical-activity/released-stock-render.mjs \
+  "$PI_RELEASE_DIR" extensions/whimsical-activity/index.ts "$CAPTURE_ROOT/render"
 ```
 
-Dependency installation scripts are disabled. The documented source tests use offline faux providers; no live provider calls are required. Internal review logs, agent session files, local configuration, and the original checkout history are not published.
+It writes ANSI/native render captures under that fresh directory and isolates its config. The harness checks regular terminal mode; it is not a claim of every terminal emulator or fullscreen layout being qualified.
 
 ## License
 
-Original contributions are MIT licensed. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the upstream Pi attribution and redistribution requirements.
+Original contributions are MIT licensed. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for upstream Pi attribution and redistribution requirements.

@@ -9,6 +9,7 @@ import {
 } from "./activity-controller.ts";
 import { activityOverrides } from "./preferences.ts";
 import { ActivityWordSelector } from "./word-bank.ts";
+import { StockPresentation } from "./stock-presentation.ts";
 
 export default function whimsicalActivity(
   pi: ExtensionAPI,
@@ -28,12 +29,19 @@ export default function whimsicalActivity(
     description: "Use ASCII activity label punctuation",
   });
   let selector: ActivityWordSelector | undefined;
-  let remove: (() => void) | undefined;
+  let backend:
+    | { kind: "advanced"; remove: (() => void) | undefined }
+    | { kind: "stock"; presentation: StockPresentation }
+    | undefined;
   const reported = new Set<string>();
+  const dispose = () => {
+    if (backend?.kind === "advanced") backend.remove?.();
+    else if (backend?.kind === "stock") backend.presentation.reset();
+    backend = undefined;
+  };
 
   pi.on("session_start", (_event, ctx) => {
-    remove?.();
-    remove = undefined;
+    dispose();
     if (
       ctx.mode !== "tui" ||
       !ctx.hasUI ||
@@ -60,26 +68,43 @@ export default function whimsicalActivity(
     }
     // The modified source API extends this published UI type without changing the pinned package.
     const ui = ctx.ui as ExtensionUIContext & Partial<ActivityDecorationUI>;
-    if (typeof ui.registerActivityDecoration !== "function") {
-      if (overrides.enabled !== false)
-        report(
-          "Whimsical activity requires a source host with registerActivityDecoration; native UI is unchanged.",
-        );
+    const getSelector = () => {
+      selector ??= createSelector();
+      if (selector.diagnostic) report(selector.diagnostic);
+      return selector;
+    };
+    if (typeof ui.registerActivityDecoration === "function") {
+      // A declined registration is authoritative; never fall through to a stock writer.
+      backend = {
+        kind: "advanced",
+        remove: ui.registerActivityDecoration(
+          () => new ActivityController(getSelector, scheduler),
+          overrides,
+        ),
+      };
       return;
     }
-    remove = ui.registerActivityDecoration(
-      () =>
-        new ActivityController(() => {
-          selector ??= createSelector();
-          if (selector.diagnostic) report(selector.diagnostic);
-          return selector;
-        }, scheduler),
-      overrides,
-    );
+    if (overrides.enabled === false) return;
+    if (
+      typeof ui.setWorkingMessage !== "function" ||
+      typeof ui.setWorkingIndicator !== "function"
+    ) {
+      report(
+        "Whimsical activity needs Pi's public working-message and indicator APIs. Update Pi; native UI is unchanged.",
+      );
+      return;
+    }
+    backend = {
+      kind: "stock",
+      presentation: new StockPresentation(ui, overrides, getSelector),
+    };
   });
 
-  pi.on("session_shutdown", () => {
-    remove?.();
-    remove = undefined;
+  pi.on("agent_start", () => {
+    if (backend?.kind === "stock") backend.presentation.start();
   });
+  pi.on("agent_end", () => {
+    if (backend?.kind === "stock") backend.presentation.reset();
+  });
+  pi.on("session_shutdown", dispose);
 }

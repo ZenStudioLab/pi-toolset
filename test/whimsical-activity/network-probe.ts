@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { tty } from "./tty.ts";
 import { loadExtensions } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js";
 import { fileURLToPath } from "node:url";
 import {
@@ -24,6 +26,8 @@ const loaded = await loadExtensions(
 assert.deepEqual(loaded.errors, []);
 assert.equal(loaded.extensions.length, 1);
 assert.deepEqual([...loaded.extensions[0].handlers.keys()].sort(), [
+  "agent_end",
+  "agent_start",
   "session_shutdown",
   "session_start",
 ]);
@@ -55,6 +59,30 @@ const second = presentations.at(-1)!.label!;
 assert.notEqual(first, second);
 controller.dispose();
 assert.equal(clock.pending().length, 0);
+const restore = tty();
+const timeout = globalThis.setTimeout;
+const interval = globalThis.setInterval;
+try {
+  globalThis.setTimeout = Object.assign(() => assert.fail("Stock must not schedule delayed writes"), { __promisify__: timeout.__promisify__ });
+  globalThis.setInterval = (() => assert.fail("Stock must not schedule rotation")) as typeof setInterval;
+  let working = "Working";
+  const ctx = { mode: "tui", hasUI: true, ui: {
+    notify: () => assert.fail("Stock has the required public capabilities"),
+    setWorkingMessage: (message?: string) => { working = message ?? "Working"; },
+    setWorkingIndicator: () => assert.fail("Normal stock must leave native animation alone"),
+  } } as unknown as ExtensionContext;
+  for (const type of ["session_start", "agent_start", "agent_end", "session_shutdown"] as const) {
+    for (const handler of loaded.extensions[0].handlers.get(type) ?? []) {
+      await handler({ type }, ctx);
+    }
+    if (type === "agent_start") assert.ok(selector.words.includes(working.slice(0, -1)));
+    if (type === "agent_end") assert.equal(working, "Working");
+  }
+} finally {
+  globalThis.setTimeout = timeout;
+  globalThis.setInterval = interval;
+  restore();
+}
 assert.deepEqual(networkAttempts, []);
 console.log(
   JSON.stringify({
