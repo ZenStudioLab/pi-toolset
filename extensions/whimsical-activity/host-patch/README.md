@@ -1,6 +1,6 @@
 # Optional advanced Pi v0.99.2 host integration
 
-This patch is **optional for the unreleased stock-compatible checkout**. Stock Pi can show one local word per loop through public APIs; follow the [ordinary checkout trial](../../../README.md#stock-pi-try-the-unreleased-checkout) instead if that is all you need. **Current npm 0.1.1 remains host-only** and still needs this patch.
+This patch is **optional starting with version 0.1.2**. Stock Pi can show one local word per loop through public APIs; follow the [ordinary installation instructions](../../../README.md#installation) instead if that is all you need. Versions 0.1.0 and 0.1.1 remain host-only and still need this patch.
 
 Advanced mode adds native activity registration, persistent settings, presets/colors, delayed/timed rotation, width reservation, synchronous wait arbitration, and observed foreground metadata that the stock path does not provide. This directory distributes those changes as a patch, not a bundled host checkout. See the [feature comparison](../README.md#stock-and-advanced-behavior). The extension always selects advanced registration when available, even if the host declines it; it does not compete through stock setters.
 
@@ -62,17 +62,17 @@ TOOLSET_ROOT="$PWD"
   --no-context-files -e "$TOOLSET_ROOT/extensions/whimsical-activity/index.ts" --help)
 ```
 
-### Use the current host-only npm release
+### Use the npm release with the advanced host
 
-After preparing the compatible patched host, you may register published 0.1.1 instead of loading the local entry. From the toolset root:
+After preparing the compatible patched host, you may register version 0.1.2 instead of loading the local entry. From the toolset root:
 
 ```bash
-env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh install npm:@zenstudiolab/pi-toolset@0.1.1
+env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh install npm:@zenstudiolab/pi-toolset@0.1.2
 env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh list
 env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh
 ```
 
-This is a personal/global installation by default. Add `--local` from the target project if desired (using an absolute launcher path); project packages require trust. Do not combine this registered copy with the local `-e` trial, and do not pass `--no-extensions` for a registered-package launch. Other configured extensions will also load. Remove the exact source with `remove npm:@zenstudiolab/pi-toolset@0.1.1` through the same launcher, adding `--local` for a project declaration, then restart.
+This is a personal/global installation by default. Add `--local` from the target project if desired (using an absolute launcher path); project packages require trust. Do not combine this registered copy with the local `-e` trial, and do not pass `--no-extensions` for a registered-package launch. Other configured extensions will also load. Remove the exact source with `remove npm:@zenstudiolab/pi-toolset@0.1.2` through the same launcher, adding `--local` for a project declaration, then restart.
 
 ## Qualification
 

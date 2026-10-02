@@ -4,7 +4,7 @@ Local words from a fixed 100-entry bank on Pi's native working surface. No netwo
 
 ## Compatibility and installation
 
-**Stock support is UNRELEASED in this checkout. Current npm 0.1.1 and earlier 0.1.x releases remain host-only.** Use the [root local-checkout trial](../../README.md#stock-pi-try-the-unreleased-checkout) for stock Pi; ordinary registry installation must wait for a stock-capable release. No patch or host source checkout is needed to load this entry on stock Pi.
+**Version 0.1.2 adds stock Pi support.** Follow the [installation instructions](../../README.md#installation) to install with `pi install npm:@zenstudiolab/pi-toolset`. No patch or host source checkout is needed on stock Pi. Versions 0.1.0 and 0.1.1 remain host-only.
 
 Stock **0.99.2** was qualified with real released-host lifecycle and native rendering using offline activity. Published **0.87.1** has loader/runner coverage, not full interactive render qualification. The optional advanced integration is qualified only against Pi **0.99.2**, base `005af57d88ee23b33778f343a9595b32e67ff788`, with the [supplied patch](host-patch/README.md). Node 22.19.0 was used for qualification.
 
@@ -67,7 +67,7 @@ Roomy advanced displays can show `39s · Running bash · ↓913 tokens`. Narrow 
 
 ## Disable and remove
 
-Pass `--no-whimsical-activity` for either path. Advanced users can also turn **Activity indicator → Enabled** off. For a local trial, omit the explicit entry next time; reloading a still-configured entry loads it again. For a registered package, follow the [root removal instructions](../../README.md#ordinary-installation-after-a-stock-capable-release) and restart Pi. Removal does not reverse the optional host patch.
+Pass `--no-whimsical-activity` for either path. Advanced users can also turn **Activity indicator → Enabled** off. For a local trial, omit the explicit entry next time; reloading a still-configured entry loads it again. For a registered package, follow the [root removal instructions](../../README.md#installation) and restart Pi. Removal does not reverse the optional host patch.
 
 Do not load local/GitHub/npm copies together. Check `pi list`, remove the unwanted source from its personal or `--local` scope, and restart with one entry. A local file and an npm package are not deduplicated as the same source.
 

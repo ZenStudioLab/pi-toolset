@@ -6,23 +6,11 @@ ZenStudioLab's extensions and tools for [Pi](https://github.com/earendil-works/p
 | --- | --- |
 | [Whimsical Activity](extensions/whimsical-activity/README.md) | Local activity words on Pi's native working surface, with optional advanced host integration. |
 
-## Stock Pi: try the unreleased checkout
+## Installation
 
-**Stock compatibility is UNRELEASED. The current npm version, 0.1.1, remains host-only** and requires the [optional patched Pi v0.99.2 host](extensions/whimsical-activity/host-patch/README.md). Installing today's registry package on stock Pi does not provide this checkout's behavior.
+**Version 0.1.2 adds stock Pi support; no host patch is needed.** Use Node >=22.19.0 and an installed Pi in an interactive terminal. Stock **0.99.2** is qualified for native rendering; see the [qualification notes](#qualification-and-development) for exact coverage.
 
-To try this checkout with stock Pi, use Node >=22.19.0 and an installed Pi. From the cloned toolset root, in an interactive terminal:
-
-```bash
-pi --no-extensions -e "$PWD/extensions/whimsical-activity/index.ts"
-```
-
-This local-entry command was checked on stock **0.99.2**. It needs no host checkout, patch, build, or toolset dependency installation. `--no-extensions` disables other discovered/configured extensions, but the explicit `-e` still loads. The trial does not register a package in settings; your usual Pi model/auth configuration still applies. Omit the entry on the next launch to stop loading it.
-
-Stock mode shows one bundled word per agent loop with Pi's native spinner. It adds no timers or settings and changes no prompts, tools, or provider requests. See the [feature comparison and invocation flags](extensions/whimsical-activity/README.md).
-
-### Ordinary installation after a stock-capable release
-
-**The following registry workflow is for a future release containing stock support, not today's 0.1.1.** Check the release's compatibility notes first. Use Pi's package manager, not `npm install -g`:
+Use Pi's package manager, not `npm install -g`:
 
 ```bash
 pi install npm:@zenstudiolab/pi-toolset
@@ -42,14 +30,26 @@ For an existing pinned install, remove its exact source, for example `pi remove 
 
 **Use only one copy:** local paths and npm packages are different sources. Remove old local/GitHub/npm declarations shown by `pi list` before switching installation methods. Do not combine a registered npm copy and an explicit local entry. Other extensions that write the same working-message/indicator setters can also interfere; stock Pi offers no exclusive ownership or previous-value getter. Cleanup restores defaults only for controls Whimsical changed, not another extension's prior values.
 
+### Try a local checkout instead
+
+From the cloned toolset root, in an interactive terminal:
+
+```bash
+pi --no-extensions -e "$PWD/extensions/whimsical-activity/index.ts"
+```
+
+This local-entry command was checked on stock **0.99.2**. It needs no host checkout, patch, build, or toolset dependency installation. `--no-extensions` disables other discovered/configured extensions, but the explicit `-e` still loads. The trial does not register a package in settings; your usual Pi model/auth configuration still applies. Omit the entry on the next launch to stop loading it.
+
+Stock mode shows one bundled word per agent loop with Pi's native spinner. It adds no timers or settings and changes no prompts, tools, or provider requests. See the [feature comparison and invocation flags](extensions/whimsical-activity/README.md).
+
 ### Optional advanced host
 
 For native saved settings, animation presets/colors, timed word rotation, width reservation, synchronous wait arbitration, and observed metadata, follow the [advanced host guide](extensions/whimsical-activity/host-patch/README.md). Only the documented patched 0.99.2 base is qualified. If the advanced registration API exists, it is authoritative even when it declines registration; stock never becomes a competing fallback.
 
 ### Troubleshooting
 
-- **No decoration on npm 0.1.1 with stock Pi:** use the unreleased checkout trial above or the optional advanced host. Reinstalling 0.1.1 cannot add stock support.
-- **No indicator on this checkout:** use an interactive TTY (both stdin and stdout), check `--no-whimsical-activity`, and use one entry. Print, JSON, RPC, no-UI, and redirected sessions are silent no-ops.
+- **No decoration on npm 0.1.0 or 0.1.1 with stock Pi:** upgrade to 0.1.2 or later using the instructions above. Those older versions require the optional advanced host; reinstalling them cannot add stock support.
+- **No indicator:** use an interactive TTY (both stdin and stdout), check `--no-whimsical-activity`, and use one entry. Print, JSON, RPC, no-UI, and redirected sessions are silent no-ops.
 - **Working API warning:** update Pi to a qualified stock release. Only hosts missing required public setters are warned; an absent advanced API alone is normal.
 - **Flicker, unexpected resets, or competing registration:** disable other working-message extensions and remove duplicate installations. On advanced hosts also check **Activity indicator → Enabled**.
 
