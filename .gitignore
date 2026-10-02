@@ -1,0 +1,8 @@
+node_modules/
+/host/
+/temp/
+/coverage/
+*.log
+.env
+.env.*
+.DS_Store
