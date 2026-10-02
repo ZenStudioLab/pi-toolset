@@ -12,7 +12,7 @@ Only Whimsical is included initially. Future extensions can be added under `exte
 
 ## Installation
 
-**Whimsical Activity 0.1.0 is experimental and requires the patched Pi v0.99.2 source host.** Installing the npm package alone does not patch Pi. Stock Pi displays an unsupported-host warning in interactive mode and keeps its native UI unchanged.
+**Whimsical Activity 0.1.1 is experimental and requires the patched Pi v0.99.2 source host.** Installing the npm package alone does not patch Pi. Stock Pi displays an unsupported-host warning in interactive mode and keeps its native UI unchanged.
 
 ### First-time setup: prepare the host
 
@@ -42,14 +42,14 @@ This loads only the local Whimsical entry for that session, without registering 
 The package is available as [@zenstudiolab/pi-toolset](https://www.npmjs.com/package/@zenstudiolab/pi-toolset). If you already have the compatible patched host, register the published version with Pi's package manager—not `npm install -g`:
 
 ```bash
-pi install npm:@zenstudiolab/pi-toolset@0.1.0
+pi install npm:@zenstudiolab/pi-toolset@0.1.1
 pi list
 ```
 
 Here, `pi` must run your compatible patched host. If your `pi` command still points to stock Pi, use the source launcher instead, from the toolset root:
 
 ```bash
-env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh install npm:@zenstudiolab/pi-toolset@0.1.0
+env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh install npm:@zenstudiolab/pi-toolset@0.1.1
 env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh list
 env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh
 ```
@@ -60,7 +60,7 @@ Installation is personal/global by default. To register only for one project, ru
 
 ### Update or remove
 
-The `@0.1.0` command pins that version. To follow new releases instead, install the unversioned source, then update it when desired:
+The `@0.1.1` command pins that version. To follow new releases instead, install the unversioned source, then update it when desired:
 
 ```bash
 pi install npm:@zenstudiolab/pi-toolset
@@ -72,10 +72,10 @@ Check each release's host compatibility before upgrading. Updating the package d
 To remove a pinned installation:
 
 ```bash
-pi remove npm:@zenstudiolab/pi-toolset@0.1.0
+pi remove npm:@zenstudiolab/pi-toolset@0.1.1
 ```
 
-For an unversioned installation, omit `@0.1.0`. For a project-local installation, add `--local` and run from that project. Restart the host afterward. Removal unregisters the package; it does not reverse the host patch. For a temporary disable, turn **Activity indicator → Enabled** off in Pi's settings.
+For an unversioned installation, omit `@0.1.1`. For a project-local installation, add `--local` and run from that project. Restart the host afterward. Removal unregisters the package; it does not reverse the host patch. For a temporary disable, turn **Activity indicator → Enabled** off in Pi's settings.
 
 ### Troubleshooting
 
