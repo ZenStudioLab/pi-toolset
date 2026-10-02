@@ -81,3 +81,71 @@ The corrections touched COMPATIBILITY.md and design.md. Both were made before `B
 
 - `REVIEW_ACTION=PASS`
 - `CONSENSUS_STATUS=MOSTLY_GOOD`
+
+## Wave 2 Review Sequence
+
+BASELINE_TARGET=Wave 2 deliverables of add-manual-speak-extension (tasks 2.1-2.4)
+BASELINE_TARGET_REVISION=sha256:ce1b20464fd89f2973685641fee5fc53906ce341c032eb3beea749101af9e82d
+BASELINE_SOURCE=openspec/changes/add-manual-speak-extension spec and design; Wave 1 commit 0510a06
+BASELINE_INCLUSION_PREDICATE=extensions/speak/config.ts; session.ts; text.ts; cache.ts; test/speak/config.test.ts; session.test.ts; text.test.ts; cache.test.ts; the package.json test-script glob; consistency with the spec requirements for configuration, answer selection, text preparation, length limit, and cache
+BASELINE_EXCLUSIONS=Wave 3-4 behavior (command router, idle check, provider request, playback, job control, replay pointer); network or process use; extensions/whimsical-activity; live provider use
+
+The revision is SHA-256 over UTF-8 relative path + NUL + file bytes, in the order of the inclusion predicate.
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 2. Final gate task reserved: `2.5 [Oracle gate: oracle]`.
+
+Owner mapping (all Orchestrator, no overrides):
+- 2.1 config: `extensions/speak/config.ts`, `test/speak/config.test.ts`, `package.json` test glob only.
+- 2.2 answer selection: `extensions/speak/session.ts`, `test/speak/session.test.ts`.
+- 2.3 text preparation: `extensions/speak/text.ts`, `test/speak/text.test.ts`.
+- 2.4 cache: `extensions/speak/cache.ts`, `test/speak/cache.test.ts`.
+
+Scope adjustment: the in-memory replay pointer was listed in task 2.4 but the design makes it command-layer state, so it moved to task 3.3 in tasks.md. No requirement was dropped.
+
+Validation evidence:
+- `npx tsc --noEmit` rc=0; `npm test` passes 179 of 179 (114 existing plus 65 new).
+- Mutation check: 13 deliberate breakages were applied one at a time, each confirmed to fail the suite and then restored. They were: inclusive length limit; bare-URL removal; list-continuation guard; stop-reason gate; unanswered-turn guard; voice and revision in the cache key; protected-clip sparing; hit validity check; file permissions; placeholder rejection; status redaction; and the one-line triple-backtick fix.
+- The first run failed in Node's strip-types mode because a TypeScript parameter property (`constructor(private readonly options)`) is not supported at runtime; `tsc` had accepted it. Fixed with a plain field; no other unsupported syntax remains (grep for parameter properties, enums, namespaces: none).
+- A mutation check showed the first regression test for the one-line triple-backtick case did not exercise the fix (the line did not start with the fence). The test was corrected and the mutant is now caught.
+- Real Pi `SessionManager.inMemory()` with `branch()` is used to confirm that only the active branch reaches answer selection.
+
+Summary: configuration validation and redacted view, active-branch answer selection, deterministic cleanup with the 4000-character check, and the private content-addressed cache with eviction. None of it performs network or process work.
+
+---
+
+## Round 1 - Oracle Review
+
+REVIEWER=caller self-review (NOT an Oracle review). Mode: FULL. Weaker independence than an Oracle review because the same agent wrote and reviewed the wave; claims were re-derived by running the code and mutants, not by memory.
+
+Coverage: every Wave 2 source and test file re-read; each Wave 2 spec requirement traced to code and a test (answer selection scenarios except the busy-agent one, text preparation, explicit text, length limit, content-addressed cache, status redaction inputs); adversarial inputs tried against the cleaner. Not covered: Wave 3 behavior and anything needing a real terminal or provider.
+
+Findings:
+1. P2, family `silent-content-loss`, in scope. A line beginning with ```` ```code``` ```` followed by text was treated as an opening fence and removed the rest of the answer. SUGGESTED_CORRECTION: accept a backtick fence only when no backtick follows on the line, and add a regression test.
+2. P3, family `design-completeness`, in scope. The retention period's reference point (creation versus last use) was unspecified. SUGGESTED_CORRECTION: record that age counts from last use because a hit refreshes the modification time.
+3. P3, family `robustness`, in scope. `loadConfig` reads the whole file before applying its 64 KiB limit. DEFERRED_REASON: the file is the user's own configuration on a single-user machine; a bounded read adds code with no current failing scenario.
+4. P3, family `spec-boundary`, in scope. The spec's "agent still working" scenario and the "refuse with length and limit" message are not implemented here because they belong to the command layer. DEFERRED_REASON: scheduled in task 3.3; this wave supplies `checkLength` and `selectLatestAnswer` only.
+
+No P0 or P1 finding.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+---
+
+## Caller Assessment - Round 1
+
+Findings 1-2: `ACCEPT_NONBLOCKING`, in scope YES. `GOVERNING_SOURCE`: the spec's "Deterministic text preparation for answers" requirement (finding 1) and design decision 7 (finding 2). CORRECTION applied and verified: finding 1 in `text.ts` with a regression test confirmed by mutation; finding 2 in `design.md`. Findings 3-4: `DEFER_OUT_OF_SCOPE`, reasons above.
+
+### Summary
+- **Issues accepted blocking:** 0
+- **Issues accepted nonblocking:** 2
+- **Issues deferred out of scope:** 2
+- **Issues rejected:** 0
+
+### Candidate revision check
+`BASELINE_TARGET_REVISION` was computed after the corrections above, over the final bytes of every file in the inclusion predicate. Target, source, inclusion predicate, and exclusions are unchanged, so the baseline is valid.
+
+### Caller Result
+- `REVIEW_ACTION=PASS`
+- `CONSENSUS_STATUS=MOSTLY_GOOD`
