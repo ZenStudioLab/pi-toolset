@@ -1,8 +1,15 @@
 {
   "name": "@zenstudiolab/pi-toolset",
   "version": "0.1.0",
-  "private": true,
-  "description": "ZenStudioLab's extensions and tools for Pi, starting with Whimsical Activity",
+  "description": "ZenStudioLab's Pi toolset. Experimental Whimsical Activity requires the documented patched Pi v0.99.2 host.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZenStudioLab/pi-toolset.git"
+  },
+  "homepage": "https://github.com/ZenStudioLab/pi-toolset#readme",
+  "bugs": { "url": "https://github.com/ZenStudioLab/pi-toolset/issues" },
+  "files": ["extensions/whimsical-activity/", "THIRD_PARTY_NOTICES.md"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
   "license": "MIT",
   "author": "ZenStudioLab",
   "keywords": ["pi-package", "pi", "extensions"],
