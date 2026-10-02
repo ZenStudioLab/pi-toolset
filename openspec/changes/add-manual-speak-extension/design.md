@@ -11,7 +11,7 @@ Current state, verified read-only during exploration:
 | Package already ships a Pi extension and declares Pi packages as peers, with `pi.extensions` listing one entry. | `package.json`, `extensions/whimsical-activity/index.ts` | `extensions/speak/` follows the same shape. Its factory accepts injected dependencies, which is the pattern to reuse for testing. |
 | Repo dev dependency is Pi 0.87.1; installed launcher runs 0.99.2. | `node_modules/@earendil-works/pi-coding-agent`, `~/.pi/agent/install/releases/` | Every host API used must exist in both. Typecheck against 0.87.1; qualify behavior against 0.99.2. |
 | `registerCommand(name, { handler(args, ctx) })`, `ctx.mode` (`"tui"`, `"rpc"`, `"json"`, `"print"`), `ctx.isIdle()`, `ctx.hasPendingMessages()`, `ctx.sessionManager.buildSessionProjection()`, and events `session_shutdown` (reason `quit | reload | new | resume | fork`),`session_before_switch`,`session_before_fork`,`session_tree` exist. | `dist/core/extensions/types.d.ts`, `session-manager.d.ts` in 0.99.2; the same symbols were found in 0.87.1 | Enough surface for the contract. Exact `SessionProjection.messages` content shape is still to be inspected during apply. |
-| Docs do not say whether an awaited command handler blocks other commands. | `docs/extensions.md` | Design assumes it might; the handler returns immediately and the job runs as an owned async task. A real-terminal check qualifies this. |
+| Docs do not say whether an awaited command handler blocks other commands. | `docs/extensions.md` | Design assumes it might; the handler returns immediately and the job runs as an owned async task. A real-terminal check on Pi 0.99.2 confirmed that `/speak status` and `/speak stop` are accepted during playback (see `extensions/speak/COMPATIBILITY.md`). |
 | `mpv` is not installed; `ffplay` and `pw-play` are. | `command -v` | Player is configuration, not hardcoded. |
 | Test helpers `network-sentinel.ts` and `network-probe.ts` exist. | `test/whimsical-activity/` | Reuse the idea to prove silent load makes zero network calls. |
 | `docs/adr/0001-hybrid-activity-compatibility.md` exists. | `docs/adr/` | New ADR-0002 records the new egress boundary. |
@@ -65,7 +65,7 @@ A conservative line-oriented cleaner removes fenced and indented code, images, a
 
 ### 5. One ElevenLabs request, full file, then play
 
-Plain `fetch` with a fixed origin, `redirect: "error"`, an `AbortSignal` combining the job controller and a 45 s deadline, and a streamed read capped at 10 MiB. Accept only a successful response whose body is nonempty and whose content type is audio. Write to a unique private temp file and rename into the cache. Zero retries. Streaming playback is deferred until real latency is measured.
+Plain `fetch` with a fixed origin, `redirect: "manual"` (Node returns the 3xx response itself, which is reported as a failure and never followed), an `AbortSignal` combining the job controller and a 45 s deadline, and a streamed read capped at 10 MiB. Accept only a successful response whose body is nonempty and whose content type is audio. Write to a unique private temp file and rename into the cache. Zero retries. Streaming playback is deferred until real latency is measured.
 
 ### 6. Configurable player, no shell
 

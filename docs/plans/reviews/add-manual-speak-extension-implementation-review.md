@@ -171,12 +171,14 @@ The revision is SHA-256 over UTF-8 relative path + NUL + file bytes, in the orde
 Wave handled: 3. Final gate task reserved: `3.5 [Oracle gate: oracle]`.
 
 Owner mapping (all Orchestrator, no overrides):
+
 - 3.1 provider: `extensions/speak/elevenlabs.ts`, `test/speak/provider.test.ts`.
 - 3.2 player: `extensions/speak/audio.ts`, `test/speak/audio.test.ts`.
 - 3.3 job control and command router: `extensions/speak/speech-job.ts`, `extensions/speak/index.ts`, `test/speak/harness.ts`, `command.test.ts`, `job.test.ts`; `usage()` in `cache.ts`.
 - 3.4 silence: `test/speak/silence.test.ts` (rewritten; the superseded usage-only test from the scaffold is gone).
 
 Validation evidence:
+
 - `npx tsc --noEmit` rc=0; `npm test` result: # tests 234; # pass 234; # fail 0.
 - Mutation check: 21 deliberate breakages were applied one at a time and each was caught by the suite before being restored: single-job claim; live guard after synthesis; stop aborting generation; stop ending the player; session reset forgetting the clip; length limit; player preflight; key removal from the player environment; stop not reported as failure; no shell; redirects not followed; audio content type; terminal-only mode; busy agent; branch-navigation and fork handlers; replay clearing a missing clip; a load-time request; an agent-event subscription; a lifecycle handler reading configuration; and a stale job clearing a newer job's status.
 - Real behavior was observed where a fake could hide it: real child processes for SIGTERM, exit codes, argument passing, key-free environment, and diagnostics bounding; real Node `fetch` with `redirect: "manual"` returns the 302 response (the redirect rejection depends on that); real Pi `SessionManager` for branch selection (Wave 2).
@@ -194,6 +196,7 @@ REVIEWER=caller self-review (NOT an Oracle review). Mode: FULL. Weaker independe
 Coverage: every Wave 3 source and test file re-read against each spec requirement from "Speech occurs only on explicit request" through "Deferred features are unavailable"; stale-callback and cancellation interleavings traced by hand; error paths traced for key disclosure. Not covered: real-terminal handler responsiveness, real ElevenLabs responses (content type, error bodies), real audio output (task 4.4); README and packaging (Wave 4).
 
 Findings:
+
 1. P2, family `stale-callback`, in scope. A cancelled job's `finally` cleared the status line even after a newer job had started, so a stale job could alter a newer job's state. SUGGESTED_CORRECTION: release the claim and clear status only while the job is still current. Found during this review, fixed, and covered by an assertion plus a mutation check.
 2. P3, family `robustness`, in scope. `/speak status` rejected when the cache directory was unreadable. SUGGESTED_CORRECTION: report the cache as unreadable and still answer. Fixed with a test.
 3. P3, family `unverified-assumption`, in scope. The `audio/*` content-type requirement and the provider error body shapes rest on documentation that does not state them. DEFERRED_REASON: only a real response can settle it; task 4.4 and `COMPATIBILITY.md` already record it as unverified.
@@ -210,9 +213,97 @@ PROPOSED_REVIEW_ACTION=PASS
 Findings 1-2: `ACCEPT_NONBLOCKING`, in scope YES. `GOVERNING_SOURCE`: the spec requirement "Single job and responsive stop" ("A cancelled job SHALL NOT ... alter the state of a newer job") for finding 1, and the requirement "Status reporting" for finding 2. CORRECTION applied and verified (finding 1 confirmed by mutation). Findings 3-4: `DEFER_OUT_OF_SCOPE`, reasons above.
 
 ### Summary
+
 - **Issues accepted blocking:** 0
 - **Issues accepted nonblocking:** 2
 - **Issues deferred out of scope:** 2
+- **Issues rejected:** 0
+
+### Candidate revision check
+
+`BASELINE_TARGET_REVISION` was computed after the corrections above, over the final bytes of every file in the inclusion predicate. Target, source, inclusion predicate, and exclusions are unchanged, so the baseline is valid.
+
+### Caller Result
+
+- `REVIEW_ACTION=PASS`
+- `CONSENSUS_STATUS=MOSTLY_GOOD`
+
+## Wave 4 Review Sequence
+
+BASELINE_TARGET=Wave 4 deliverables of add-manual-speak-extension (tasks 4.1-4.4) and the whole change at its latest revision
+BASELINE_TARGET_REVISION=sha256:8ba605db6f6d9637a935d0742625b7df742f13e2b336c9c6e9fc47c367ed01c7
+BASELINE_SOURCE=openspec/changes/add-manual-speak-extension spec and design; Wave 3 commit 86a0848
+BASELINE_INCLUSION_PREDICATE=extensions/speak/README.md; extensions/speak/COMPATIBILITY.md; design.md; the packaging boundary (package.json, npm pack contents, untouched whimsical-activity); the real-host checks on Pi 0.99.2; every spec requirement traced to code and tests; the Deferred Capabilities boundary; the two files edited after the Wave 3 gate (cache.ts, speech-job.ts)
+BASELINE_EXCLUSIONS=The live ElevenLabs request, a real assistant answer spoken in the terminal, and audibility confirmed by a person (task 4.5, user-owned); publication; extensions/whimsical-activity
+
+The revision is SHA-256 over UTF-8 relative path + NUL + file bytes, in the order of the inclusion predicate.
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 4. Final gate task reserved: `4.6 [Oracle gate: oracle]`. Task 4.4 was split during this wave: the real-terminal part that needs no provider stayed 4.4 (done); the live provider check became 4.5 (user-owned, unchecked).
+
+Owner mapping (all Orchestrator, no overrides; 4.5 is the user's):
+- 4.1 README: `extensions/speak/README.md`.
+- 4.2 packaging boundary, 4.3 check and real-host load, 4.4 real-terminal qualification: evidence recorded in `COMPATIBILITY.md`.
+
+Validation evidence:
+- Packaging boundary: `package.json` differs from the pre-change baseline only in the `test` script glob; `files`, `pi`, peer and dev dependencies, name, and version are unchanged; `npm pack --dry-run` lists 14 files and none under `extensions/speak`; `extensions/whimsical-activity` and its tests are unchanged since the baseline commit.
+- `npm run check`: typecheck clean and 234 of 234 tests pass.
+- README: both JSON examples parse with the real validator; the documented defaults equal the real defaults; the `mpv` example is a valid configuration; every command in the README table is in the extension's usage text.
+- Real Pi 0.99.2, RPC mode: `speak` registered as an extension command; `status`, unsupported-mode, usage, summary-unavailable, and stop all answered; no agent or model events; nothing written; clean exit.
+- Real Pi 0.99.2, interactive terminal through a pseudo-terminal, using a locally generated clip pre-seeded in the cache (cache hit, no key, no network): the real `ffplay` played; `/speak status` answered during playback (`job: playing`); a duplicate request was refused; `/speak stop` ended only the player with no failure message; `/speak replay` played from the cache; no `ffplay` process remained; the captured screen had no player output.
+- Oversized-file audit (advisory, Step 14): no maintained handwritten file in this change exceeds 1,000 lines; the largest is `speech-job.ts` at 293. None found.
+
+Post-gate edits to earlier-wave files (behavior-neutral): `AudioCache.usage()` was renamed `stats()` so it cannot be mistaken for the deferred usage-accounting feature; the full suite was rerun after the rename (234 of 234).
+
+Summary: documentation and boundary checks complete, and the extension is qualified in the real Pi terminal everywhere except the provider.
+
+---
+
+## Round 1 - Oracle Review
+
+REVIEWER=caller self-review (NOT an Oracle review). Mode: FULL, whole change. Weaker independence than an Oracle review because the same agent wrote and reviewed the change; claims were re-derived by command, by running the real host, and by mutation, not by memory.
+
+Spec trace (requirement: code, tests):
+1. Speech only on explicit request: `index.ts` registration; `silence.test.ts` (3 tests, 3 mutants); real RPC and TUI loads.
+2. Command contract: `index.ts`; `command.test.ts`.
+3. Supported run mode: `index.ts`; `command.test.ts`; real RPC (`ctx.mode` is `rpc`).
+4. Answer selection: `session.ts`; `session.test.ts` including a real `SessionManager` branch; busy-agent cases in `command.test.ts`.
+5. Deterministic text preparation, 6. explicit text, 7. single length limit: `text.ts`; `text.test.ts` (including 4000 and 4001) and `command.test.ts`.
+8. Preflight: `speech-job.ts`; `command.test.ts` table of six failures.
+9. ElevenLabs request: `elevenlabs.ts`; `provider.test.ts`; `job.test.ts`. The real service is unverified (task 4.5).
+10. Single job and responsive stop: `speech-job.ts`; `job.test.ts`; real TUI.
+11. Playback without shell or terminal interference: `audio.ts`; `audio.test.ts` with real processes; real TUI screen capture.
+12. Lifecycle cancellation: `index.ts`; `job.test.ts` over four events.
+13. Content-addressed cache and 14. replay: `cache.ts`; `cache.test.ts`; `job.test.ts`; real TUI replay.
+15. Status: `speech-job.ts`; `job.test.ts`; real RPC and TUI.
+16. Secret and privacy handling: redaction tests in `provider.test.ts`, `job.test.ts`, `audio.test.ts`, `config.test.ts`; README statements checked against the documentation and the code.
+17. Deferred features unavailable: `index.ts`; `command.test.ts`; real RPC. A source search found no implementation of summary, confirmation tiers, secret scanning, cache clearing, or usage accounting.
+
+Coverage: all deliverables re-read; README claims checked one by one against code or an observation; design re-read against the final code. Not covered: the live provider, an assistant answer spoken through the TUI, audibility to a person, non-Linux platforms.
+
+Findings:
+1. P2, family `doc-claim-exceeds-evidence`, in scope. The README said `mpv` works with the shown arguments, but `mpv` is not installed here. SUGGESTED_CORRECTION: say it was not available to test. Fixed.
+2. P2, family `doc-claim-exceeds-evidence`, in scope. The README said cancelling does not restore allowance, which is an unverified provider behavior. SUGGESTED_CORRECTION: say it is not known to restore any. Fixed.
+3. P2, family `spec-design-code-consistency`, in scope. The design said `redirect: "error"` while the code uses `"manual"` and treats a 3xx as failure. SUGGESTED_CORRECTION: correct the design and explain the choice. Fixed; real Node `fetch` confirms the 3xx is returned.
+4. P3, family `doc-accuracy`, in scope. `COMPATIBILITY.md` pointed at task 4.4 for items that moved to 4.5. Fixed.
+5. P3, family `naming`, in scope. `AudioCache.usage()` could be confused with the deferred usage-accounting feature. Renamed to `stats()`; suite rerun.
+6. P3, family `unverified-at-completion`, in scope. The live provider path (content type, error bodies, voice and model acceptance, billing), a real assistant answer in the TUI, and audibility to a person are unverified. DEFERRED_REASON: they need the user's key and voice or a model turn; task 4.5 stays unchecked and the README and `COMPATIBILITY.md` say so.
+
+No P0 or P1 finding.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+---
+
+## Caller Assessment - Round 1
+
+Findings 1-5: `ACCEPT_NONBLOCKING`, in scope YES. `GOVERNING_SOURCE`: the user's standing instruction that no claim exceed the evidence (report exactly what was verified and what was not) for findings 1, 2, 4; the spec and design consistency of this change for findings 3 and 5. CORRECTION applied for each. Finding 6: `DEFER_OUT_OF_SCOPE`, reason above.
+
+### Summary
+- **Issues accepted blocking:** 0
+- **Issues accepted nonblocking:** 5
+- **Issues deferred out of scope:** 1
 - **Issues rejected:** 0
 
 ### Candidate revision check
@@ -221,3 +312,5 @@ Findings 1-2: `ACCEPT_NONBLOCKING`, in scope YES. `GOVERNING_SOURCE`: the spec r
 ### Caller Result
 - `REVIEW_ACTION=PASS`
 - `CONSENSUS_STATUS=MOSTLY_GOOD`
+
+Task 4.5 (live provider check) remains open and is the user's; the change is not fully complete until it is run or explicitly waived.
