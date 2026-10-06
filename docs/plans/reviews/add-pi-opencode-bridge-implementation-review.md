@@ -400,7 +400,94 @@ The user explicitly approved a new bounded correction/review sequence for W1-ISO
 
 ### Caller completion - authorized recovery sequence
 
-The separate recovery sequence's Round 2 FULL Oracle review resolves all three accepted families with no current findings, independently passing typecheck, 20/20 tests and the original failed-remote-abort probe. Caller reconciled the terminal run and verified exact candidate/source digests plus literal frozen-boundary equality before PASS; evidence and dispositions are in `add-pi-opencode-bridge-wave-1-recovery-review.md`. Current implementation candidate is `d9925ca176f924bbcf30a4251d1fd9edb049b21dd729e1c282f5bc458b792039`. This consumes the same whole-Wave-1 gate 1.6. Mark tasks 1.1–1.6 complete and commit only current-wave standalone source and root artifacts before Wave 2. Foreign root changes (including newer `.gitignore`, package.json, tools and test/subagent-profiles work) remain excluded. No remote publication or gitlink registration occurs in Wave 1.
+The separate recovery sequence's Round 2 FULL Oracle review resolves all three accepted families with no current findings, independently passing typecheck, 20/20 tests and the original failed-remote-abort probe. Caller reconciled the terminal run and verified exact candidate/source digests plus literal frozen-boundary equality before PASS; evidence and dispositions are in `add-pi-opencode-bridge-wave-1-recovery-review.md`. Current implementation candidate is `d9925ca176f924bbcf30a4251d1fd9edb049b21dd729e1c282f5bc458b792039`. This consumes the same whole-Wave-1 gate 1.6. Tasks 1.1–1.6 are complete. Standalone Wave 1 source commit: `4c30234`; root completion commit: `8ce9abf`. Concurrent root commits had already captured the planning/review artifacts; the scoped parent commit contains only task completion. Those concurrent commits were preserved rather than rewritten. Foreign root changes (including newer `.gitignore`, package.json, tools and test/subagent-profiles work) remain excluded. No remote publication or gitlink registration occurs in Wave 1.
 
 REVIEW_ACTION=PASS
 CONSENSUS_STATUS=APPROVED
+
+## Wave 2 Review Sequence
+
+BASELINE_TARGET=add-pi-opencode-bridge numbered Wave 2, tasks 2.1-2.5 and final gate 2.6
+BASELINE_TARGET_REVISION=sha256:9d1143da526f9501082daa0a306ab784c838f77fd713f6751fb2fccd4b99614c
+BASELINE_SOURCE=Canonical OpenSpec apply-context bundle sha256:6ad1af6e7b8a010334147c1ad7e3dcf757f9637af8dc48aaeb284542ed512300; approved architecture unchanged; completed Wave 1 source 4c30234; Orchestrator implementation with only oracle delegation
+BASELINE_INCLUSION_PREDICATE=Connected catalog/refresh and metadata, incremental text/reasoning and nonduplicated accounting, supported image input/results, append-compatible backend context and labelled replay/invalidation, evidenced diagnostics, actual entry/Pi-loop controlled-runtime validation, and preservation of Wave 1 ownership/cancellation guarantees
+BASELINE_EXCLUSIONS=Wave 3 packed/released-loader qualification, external model egress, OAuth/plugin qualification, remote publication/submodule registration, root activation/settings/dependencies and foreign work
+
+## Round 1 - Implementation Assignments
+
+All non-gate tasks 2.1–2.5 are directly Orchestrator-owned. Final task 2.6 is the sole independent advisory oracle gate for this completed numbered wave, excluded from implementation assignments. No per-task reviews were dispatched. Wave 2 tasks remain unchecked until caller PASS.
+
+- 2.1: `src/catalog.ts`, `src/index.ts`, catalog and provider-entry tests. Metadata is projected without credentials, full pair identities are retained, refresh preserves valid registration on failure and rejects removed selection. Real-runtime inspection exposed that pinned SDK legacy catalog declarations do not match OpenCode 1.18.29 capabilities; discovery now uses the installed SDK's `v2` client/types matching the actual response, without a dependency/version change or OpenCode-v2 product claim. Model images/reasoning are advertised through their implemented paths. Missing price uses the numeric placeholders Pi requires plus an explicit unavailable label; metadata never proves billing/entitlement.
+- 2.2: `src/stream.ts`, provider seam and context/stream/runtime tests. Generation-wide snapshot/delta state normalizes balanced text/thinking events, Unicode and repeated snapshots; cumulative per-assistant accounting is charged once across handoff segments. Length completion is mapped. Payload/response hooks wrap the owned backend HTTP request; scoped raw event observation works through the provider entry. A controlled partial-stream/disconnect test first timed out, exposing that actual runtime deltas use `message.part.delta`, absent from the legacy generated event union. Added its real transport handling; the test now observes partial output before intentionally severing inference and verifies balanced failure/one terminal event. The identified owned orphan PID 537611 from that failed probe was terminated by exact identity; unrelated port-5551 runtime was untouched. Temporary synthetic-only diagnostics were removed. No forced-exit result is claimed.
+- 2.3: `src/context.ts`, relay validation and real provider-context test. Supported base64 PNG/JPEG/WebP/GIF inputs become backend attachments, image tool results retain their MCP data, and unsupported formats or text-only model image paths fail explicitly. The actual Pi/OpenCode/provider fixture verifies PNG input and PNG tool-result bytes. An initially invalid PNG fixture was replaced with a valid standard-library-generated PNG; product validation was not relaxed. No exhaustive image-format/provider qualification is claimed.
+- 2.4: context cursor, seam and entry lifecycle invalidation. Compatible append reuses native backend session history; branches/restoration/incompatible system/tools/model rebuild role-labelled Pi-retained history, preserving tool IDs/results and omitting opaque signatures. Pi's post-return thinkingLevel annotation is excluded from cursor comparison because it does not alter retained semantics. Long retained tool records plus reported usage beyond the model's small context window produce no auxiliary compaction/pruning request; a later branch excludes discarded sentinels. A controlled backend-compaction event invalidates idle retained history and blocks unsafe continuation. Actual entry callbacks for tree/compaction/model transitions close obsolete owned state. Public Pi agent-loop integration is tested here; full released-loader testing remains Wave 3.
+- 2.5: `src/failure.ts`, provider entry/seam and failure tests. Evidence-based access, rate-limit and context-overflow failures preserve prompt/selection and omit payloads/credentials. Real fixtures cover 401, 403, 429, context-overflow 400 and midstream disconnect with one request/no replay. Startup distinguishes missing executable, configuration and discovery stages. README documents supported paths, placeholders, replay/caching tradeoffs, recovery and limits. ADR status now records the completed minimal Wave 1 gate, without expanding its architecture.
+
+Final checks: `yarn typecheck` passed in 2.63 seconds; ordinary `yarn test` passed 33/33 with normal exit in 26.87 seconds; strict OpenSpec validation passed. Candidate digest covers the same sorted package-relative maintained manifest/lock/source/test/README/ADR files as prior waves, including new modules/tests; source bundle includes Wave 1 checklist completion. No dependency acquisition, external inference, operator credential use, host patches, root activation, staging or Wave 2 commits occurred. Maximum maintained source file length is 360 lines. No owned runtime remains after checks. New source responsibilities are separated into catalog, transcript/image conversion, stream state and sanitized failure classification rather than enlarging the seam into a generic framework.
+
+Next: first FULL whole-Wave-2 Oracle review under gate 2.6; zero rounds and zero rebuilds consumed.
+
+## Round 1 - Oracle Review
+
+Read-only run `13b2dc5c-e036-4381-8675-d3f7f568e62d` completed Wave 2 FULL gate 2.6, covering Orchestrator-owned tasks 2.1–2.5. It independently verified unchanged candidate/source and boundary, passed typecheck and 33/33 tests, and reproduced two P1 blockers with controlled probes. No project writes or external inference occurred.
+
+W1-RETRY-001, in-scope structural recurrence: awaiting a supported async observer inside the sole event pump blocks retry/error supervision while MCP/HTTP work proceeds. Holding the initial observer for five seconds, then issuing a real tool and provider 503, produced requests=4, executions=2, successful stop. Source: provider-seam observer awaits precede retry retirement. SUGGESTED_CORRECTION: decouple critical event supervision from observer latency and preserve ordered async instrumentation without permitting obsolete execution.
+
+W2-STREAM-001, P1/in scope: HTTP finalization reconciles only its last assistant and marks the turn done before earlier queued SSE contributions are processed. A delayed observer with PREAMBLE/tool/FINAL and two 10-input/5-output steps yielded only FINAL and 10/5 instead of both texts and 20/10. SUGGESTED_CORRECTION: deterministic request-owned whole-generation content/accounting reconciliation before final success/cursor publication, without changing request-level tool handoffs.
+
+PROPOSED_REVIEW_ACTION=REBUILD
+
+### Caller assessment and single bounded rebuild
+
+Terminal review reconciled with no partial project writes. W1-RETRY-001: ACCEPT_BLOCKING under design decision 6/task 1.5 and Wave 2's regression boundary; retain historical root identity. W2-STREAM-001: ACCEPT_BLOCKING under task 2.2 and stream/accounting requirements. Both arise from coupling optional async observation to mandatory event processing and finalization. CORRECTION batch: process supervision/content events without awaiting observers; queue observation per generation in order; reconcile all request-owned assistant snapshots/accounting from the backend after its prompt completes; drain accepted observations before successful finalization, with cancellation remaining responsive. Add real slow-observer/503 and delayed two-step text/accounting regressions. No product-scope amendment or per-tool completion marker is introduced.
+
+REVIEW_ACTION=REBUILD
+CONSENSUS_STATUS=NEEDS_REVISION
+
+Prior incremental worklist is retired. Re-derived baseline remains the full numbered Wave 2, including preservation of Wave 1 retirement guarantees. Orchestrator performs the complete correction batch directly; only the same final Oracle gate 2.6 is reused. This Wave 2 sequence has consumed one round and now its one rebuild, independent of earlier wave counters while preserving issue history.
+
+BASELINE_TARGET=add-pi-opencode-bridge numbered Wave 2, tasks 2.1-2.5 and final gate 2.6
+BASELINE_TARGET_REVISION=sha256:9d1143da526f9501082daa0a306ab784c838f77fd713f6751fb2fccd4b99614c
+BASELINE_SOURCE=Canonical OpenSpec apply-context bundle sha256:6ad1af6e7b8a010334147c1ad7e3dcf757f9637af8dc48aaeb284542ed512300; approved architecture unchanged; completed Wave 1 source 4c30234; Orchestrator implementation with only oracle delegation
+BASELINE_INCLUSION_PREDICATE=Connected catalog/refresh and metadata, incremental text/reasoning and nonduplicated accounting, supported image input/results, append-compatible backend context and labelled replay/invalidation, evidenced diagnostics, actual entry/Pi-loop controlled-runtime validation, and preservation of Wave 1 ownership/cancellation guarantees
+BASELINE_EXCLUSIONS=Wave 3 packed/released-loader qualification, external model egress, OAuth/plugin qualification, remote publication/submodule registration, root activation/settings/dependencies and foreign work
+
+BASELINE_REBUILD_COMPLETE=YES
+
+### Rebuilt Wave 2 candidate and verification
+
+CANDIDATE_REVISION=sha256:0c4157158a997caa4e1e214a6bec0bc6b9ecdd3cd9008069875b9c2f8b06d280
+SOURCE_REVISION=sha256:6ad1af6e7b8a010334147c1ad7e3dcf757f9637af8dc48aaeb284542ed512300
+SOURCE_CHANGED=NO
+PRIOR_CORRECTION_WORKLIST_ACTIVE=NO
+
+Complete batch implemented directly. The event reader now processes retirement/history-change events independently; accepted instrumentation is queued in generation order before its corresponding output normalization. Observers cannot block MCP retirement. Final success closes observation intake, drains accepted callbacks with abort responsiveness, then reads all persisted assistant messages belonging to the exact request ID, in creation order. This reconciles earlier steps and cumulative usage even when SSE content events are absent; previously charged usage is not duplicated. HTTP batch completion remains separate from Pi tool handoffs. Failure never publishes a retained cursor.
+
+Added three real Pi/OpenCode regressions in `test/provider-observer.test.ts`: held observer plus tool/503 retires with requests=2/executions=1 while observer remains held; held observer plus two text/tool/usage steps preserves PREAMBLE+FINAL and total20/10; suppressing content/accounting SSE frames while retaining connection/supervision still reconciles both steps from persisted history. The observer case also checks balanced text events and success waiting for accepted callbacks. Controlled message-event suppression is restored after its test. README documents the resulting observation/completion boundary.
+
+Validation: typecheck passed in2.63seconds; focused regressions passed3/3 with normal exit in7.02seconds; full ordinary suite passed36/36 with normal exit in30.03seconds; strict OpenSpec validation and package diff whitespace checks passed. No owned runtime remains; unrelated port5551 runtime preserved. Maximum maintained source size395physical lines. No dependencies, canonical requirements, staging or commits changed. Tasks2.1–2.6 remain unchecked pending caller gate acceptance.
+
+Next: FULL verification of rebuilt Wave 2 through the same final task2.6, retaining all accepted issue history. One review round and the sequence's one rebuild are consumed.
+
+## Round 2 - Oracle Review
+
+Run `742fd2c0-9083-4e9f-b815-e3d7bef767f7` completed rebuilt FULL Wave 2 gate2.6, covering Orchestrator-owned tasks2.1–2.5 and the Wave1 regression boundary. Independent typecheck, ordinary36/36 tests (normal exit33.55seconds) and package whitespace checks passed. Candidate/source and four boundary fields matched before/after review. Oracle reports no project writes.
+
+W1-RETRY-001 resolved in the tested rebuilt path: held-observer/503 finishes with requests2/executions1 before observer release. Existing W1-ABORT-001/W1-ISOLATION-001 regressions remain passing.
+
+W2-STREAM-001 remains P1/in scope, same structural family after the single rebuild. A controlled probe suppressed only three first-assistant text/delta frames, preserved identities/supervision/later content, and allowed FINAL to normalize before backend completion. Result: requests2/executions1, successful stop, text FINAL then PREAMBLE, correct usage20/10. Persisted assistants are sorted in provider-seam.ts:260–270, but GenerationStream's insertion-ordered Map (stream.ts:15–21,40–56) appends newly discovered earlier parts after already-emitted later text; seam:354–358 publishes success and retains this misordered transcript. SUGGESTED_CORRECTION: establish authoritative content order when combining streamed and persisted parts, or fail without retaining a contaminated success when prior emission cannot be safely reconciled; add selective-first-step-loss coverage without losing incremental output or request-level handoffs.
+
+PROPOSED_REVIEW_ACTION=HUMAN_DECISION
+
+### Caller terminal reconciliation - human checkpoint
+
+W1-RETRY-001 accepted correction is verified resolved for its reproduced observer-blocking path; prior abort/isolation evidence remains valid. W2-STREAM-001: ACCEPT_BLOCKING under tasks2.2/2.4 and the concrete retained-conversation correctness risk. Source inspection confirms insertion order cannot repair already-emitted FINAL when PREAMBLE is discovered later. This is the existing completeness family, not a new scope or issue identity. CORRECTION, pending explicit authorization: preserve authoritative order, or terminate without contaminated success/cursor when reconciliation cannot preserve it; cover the selective-loss case. No automatic remediation or new review sequence is authorized.
+
+Parent recomputed candidate `0c4157158a997caa4e1e214a6bec0bc6b9ecdd3cd9008069875b9c2f8b06d280` and canonical source `6ad1af6e7b8a010334147c1ad7e3dcf757f9637af8dc48aaeb284542ed512300`, matching the latest recorded revisions. All four Wave2 boundary fields remain literally equal and apply unchanged. Terminal outcome is current, not stale. Two rounds and the one rebuild are consumed.
+
+The first selective-loss probe failed only in its test filter and supplies no passing evidence. Parent verified exact owned PID649589/cwd `/tmp/pi-opencode-bridge-NhaRcA`; an initial cleanup command lacked Python pidfd support and changed nothing. SIGTERM did not exit; identity-rechecked SIGKILL ended only that owned process, then its exact directory was removed. Unrelated PID330255/port5551 was preserved. Oracle's corrected probe completed after cleanup confirmation and reported no remaining owned runtime.
+
+REVIEW_ACTION=HUMAN_DECISION
+CONSENSUS_STATUS=NEEDS_REVISION
+
+Automatic iteration stops here. Wave2 tasks remain unchecked, no Wave2 acceptance commit is made, and Wave3 is blocked. Requested user decision: explicitly authorize a separate bounded correction/review sequence retaining this finding history, or leave the candidate paused. Only this reconciliation log changed after review; implementation and canonical artifacts are untouched.
