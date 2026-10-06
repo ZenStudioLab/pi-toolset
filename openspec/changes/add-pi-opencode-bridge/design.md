@@ -141,6 +141,10 @@ Keep the adapter's lifecycle inside the existing seam: startup failure, cancella
 
 The working prototype added a loopback hop rather than enabling an OpenCode plugin or native tool aliases inside its registry. Retain that responsibility boundary for this focused fix: replacing the existing MCP handoff or enabling native tools would reopen previously qualified execution guarantees. Pi's system instructions, existing message IDs, tool executor and one-MCP-request-per-segment behavior stay unchanged. Add specific tests of the new name/stream boundary and a released-loader alias round trip, then perform the existing independent completed-wave review before publication/integration.
 
+### 9. Follow-up: default to the tested free Muse catalog
+
+The user requested making the successful Zen/Muse whitelist launch setting the extension default. Seed the in-memory selective configuration with `enabled_providers: ["opencode"]` and `provider.opencode.whitelist: ["muse-spark-1.3-contributor-free"]` before merging ordinary configuration sources. Explicit operator values retain existing precedence; provider endpoints, credentials and unrelated fields are not replaced. This fixed default is not a dynamic price filter or a billing guarantee. It changes only bridge discovery, not Pi-native providers or user-owned OpenCode files. Verify the default and explicit overrides plus exclusion of a synthetic paid Zen model through the released packed loader; no live inference is necessary.
+
 ## Risks / Trade-offs
 
 - Two session runtimes can deadlock at tool handoff. Mitigation: the real single-request handoff gate precedes expansion; abort pending requests together and reject concurrent-sibling tool requirements. The request itself, not backend step completion, is the segment boundary.
