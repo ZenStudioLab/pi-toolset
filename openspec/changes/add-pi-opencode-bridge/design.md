@@ -157,6 +157,12 @@ Store explicit boolean overrides keyed by the existing encoded full pair in the 
 
 Use native Pi select/confirm dialogs: choose a provider, toggle `[x]`/`[ ]` model rows, inspect reported per-million pricing, then Save or Cancel. Reset clears explicit overrides back to name-based defaults. Additional nonmatching paid/unknown-price models require explicit selection and a price warning; settings never infer or change the active model. The command waits for idle before changing publication/runtime state. This is trusted local preference editing, not a credential editor or a public service. Preserve existing catalog and saved preferences on read/write failures, and retain noninteractive provider operation when dialogs are unavailable.
 
+### 12. Add whole-provider visibility choices
+
+The user requests choosing a whole provider. Extend global preferences with an optional `providers` boolean map; existing model-only files remain valid. Resolution is explicit model override, then explicit provider override, then automatic free-name matching. The provider rule covers newly discovered eligible models, without overriding upstream filters/authentication.
+
+Native provider dialogs offer Enable whole provider, Disable whole provider and Reset provider to automatic. Each bulk action clears that provider's previous per-model exceptions using its encoded full-pair prefix, including unavailable models; other providers' preferences stay unchanged. Users can then toggle model exceptions. Whole-provider enable always confirms the inclusion of current/future paid or unknown-price models. Save/Cancel and global Reset retain their existing draft semantics; no inference or installation/activation is authorized by the settings action.
+
 ## Risks / Trade-offs
 
 - Two session runtimes can deadlock at tool handoff. Mitigation: the real single-request handoff gate precedes expansion; abort pending requests together and reject concurrent-sibling tool requirements. The request itself, not backend step completion, is the segment boundary.

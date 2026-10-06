@@ -24,7 +24,7 @@ The bridge SHALL be an independently loadable Pi package owned by the `ZenStudio
 
 ### Requirement: Discover connected tool-capable chat models
 
-The provider SHALL discover models from all connected OpenCode providers within the operator's existing enabled/disabled-provider and model filters, without injecting a fixed whitelist or changing user-owned OpenCode files. It SHALL expose eligible text-chat/tool models whose raw model ID or display name contains `free` case-insensitively, unless a saved explicit visibility choice overrides that default. The provider's display name alone SHALL NOT trigger matching. Saved explicit choices SHALL also allow enabling other eligible provider/model pairs. It SHALL retain distinct OpenCode provider/model identities and translate applicable reported capabilities and limits without inventing metadata. Disconnected providers and models without those capabilities SHALL be excluded. Discovery SHALL NOT imply that every listed model has been runtime-qualified or is entitled under a subscription.
+The provider SHALL discover models from all connected OpenCode providers within the operator's existing enabled/disabled-provider and model filters, without injecting a fixed whitelist or changing user-owned OpenCode files. It SHALL expose eligible text-chat/tool models whose raw model ID or display name contains `free` case-insensitively, unless a saved explicit visibility choice overrides that default. Individual model choices SHALL take precedence over provider choices, which SHALL take precedence over automatic matching. The provider's display name alone SHALL NOT trigger matching. Saved explicit choices SHALL also allow enabling other eligible provider/model pairs. It SHALL retain distinct OpenCode provider/model identities and translate applicable reported capabilities and limits without inventing metadata. Disconnected providers and models without those capabilities SHALL be excluded. Discovery SHALL NOT imply that every listed model has been runtime-qualified or is entitled under a subscription.
 
 #### Scenario: Automatic free-name discovery
 
@@ -57,7 +57,7 @@ The provider SHALL discover models from all connected OpenCode providers within 
 
 ### Requirement: Global configurable model visibility
 
-The extension SHALL provide a registered `opencode-settings` command using Pi-owned dialogs to toggle eligible models by provider, show reported pricing or its absence, save or cancel changes, and reset to automatic defaults. Explicit choices SHALL be stored outside conversation state in `<Pi agent directory>/opencode-bridge.json`, shared across projects. This file SHALL contain only model identities and visibility booleans, not credentials or prompts. Saving SHALL update the current catalog without selecting a different model or issuing inference. Other sessions SHALL read changes on startup or refresh. Malformed/unreadable preferences and failed saves SHALL be reported without silently replacing previous preferences or a valid catalog.
+The extension SHALL provide a registered `opencode-settings` command using Pi-owned dialogs to toggle eligible models by provider, enable/disable/reset a whole provider, show reported pricing or its absence, save or cancel changes, and reset to automatic defaults. Explicit choices SHALL be stored outside conversation state in `<Pi agent directory>/opencode-bridge.json`, shared across projects. This file SHALL contain only provider/model identities and visibility booleans, not credentials or prompts. Existing files containing only model choices SHALL remain readable. Saving SHALL update the current catalog without selecting a different model or issuing inference. Other sessions SHALL read changes on startup or refresh. Malformed/unreadable preferences and failed saves SHALL be reported without silently replacing previous preferences or a valid catalog.
 
 #### Scenario: Persist an exclusion and enable an additional model
 
@@ -65,6 +65,21 @@ The extension SHALL provide a registered `opencode-settings` command using Pi-ow
 - **THEN** both explicit choices survive restart, project changes and catalog refresh
 - **AND** a newly discovered matching model without an override is enabled automatically
 - **AND** saved choices for temporarily unavailable models remain retained
+
+#### Scenario: Select a whole provider and keep an individual exception
+
+- **WHEN** the user confirms enabling a whole provider and saves
+- **THEN** all its current and future eligible models follow that rule, even if their names do not contain `free`
+- **AND** the confirmation warns about paid/unknown-price models
+- **AND** the action clears that provider's previous per-model overrides, including temporarily unavailable ones, but leaves other providers unchanged
+- **AND** a subsequent model toggle becomes a higher-priority exception
+
+#### Scenario: Disable or reset a whole provider
+
+- **WHEN** the user disables a whole provider or resets it to automatic and saves
+- **THEN** only that provider's previous model choices are cleared
+- **AND** disabling hides its eligible models by default while resetting restores automatic name matching
+- **AND** canceling any provider action discards the draft without changing saved visibility
 
 #### Scenario: Cancel or fail to save settings
 
