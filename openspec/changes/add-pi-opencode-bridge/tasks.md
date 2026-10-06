@@ -43,3 +43,8 @@ Dependencies: Wave 2 starts only after Wave 1's real relay/configuration accepta
 
 - [x] 5.1 **Owner: Orchestrator.** Make the user's Zen/free-Muse whitelist the extension's in-memory default while preserving explicit configuration precedence, endpoints/authentication and user files. Update README and owning artifacts. Verify default projection, explicit overrides and exclusion of a synthetic paid Zen model through the released packed loader; run typecheck and affected tests without external inference.
 - [x] 5.2 **Owner: oracle advisory gate; Orchestrator acceptance/integration.** Review this completed bounded follow-up under the existing review-convergence cadence. Reconcile, publish the scoped standalone fix and update the parent pin after acceptance, preserving foreign work and leaving root activation unchanged.
+
+## 6. Wave 6 - Several free Zen models
+
+- [x] 6.1 **Owner: Orchestrator.** Expand the fixed default whitelist with MiMo V2.5 Free, Nemotron3.5 Lightning Free, Ling3.0 Flash Fin Free and Big Pickle alongside Muse. Confirm current official free pricing/catalog and pinned runtime eligibility without external inference. Update discovery tests/README/design/spec, retaining explicit overrides, paid exclusion, endpoint/authentication and unchanged runtime/tool transport. Verify typecheck and affected packed-loader checks; distinguish discovery from live qualification and document data-use limits.
+- [x] 6.2 **Owner: oracle advisory gate; Orchestrator acceptance/integration.** Review the completed bounded addition under the existing review-convergence cadence; reconcile and publish/pin scoped changes after acceptance. Preserve foreign work, root activation and existing source ownership.

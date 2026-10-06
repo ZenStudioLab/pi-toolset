@@ -24,12 +24,12 @@ The bridge SHALL be an independently loadable Pi package owned by the `ZenStudio
 
 ### Requirement: Discover connected tool-capable chat models
 
-The provider SHALL default to enabling only `opencode` and whitelisting only `muse-spark-1.3-contributor-free`, without changing user-owned configuration files. Explicit operator `enabled_providers` and `provider.opencode.whitelist` settings SHALL override the corresponding in-memory defaults. Within that effective configuration, the provider SHALL automatically expose every model reported by connected OpenCode providers whose reported capabilities support text chat and tool calls. It SHALL retain distinct OpenCode provider/model identities and translate applicable reported capabilities and limits without inventing metadata. Disconnected providers and models without those capabilities SHALL be excluded. Discovery SHALL NOT imply that every listed model has been runtime-qualified or is entitled under a subscription.
+The provider SHALL default to enabling only `opencode` and whitelisting `muse-spark-1.3-contributor-free`, `mimo-v2.5-free`, `nemotron-3.5-lightning-free`, `ling-3.0-flash-fin-free` and `big-pickle`, without changing user-owned configuration files. Explicit operator `enabled_providers` and `provider.opencode.whitelist` settings SHALL override the corresponding in-memory defaults. Within that effective configuration, the provider SHALL automatically expose every model reported by connected OpenCode providers whose reported capabilities support text chat and tool calls. It SHALL retain distinct OpenCode provider/model identities and translate applicable reported capabilities and limits without inventing metadata. Disconnected providers and models without those capabilities SHALL be excluded. Discovery SHALL NOT imply that every listed model has been runtime-qualified or is entitled under a subscription.
 
-#### Scenario: Default free-Muse-only discovery
+#### Scenario: Default selected-free-model discovery
 
 - **WHEN** the operator loads the bridge without an explicit provider or Zen whitelist override
-- **THEN** only the connected eligible `opencode/muse-spark-1.3-contributor-free` model is exposed by the bridge
+- **THEN** only connected eligible models from the specified default Zen whitelist are exposed by the bridge
 - **AND** paid Zen models and other OpenCode providers remain excluded without a launch-time environment prefix
 - **AND** existing endpoint/authentication settings and Pi-native providers remain unchanged
 

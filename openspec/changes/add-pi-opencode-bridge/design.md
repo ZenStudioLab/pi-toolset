@@ -145,6 +145,10 @@ The working prototype added a loopback hop rather than enabling an OpenCode plug
 
 The user requested making the successful Zen/Muse whitelist launch setting the extension default. Seed the in-memory selective configuration with `enabled_providers: ["opencode"]` and `provider.opencode.whitelist: ["muse-spark-1.3-contributor-free"]` before merging ordinary configuration sources. Explicit operator values retain existing precedence; provider endpoints, credentials and unrelated fields are not replaced. This fixed default is not a dynamic price filter or a billing guarantee. It changes only bridge discovery, not Pi-native providers or user-owned OpenCode files. Verify the default and explicit overrides plus exclusion of a synthetic paid Zen model through the released packed loader; no live inference is necessary.
 
+### 10. Expand the default free-model selection
+
+The subsequent user request adds several free models to the fixed default whitelist: keep Muse Spark1.3 Contributor Free and add `mimo-v2.5-free`, `nemotron-3.5-lightning-free`, `ling-3.0-flash-fin-free` and `big-pickle`. All five are present in the current official Zen model catalog, listed Free in its pricing table, and eligible with explicitly zero pricing in pinned OpenCode1.18.29 discovery. Newer free listings absent from that pinned catalog are not added. Retain the same explicit-config precedence and paid-model exclusion. This changes discovery only; do not broaden the Muse-only Responses adapter, promise successful inference on untested models, or issue new external inference. Document the free-tier data-use limits and verify all additions through the packed loader without inference.
+
 ## Risks / Trade-offs
 
 - Two session runtimes can deadlock at tool handoff. Mitigation: the real single-request handoff gate precedes expansion; abort pending requests together and reject concurrent-sibling tool requirements. The request itself, not backend step completion, is the segment boundary.
