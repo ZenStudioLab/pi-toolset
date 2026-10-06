@@ -4,3 +4,6 @@
 [submodule "extensions/pi-bookmark"]
 	path = extensions/pi-bookmark
 	url = git@github.com:ZenStudioLab/pi-bookmark.git
+[submodule "extensions/pi-opencode-bridge"]
+	path = extensions/pi-opencode-bridge
+	url = git@github.com:ZenStudioLab/pi-opencode-bridge.git

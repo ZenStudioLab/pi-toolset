@@ -81,6 +81,10 @@ node --experimental-strip-types test/whimsical-activity/released-stock-render.mj
 
 It writes ANSI/native render captures under that fresh directory and isolates its config. The harness checks regular terminal mode; it is not a claim of every terminal emulator or fullscreen layout being qualified.
 
+## Stored independent packages
+
+[OpenCode Bridge](extensions/pi-opencode-bridge/README.md) is stored as a commit-pinned submodule from `ZenStudioLab/pi-opencode-bridge`. It is a separately installed, opt-in provider—not part of this toolset's published extension exports. Initializing the submodule does not load it or change Pi settings; see its own compatibility and installation notes.
+
 ## License
 
 Original contributions are MIT licensed. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for upstream Pi attribution and redistribution requirements.
