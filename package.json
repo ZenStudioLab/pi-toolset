@@ -17,7 +17,7 @@
   "engines": { "node": ">=22.19.0" },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/whimsical-activity/*.test.ts test/speak/*.test.ts",
+    "test": "node --experimental-strip-types --test test/whimsical-activity/*.test.ts test/speak/*.test.ts test/subagent-profiles/*.test.mjs",
     "check": "npm run typecheck && npm test"
   },
   "pi": { "extensions": ["./extensions/whimsical-activity/index.ts"] },

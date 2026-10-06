@@ -57,7 +57,17 @@ test("loading registers only /speak and four cancel-only lifecycle handlers, usi
 
 test("the extension subscribes to no agent, turn, tool, or message event, so ordinary activity cannot reach it", () => {
   const { events } = load();
-  for (const event of ["session_start", "agent_start", "agent_end", "turn_start", "turn_end", "message_end", "tool_call", "tool_result", "before_agent_start"])
+  for (const event of [
+    "session_start",
+    "agent_start",
+    "agent_end",
+    "turn_start",
+    "turn_end",
+    "message_end",
+    "tool_call",
+    "tool_result",
+    "before_agent_start",
+  ])
     assert.ok(!events.has(event), event);
 });
 

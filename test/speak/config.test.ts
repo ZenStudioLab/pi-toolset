@@ -15,6 +15,8 @@ const valid = { voiceId: "AbCdEf1234567890", modelId: "eleven_flash_v2_5" };
 test("a minimal configuration gets the documented defaults", () => {
   const result = parseConfig(valid);
   assert.ok(result.ok);
+  assert.equal(result.config.locale, "vi");
+  assert.equal(result.config.translation, undefined);
   assert.equal(result.config.outputFormat, "mp3_44100_128");
   assert.equal(result.config.hardLimitChars, 4000);
   assert.equal(result.config.requestTimeoutMs, 45_000);
@@ -27,17 +29,77 @@ test("a minimal configuration gets the documented defaults", () => {
 const invalid: [string, unknown, RegExp][] = [
   ["not an object", [], /JSON object/],
   ["missing voice", { modelId: "m_1" }, /voiceId is not set/],
-  ["placeholder voice", { ...valid, voiceId: VOICE_ID_PLACEHOLDER }, /placeholder/],
-  ["unsafe voice characters", { ...valid, voiceId: "a/b/c/d/e/f" }, /voiceId must be/],
+  [
+    "placeholder voice",
+    { ...valid, voiceId: VOICE_ID_PLACEHOLDER },
+    /placeholder/,
+  ],
+  [
+    "unsafe voice characters",
+    { ...valid, voiceId: "a/b/c/d/e/f" },
+    /voiceId must be/,
+  ],
   ["missing model", { voiceId: valid.voiceId }, /modelId is not set/],
-  ["limit above the ceiling", { ...valid, hardLimitChars: 4001 }, /hardLimitChars must be between/],
-  ["limit of zero", { ...valid, hardLimitChars: 0 }, /hardLimitChars must be between/],
-  ["fractional timeout", { ...valid, requestTimeoutMs: 1500.5 }, /requestTimeoutMs must be an integer/],
-  ["timeout too short", { ...valid, requestTimeoutMs: 10 }, /requestTimeoutMs must be between/],
-  ["player without file token", { ...valid, player: { args: ["-x"] } }, /exactly once/],
-  ["player with two file tokens", { ...valid, player: { args: ["{file}", "{file}"] } }, /exactly once/],
-  ["cache cap too small", { ...valid, cache: { maxBytes: 10 } }, /cache.maxBytes must be between/],
+  [
+    "limit above the ceiling",
+    { ...valid, hardLimitChars: 4001 },
+    /hardLimitChars must be between/,
+  ],
+  [
+    "limit of zero",
+    { ...valid, hardLimitChars: 0 },
+    /hardLimitChars must be between/,
+  ],
+  [
+    "fractional timeout",
+    { ...valid, requestTimeoutMs: 1500.5 },
+    /requestTimeoutMs must be an integer/,
+  ],
+  [
+    "timeout too short",
+    { ...valid, requestTimeoutMs: 10 },
+    /requestTimeoutMs must be between/,
+  ],
+  [
+    "player without file token",
+    { ...valid, player: { args: ["-x"] } },
+    /exactly once/,
+  ],
+  [
+    "player with two file tokens",
+    { ...valid, player: { args: ["{file}", "{file}"] } },
+    /exactly once/,
+  ],
+  [
+    "cache cap too small",
+    { ...valid, cache: { maxBytes: 10 } },
+    /cache.maxBytes must be between/,
+  ],
   ["other provider", { ...valid, provider: "google" }, /provider must be/],
+  ["empty locale", { ...valid, locale: "" }, /locale must be/],
+  ["malformed locale", { ...valid, locale: "vi_VN" }, /locale must be/],
+  ["null locale", { ...valid, locale: null }, /locale must be/],
+  [
+    "invalid translation",
+    { ...valid, translation: {} },
+    /translation.provider is not set/,
+  ],
+  ...["unknown", null, 1].map((thinking): [string, unknown, RegExp] => [
+    `invalid translation thinking ${thinking}`,
+    {
+      ...valid,
+      translation: { provider: "openai-codex", model: "gpt-6-luna", thinking },
+    },
+    /translation.thinking must be/,
+  ]),
+  [
+    "translation credentials",
+    {
+      ...valid,
+      translation: { provider: "openai", model: "gpt-test", apiKey: "secret" },
+    },
+    /credentials belong/,
+  ],
 ];
 for (const [name, input, expected] of invalid)
   test(`rejects ${name}`, () => {
@@ -45,6 +107,49 @@ for (const [name, input, expected] of invalid)
     assert.ok(!result.ok);
     assert.match(result.problem, expected);
   });
+
+test("locale is canonical and translation setup is explicit and non-secret", () => {
+  const result = parseConfig({
+    ...valid,
+    locale: "VI-vn",
+    translation: { provider: "openai-codex", model: "gpt-test" },
+  });
+  assert.ok(result.ok);
+  assert.equal(result.config.locale, "vi-VN");
+  assert.deepEqual(result.config.translation, {
+    provider: "openai-codex",
+    model: "gpt-test",
+  });
+  assert.match(
+    describeConfig(result.config, true).join("\n"),
+    /locale: vi-VN\ntranslation: openai-codex\/gpt-test/,
+  );
+});
+
+test("translation thinking accepts native levels, stays isolated, and is shown in status", () => {
+  for (const thinking of ["minimal", "low", "medium", "high", "xhigh", "max"]) {
+    const result = parseConfig({
+      ...valid,
+      translation: { provider: "openai-codex", model: "gpt-6-luna", thinking },
+    });
+    assert.ok(result.ok);
+    assert.equal(result.config.translation?.thinking, thinking);
+    assert.match(
+      describeConfig(result.config, false).join("\n"),
+      new RegExp(`thinking: ${thinking}`),
+    );
+  }
+  const omitted = parseConfig({
+    ...valid,
+    translation: { provider: "openai-codex", model: "gpt-6-luna" },
+  });
+  assert.ok(omitted.ok);
+  assert.equal(omitted.config.translation?.thinking, undefined);
+  assert.match(
+    describeConfig(omitted.config, false).join("\n"),
+    /thinking: host default/,
+  );
+});
 
 test("an unknown key is named but its value is never echoed", () => {
   const result = parseConfig({ ...valid, apiKey: "sk-super-secret-value" });
@@ -60,7 +165,10 @@ test("loadConfig reports a missing file, invalid JSON, and oversize files withou
     throw Object.assign(new Error("x"), { code: "ENOENT" });
   });
   assert.ok(!missing.ok);
-  assert.match(missing.problem, /no configuration file at \/cfg\/pi-speak\/config\.json/);
+  assert.match(
+    missing.problem,
+    /no configuration file at \/cfg\/pi-speak\/config\.json/,
+  );
   const bad = await loadConfig(env, async () => "{nope");
   assert.ok(!bad.ok && /not valid JSON/.test(bad.problem));
   const big = await loadConfig(env, async () => " ".repeat(70 * 1024));
@@ -70,7 +178,10 @@ test("loadConfig reports a missing file, invalid JSON, and oversize files withou
 });
 
 test("paths follow XDG with a home fallback", () => {
-  assert.equal(configPath({ XDG_CONFIG_HOME: "/x" }, "/h"), "/x/pi-speak/config.json");
+  assert.equal(
+    configPath({ XDG_CONFIG_HOME: "/x" }, "/h"),
+    "/x/pi-speak/config.json",
+  );
   assert.equal(configPath({}, "/h"), "/h/.config/pi-speak/config.json");
   assert.equal(cacheDir({ XDG_CACHE_HOME: "/c" }, "/h"), "/c/pi-speak");
   assert.equal(cacheDir({}, "/h"), "/h/.cache/pi-speak");
@@ -89,5 +200,8 @@ test("the status view shows only the voice suffix and whether a key exists", () 
   assert.match(text, /voice: \.\.\.7890/);
   assert.doesNotMatch(text, /AbCdEf1234567890/);
   assert.match(text, /ELEVENLABS_API_KEY: present/);
-  assert.match(describeConfig(result.config, false).join("\n"), /ELEVENLABS_API_KEY: missing/);
+  assert.match(
+    describeConfig(result.config, false).join("\n"),
+    /ELEVENLABS_API_KEY: missing/,
+  );
 });

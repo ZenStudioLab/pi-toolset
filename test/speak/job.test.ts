@@ -2,14 +2,21 @@ import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import { API_KEY, VALID_CONFIG, audioResponse, createHarness } from "./harness.ts";
+import {
+  API_KEY,
+  VALID_CONFIG,
+  audioResponse,
+  createHarness,
+} from "./harness.ts";
 
 type Harness = Awaited<ReturnType<typeof createHarness>>;
 const open: Harness[] = [];
 afterEach(async () => {
   while (open.length > 0) await open.pop()!.cleanup();
 });
-async function harness(options?: Parameters<typeof createHarness>[0]): Promise<Harness> {
+async function harness(
+  options?: Parameters<typeof createHarness>[0],
+): Promise<Harness> {
   const h = await createHarness(options);
   open.push(h);
   return h;
@@ -22,15 +29,22 @@ async function startPlaying(h: Harness, text = "hello") {
   await h.until(() => h.children.length === wanted);
   return h.children[wanted - 1];
 }
-const hasSigterm = (child: { signals: unknown[] }) => child.signals.includes("SIGTERM");
+const hasSigterm = (child: { signals: unknown[] }) =>
+  child.signals.includes("SIGTERM");
 
 test("speech makes one documented request, caches the clip, and plays it without the key or a shell", async () => {
   const h = await harness();
   const child = await startPlaying(h);
   assert.equal(h.fetchCalls.length, 1);
   const call = h.fetchCalls[0];
-  assert.equal(call.url, "https://api.elevenlabs.io/v1/text-to-speech/AbCdEf1234567890?output_format=mp3_44100_128");
-  assert.equal((call.init.headers as Record<string, string>)["xi-api-key"], API_KEY);
+  assert.equal(
+    call.url,
+    "https://api.elevenlabs.io/v1/text-to-speech/AbCdEf1234567890?output_format=mp3_44100_128",
+  );
+  assert.equal(
+    (call.init.headers as Record<string, string>)["xi-api-key"],
+    API_KEY,
+  );
   assert.equal(call.init.redirect, "manual");
 
   const files = await h.cacheFiles();
@@ -48,12 +62,20 @@ test("speech makes one documented request, caches the clip, and plays it without
   child.finish(0);
   await h.controller.whenIdle();
   assert.deepEqual(h.notices, []);
-  assert.deepEqual(h.statuses.filter(Boolean), ["speak: preparing", "speak: generating", "speak: playing"]);
+  assert.deepEqual(h.statuses.filter(Boolean), [
+    "speak: preparing",
+    "speak: generating",
+    "speak: playing",
+  ]);
   assert.equal(h.statuses.at(-1), undefined);
 
   await h.run("text hello");
   await h.until(() => h.children.length === 2);
-  assert.equal(h.fetchCalls.length, 1, "identical text is served from the cache");
+  assert.equal(
+    h.fetchCalls.length,
+    1,
+    "identical text is served from the cache",
+  );
 });
 
 test("a second request while one is active is refused, even in the same instant", async () => {
@@ -64,7 +86,10 @@ test("a second request while one is active is refused, even in the same instant"
   assert.match(h.messages(), /already active/);
   await h.run("text third");
   assert.equal(h.fetchCalls.length, 1);
-  assert.equal(h.notices.filter((notice) => /already active/.test(notice.message)).length, 2);
+  assert.equal(
+    h.notices.filter((notice) => /already active/.test(notice.message)).length,
+    2,
+  );
 });
 
 test("stop during generation aborts the request, leaves nothing behind, and frees the job", async () => {
@@ -98,7 +123,9 @@ test("stop during generation aborts the request, leaves nothing behind, and free
 test("a response that arrives after stop never plays or caches", async () => {
   const h = await harness();
   let release!: () => void;
-  h.setFetch(() => new Promise((resolve) => (release = () => resolve(audioResponse()))));
+  h.setFetch(
+    () => new Promise((resolve) => (release = () => resolve(audioResponse()))),
+  );
   await h.run("text hello");
   await h.until(() => h.fetchCalls.length === 1);
   await h.run("stop");
@@ -112,7 +139,9 @@ test("a response that arrives after stop never plays or caches", async () => {
 test("a late finish of a cancelled job cannot disturb the job that replaced it", async () => {
   const h = await harness();
   let release!: () => void;
-  h.setFetch(() => new Promise((resolve) => (release = () => resolve(audioResponse()))));
+  h.setFetch(
+    () => new Promise((resolve) => (release = () => resolve(audioResponse()))),
+  );
   await h.run("text one");
   await h.until(() => h.fetchCalls.length === 1);
   const staleRelease = release;
@@ -123,7 +152,11 @@ test("a late finish of a cancelled job cannot disturb the job that replaced it",
   await h.until(() => h.statuses.length > 0);
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(h.children.length, 1, "the stale job started no second player");
-  assert.equal(h.statuses.at(-1), "speak: playing", "the stale job did not clear the newer job's status");
+  assert.equal(
+    h.statuses.at(-1),
+    "speak: playing",
+    "the stale job did not clear the newer job's status",
+  );
   await h.run("status");
   assert.match(h.notices.at(-1)!.message, /job: playing/);
 });
@@ -154,7 +187,12 @@ test("a failing player is reported with its exit code", async () => {
 
 test("provider errors are sanitized, never retried, and leave no clip", async () => {
   const h = await harness();
-  h.setFetch(async () => new Response(JSON.stringify({ detail: { message: `bad ${API_KEY}` } }), { status: 401 }));
+  h.setFetch(
+    async () =>
+      new Response(JSON.stringify({ detail: { message: `bad ${API_KEY}` } }), {
+        status: 401,
+      }),
+  );
   await h.run("text hello");
   await h.controller.whenIdle();
   assert.match(h.messages(), /rejected the API key/);
@@ -172,7 +210,11 @@ test("an unexpected failure inside a job is reported and releases the job", asyn
   assert.match(h.messages(), /Speech failed:/);
   assert.equal(h.fetchCalls.length, 0);
   await h.run("status");
-  assert.match(h.notices.at(-1)!.message, /cache: .* \(unreadable\)/, "status still answers when the cache cannot be read");
+  assert.match(
+    h.notices.at(-1)!.message,
+    /cache: .* \(unreadable\)/,
+    "status still answers when the cache cannot be read",
+  );
   h.env.XDG_CACHE_HOME = join(h.dir, "cache");
   await startPlaying(h);
 });
@@ -201,7 +243,12 @@ test("replay plays the last clip without a request, and never regenerates a miss
   assert.match(h.messages(), /Nothing to replay in this session/);
 });
 
-for (const event of ["session_shutdown", "session_before_switch", "session_before_fork", "session_tree"]) {
+for (const event of [
+  "session_shutdown",
+  "session_before_switch",
+  "session_before_fork",
+  "session_tree",
+]) {
   test(`${event} stops playback and forgets the previous clip`, async () => {
     const h = await harness();
     const child = await startPlaying(h);

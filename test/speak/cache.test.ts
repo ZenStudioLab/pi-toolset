@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
@@ -31,10 +41,19 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const cache = (overrides: Partial<ConstructorParameters<typeof AudioCache>[0]> = {}) =>
-  new AudioCache({ root: join(dir, "cache"), maxBytes: 1000, ttlDays: 7, now: () => NOW, ...overrides });
+const cache = (
+  overrides: Partial<ConstructorParameters<typeof AudioCache>[0]> = {},
+) =>
+  new AudioCache({
+    root: join(dir, "cache"),
+    maxBytes: 1000,
+    ttlDays: 7,
+    now: () => NOW,
+    ...overrides,
+  });
 
-const age = (path: string, ms: number) => utimes(path, new Date(NOW - ms), new Date(NOW - ms));
+const age = (path: string, ms: number) =>
+  utimes(path, new Date(NOW - ms), new Date(NOW - ms));
 
 test("the key is stable and changes with every input that affects the audio", () => {
   assert.equal(cacheKey(base), cacheKey({ ...base }));
@@ -47,8 +66,13 @@ test("the key is stable and changes with every input that affects the audio", ()
     { outputFormat: "mp3_22050_32" },
     { voiceRevision: 2 },
     { normalizerVersion: 2 },
+    { speechLocale: "vi" },
+    { speechLocale: "en" },
   ];
-  const keys = new Set([cacheKey(base), ...changes.map((change) => cacheKey({ ...base, ...change }))]);
+  const keys = new Set([
+    cacheKey(base),
+    ...changes.map((change) => cacheKey({ ...base, ...change })),
+  ]);
   assert.equal(keys.size, changes.length + 1);
 });
 
@@ -90,7 +114,10 @@ test("a cache directory that is a symlink is refused", async () => {
 });
 
 test("a directory owned by another user is refused", async () => {
-  await assert.rejects(() => cache({ uid: 424242 }).ensureDir(), /another user/);
+  await assert.rejects(
+    () => cache({ uid: 424242 }).ensureDir(),
+    /another user/,
+  );
 });
 
 test("a loose directory mode is tightened to owner-only", async () => {
@@ -102,13 +129,28 @@ test("a loose directory mode is tightened to owner-only", async () => {
 
 test("expired clips are evicted but fresh ones and the protected one stay", async () => {
   const c = cache({ maxBytes: 10_000 });
-  const old = await c.put(cacheKey({ ...base, text: "old" }), "mp3", Buffer.from("x"));
-  const fresh = await c.put(cacheKey({ ...base, text: "fresh" }), "mp3", Buffer.from("x"));
-  const playing = await c.put(cacheKey({ ...base, text: "playing" }), "mp3", Buffer.from("x"));
+  const old = await c.put(
+    cacheKey({ ...base, text: "old" }),
+    "mp3",
+    Buffer.from("x"),
+  );
+  const fresh = await c.put(
+    cacheKey({ ...base, text: "fresh" }),
+    "mp3",
+    Buffer.from("x"),
+  );
+  const playing = await c.put(
+    cacheKey({ ...base, text: "playing" }),
+    "mp3",
+    Buffer.from("x"),
+  );
   await age(old, 8 * DAY);
   await age(playing, 9 * DAY);
   assert.deepEqual(await c.evict(playing), [old]);
-  assert.deepEqual((await readdir(c.root)).sort(), [fresh, playing].map((p) => p.split("/").pop()).sort());
+  assert.deepEqual(
+    (await readdir(c.root)).sort(),
+    [fresh, playing].map((p) => p.split("/").pop()).sort(),
+  );
 });
 
 test("oldest clips go first when over the size cap, sparing the protected clip", async () => {
@@ -125,7 +167,10 @@ test("oldest clips go first when over the size cap, sparing the protected clip",
   assert.deepEqual(await c.evict(a), [b]);
   const remaining = await readdir(c.root);
   assert.equal(remaining.length, 2);
-  assert.ok(remaining.includes(`${keys[0]}.mp3`) && remaining.includes(`${keys[2]}.mp3`));
+  assert.ok(
+    remaining.includes(`${keys[0]}.mp3`) &&
+      remaining.includes(`${keys[2]}.mp3`),
+  );
 });
 
 test("eviction ignores symlinks, foreign files, and fresh temporary files but removes stale temporaries", async () => {
@@ -151,5 +196,8 @@ test("a failed write leaves no temporary file behind", async () => {
   await c.ensureDir();
   await mkdir(c.pathFor(key, "mp3"));
   await assert.rejects(() => c.put(key, "mp3", Buffer.from("x")));
-  assert.deepEqual((await readdir(c.root)).filter((name) => name.endsWith(".tmp")), []);
+  assert.deepEqual(
+    (await readdir(c.root)).filter((name) => name.endsWith(".tmp")),
+    [],
+  );
 });
