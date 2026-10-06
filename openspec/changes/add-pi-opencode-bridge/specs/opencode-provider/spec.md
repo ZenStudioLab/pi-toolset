@@ -24,24 +24,25 @@ The bridge SHALL be an independently loadable Pi package owned by the `ZenStudio
 
 ### Requirement: Discover connected tool-capable chat models
 
-The provider SHALL default to enabling only `opencode` and whitelisting `muse-spark-1.3-contributor-free`, `mimo-v2.5-free`, `nemotron-3.5-lightning-free`, `ling-3.0-flash-fin-free` and `big-pickle`, without changing user-owned configuration files. Explicit operator `enabled_providers` and `provider.opencode.whitelist` settings SHALL override the corresponding in-memory defaults. Within that effective configuration, the provider SHALL automatically expose every model reported by connected OpenCode providers whose reported capabilities support text chat and tool calls. It SHALL retain distinct OpenCode provider/model identities and translate applicable reported capabilities and limits without inventing metadata. Disconnected providers and models without those capabilities SHALL be excluded. Discovery SHALL NOT imply that every listed model has been runtime-qualified or is entitled under a subscription.
+The provider SHALL discover models from all connected OpenCode providers within the operator's existing enabled/disabled-provider and model filters, without injecting a fixed whitelist or changing user-owned OpenCode files. It SHALL expose eligible text-chat/tool models whose raw model ID or display name contains `free` case-insensitively, unless a saved explicit visibility choice overrides that default. The provider's display name alone SHALL NOT trigger matching. Saved explicit choices SHALL also allow enabling other eligible provider/model pairs. It SHALL retain distinct OpenCode provider/model identities and translate applicable reported capabilities and limits without inventing metadata. Disconnected providers and models without those capabilities SHALL be excluded. Discovery SHALL NOT imply that every listed model has been runtime-qualified or is entitled under a subscription.
 
-#### Scenario: Default selected-free-model discovery
+#### Scenario: Automatic free-name discovery
 
-- **WHEN** the operator loads the bridge without an explicit provider or Zen whitelist override
-- **THEN** only connected eligible models from the specified default Zen whitelist are exposed by the bridge
-- **AND** paid Zen models and other OpenCode providers remain excluded without a launch-time environment prefix
+- **WHEN** discovery reports eligible models without saved visibility choices
+- **THEN** models whose ID or raw display name contains `free` are shown across connected providers
+- **AND** nonmatching models remain available in bridge settings but hidden from Pi's model list
 - **AND** existing endpoint/authentication settings and Pi-native providers remain unchanged
+- **AND** reported pricing is not replaced or treated as a billing guarantee based on the name
 
 #### Scenario: Mixed provider catalog
 
 - **WHEN** OpenCode reports connected and disconnected providers, including tool-capable chat and non-tool-capable models
-- **THEN** Pi lists exactly the eligible models from connected providers
+- **THEN** Pi lists exactly the eligible models enabled by automatic or saved visibility choices from connected providers
 - **AND** discovery does not issue inference requests
 
 #### Scenario: Identical model names from different providers
 
-- **WHEN** two connected providers report the same model ID or display name
+- **WHEN** two connected providers report the same enabled model ID or display name
 - **THEN** Pi exposes distinct selectable identities that route to the original provider/model pair
 
 #### Scenario: Refresh removes the selected model
@@ -53,6 +54,29 @@ The provider SHALL default to enabling only `opencode` and whitelisting `muse-sp
 
 - **WHEN** discovery fails after a valid catalog has been loaded
 - **THEN** the failure is reported without replacing the catalog with a fabricated successful empty response or changing the user's selection
+
+### Requirement: Global configurable model visibility
+
+The extension SHALL provide a registered `opencode-settings` command using Pi-owned dialogs to toggle eligible models by provider, show reported pricing or its absence, save or cancel changes, and reset to automatic defaults. Explicit choices SHALL be stored outside conversation state in `<Pi agent directory>/opencode-bridge.json`, shared across projects. This file SHALL contain only model identities and visibility booleans, not credentials or prompts. Saving SHALL update the current catalog without selecting a different model or issuing inference. Other sessions SHALL read changes on startup or refresh. Malformed/unreadable preferences and failed saves SHALL be reported without silently replacing previous preferences or a valid catalog.
+
+#### Scenario: Persist an exclusion and enable an additional model
+
+- **WHEN** the user unchecks a default-enabled model and checks another connected provider's model, then saves
+- **THEN** both explicit choices survive restart, project changes and catalog refresh
+- **AND** a newly discovered matching model without an override is enabled automatically
+- **AND** saved choices for temporarily unavailable models remain retained
+
+#### Scenario: Cancel or fail to save settings
+
+- **WHEN** the user cancels, or saving cannot complete
+- **THEN** no partial preferences document replaces the prior saved settings
+- **AND** draft choices do not replace the current valid catalog
+
+#### Scenario: Additional provider or model is not eligible
+
+- **WHEN** a requested provider/model is disconnected, unsupported or excluded by explicit OpenCode filters
+- **THEN** settings do not fabricate model metadata, enable authentication integrations or override those filters
+- **AND** documentation directs the user to configure/authenticate it in OpenCode and refresh
 
 ### Requirement: Own a dedicated local runtime
 
