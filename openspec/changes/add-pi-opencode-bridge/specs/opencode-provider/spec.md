@@ -117,6 +117,34 @@ Every model-requested execution accepted by the bridge SHALL correspond to a cur
 - **WHEN** the backend reports or attempts an undeclared or native tool
 - **THEN** the bridge does not dispatch that tool into Pi or execute it directly
 
+### Requirement: Preserve Pi tool names on the qualified Muse Responses route
+
+For the qualified OpenCode Zen Muse Spark 1.3 Contributor Free Responses route, the bridge SHALL expose the original names of currently declared Pi tools to the upstream model and restore the corresponding MCP names before OpenCode handles returned calls. It SHALL preserve invocation IDs, arguments, results, retained call history, streaming and accounting. The adapter SHALL use only a fixed configured upstream and owned loopback resources, retain authentication only in memory/in transit, and share cancellation/startup/shutdown ownership with the provider seam. Other model routes and explicitly overridden non-Responses provider SDKs SHALL retain their existing behavior. It SHALL NOT invent tools, enable native tool execution, replace Pi's instructions, change providers or automatically replay failed work.
+
+#### Scenario: Aliased tool round trip
+
+- **WHEN** Muse requests a declared Pi tool using its original name
+- **THEN** the returned name maps to the existing MCP handoff and Pi executes that tool through its normal loop and hooks
+- **AND** subsequent upstream history retains the original name with unchanged call IDs and results
+
+#### Scenario: Fragmented provider response
+
+- **WHEN** Responses SSE events are split across transport chunks or contain text resembling tool names
+- **THEN** only matching function-call name fields are rewritten as complete events become available
+- **AND** text, argument strings, ordering and UTF-8 content remain intact without waiting for the entire response
+
+#### Scenario: No tool may be invented
+
+- **WHEN** Pi's current declarations do not include a tool expected by the external free-tier policy
+- **THEN** the bridge does not manufacture that tool or invoke a native implementation
+- **AND** an evidenced `FreeTierError` is reported as a provider client restriction, not mislabeled as missing authentication
+
+#### Scenario: Cancel or close the forwarding boundary
+
+- **WHEN** an aliased request is cancelled, the owned runtime is retired, or startup fails
+- **THEN** its forwarding requests and listening endpoint are settled or released with the existing seam
+- **AND** no failed request is automatically resent or unrelated process terminated
+
 ### Requirement: Normalize provider streaming and metadata
 
 The bridge SHALL translate backend text, reported reasoning, completion, usage, and tool handoffs into Pi's public provider event contract with balanced content events and exactly one terminal outcome per provider segment. It SHALL honor Pi's request instrumentation and supplied abort signal. Snapshot updates SHALL NOT duplicate already emitted deltas. Capabilities SHALL be advertised only when the bridge supports their complete input/result path; absent usage or pricing SHALL NOT be represented to users as verified zero cost.
