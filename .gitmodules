@@ -1,0 +1,6 @@
+[submodule "extensions/pi-subscription-usage"]
+	path = extensions/pi-subscription-usage
+	url = https://github.com/ZenStudioLab/pi-subscription-usage.git
+[submodule "extensions/pi-bookmark"]
+	path = extensions/pi-bookmark
+	url = git@github.com:ZenStudioLab/pi-bookmark.git
