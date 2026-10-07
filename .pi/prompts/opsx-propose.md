@@ -82,6 +82,8 @@ In both branches, never create the root as a side effect: do not run `openspec i
    ```
    This creates a scaffolded change in the planning home resolved by the CLI with `.openspec.yaml`.
 
+   Once the change name is final (newly created, or reuse confirmed for an existing change), call `session_rename` with the kebab-case change name so the session list stays navigable during parallel proposal sessions.
+
 5. **Get the artifact build order**
    ```bash
    openspec status --change "<name>" --json
@@ -138,6 +140,8 @@ In both branches, never create the root as a side effect: do not run `openspec i
    ```bash
    openspec status --change "<name>"
    ```
+
+   Now that all artifacts are done, call `session_rename` again with the same change name (re-affirm, in case the title was retitled mid-flow).
 
 **Output**
 

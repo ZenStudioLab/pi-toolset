@@ -31,6 +31,8 @@ In both branches, never create the root as a side effect: do not run `openspec i
 
    Always announce: "Using change: <name>" and how to override (e.g., `/opsx-apply <other>`).
 
+   Once the change is resolved, call `session_rename` with the kebab-case change name so the session list stays navigable during parallel apply sessions.
+
 2. **Check status to understand the schema**
    ```bash
    openspec status --change "<name>" --json
