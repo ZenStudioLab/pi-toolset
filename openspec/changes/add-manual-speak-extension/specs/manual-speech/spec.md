@@ -94,12 +94,17 @@ For `/speak` with no argument and `/speak original`, the extension SHALL require
 
 ### Requirement: Deterministic text preparation for answers
 
-For answer-based speech the extension SHALL perform the cleanup stage without a model call, before any optional translation stage: remove fenced and indented code blocks, image syntax, and HTML markup; keep link labels and omit destinations; keep readable inline identifiers; strip terminal escape sequences without damaging ordinary Unicode; and preserve numbers, dates, versions, negation, and qualifications. It SHALL NOT summarize or reinterpret content. If no speakable prose remains it SHALL report that and make no provider request.
+For answer-based speech the extension SHALL perform the cleanup stage without a model call, before any optional translation stage: remove fenced and indented code blocks, unfenced command output (shell prompt lines, diffs, stack frames, and one-line JSON objects), commit hashes, image syntax, and HTML markup; keep link labels and omit destinations; keep readable inline identifiers; strip terminal escape sequences without damaging ordinary Unicode; and preserve numbers, dates, versions, negation, and qualifications. It SHALL NOT summarize or reinterpret content. If no speakable prose remains it SHALL report that and make no provider request.
 
 #### Scenario: Code-only answer
 
 - **WHEN** the selected answer consists only of a fenced code block
 - **THEN** the extension reports there is nothing speakable and makes no provider request
+
+#### Scenario: Unfenced command output and hashes are not spoken
+
+- **WHEN** the answer contains a line starting `$ yarn test`, an unfenced diff, a stack frame ending in `path:line:column`, a one-line JSON object, or a 7-40 character hexadecimal hash containing both a digit and a letter
+- **THEN** the prepared text omits them while keeping dollar amounts, plain words made of hexadecimal letters, all-digit numbers, and indented times after `at`
 
 #### Scenario: Meaning-sensitive content is preserved
 
