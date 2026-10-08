@@ -12,6 +12,29 @@ const WORKERS = ["scout", "researcher", "worker", "delegate"];
 const workers = (fields) => Object.fromEntries(WORKERS.map((role) => [role, fields]));
 const oracle = { model: MODEL.grok, thinking: "high" };
 
+// One provider per preset: claude-bridge (Claude Code via Agent SDK) and anthropic (API provider) never mix.
+const claudeFamily = (provider) => {
+  const m = {
+    haiku: `${provider}/claude-haiku-4-5`,
+    sonnet: `${provider}/claude-sonnet-5-5`,
+    opus: `${provider}/claude-opus-5-5`,
+  };
+  return {
+    [provider]: {
+      defaultModel: m.sonnet,
+      agents: {
+        ...workers({ thinking: "high" }),
+        oracle: { model: m.opus, thinking: "high" },
+        scout: { model: m.haiku, thinking: "medium" },
+      },
+    },
+    [`${provider}-max`]: {
+      defaultModel: m.opus,
+      agents: { oracle: { thinking: "xhigh" }, ...workers({ thinking: "xhigh" }) },
+    },
+  };
+};
+
 export default {
   presets: {
     openai: {
@@ -30,5 +53,7 @@ export default {
       agents: { oracle, ...workers({ thinking: "xhigh" }) },
     },
     "openai-max-fast": { extends: "openai-max", agents: workers({ fast: true }) },
+    ...claudeFamily("claude-bridge"),
+    ...claudeFamily("anthropic"),
   },
 };

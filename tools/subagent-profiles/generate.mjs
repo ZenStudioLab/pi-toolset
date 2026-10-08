@@ -34,10 +34,18 @@ function resolvePreset(name, presets, trail = []) {
   return { ...base, ...own, agents };
 }
 
+const CLAUDE_PROVIDERS = ["claude-bridge/", "anthropic/"];
+
+function assertNoClaudeMix(name, models) {
+  const used = CLAUDE_PROVIDERS.filter((prefix) => models.some((model) => model?.startsWith(prefix)));
+  if (used.length > 1) throw new Error(`preset '${name}': mixes ${used.join(" and ")} models`);
+}
+
 function renderProfile(name, { defaultModel, asyncByDefault = false, agents }) {
   if (typeof defaultModel !== "string" || !defaultModel) {
     throw new Error(`preset '${name}': defaultModel is required`);
   }
+  assertNoClaudeMix(name, [defaultModel, ...Object.values(agents).map(({ model }) => model)]);
   const agentOverrides = {};
   for (const [role, { model = defaultModel, thinking, fast }] of Object.entries(agents)) {
     agentOverrides[role] = { model, thinking, fast };
