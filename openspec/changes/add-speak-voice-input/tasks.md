@@ -64,15 +64,15 @@ Verification commands:
 
 ## 4. Wave 4: integration and live checks
 
-- [ ] 4.1 [Orchestrator] Integration check: run the full speak test suite and the speak type check. Confirm that `pi -e extensions/speak/index.ts`, run non-interactively, loads and exits with no network use and no recorder process. Verify with recorded exit codes and any startup warnings.
+- [x] 4.1 [Orchestrator] Integration check: run the full speak test suite and the speak type check. Confirm that `pi -e extensions/speak/index.ts`, run non-interactively, loads and exits with no network use and no recorder process. Verify with recorded exit codes and any startup warnings.
   - Carried from Wave 3 review, done by `worker` before the integration check:
     - W3-F1: finish a recording on the recorder's `close` event instead of `exit`, keep `error` for spawn failures, make `FakeChild.finish` emit `close`, and add one test with an audio chunk between `exit` and `close`.
     - W3-F2: treat Escape or a second press while a recording is starting (waiting for the player to exit) as cancelling the attempt, so Escape does not reach the editor.
     - W3-F3: add one README sentence that dictation-only users may leave out `providers.elevenlabs.voiceId`.
     - W3-F4: correct the `loadConfig` comment: the config is read on demand, plus once at load for `input.shortcut`.
   - Run the speak suite cold several times. If the unexplained single failure from the Wave 3 review recurs, identify the test and fix its timing.
-- [ ] 4.2 [Orchestrator] Show the user the current and proposed `~/.config/pi-speak/config.json` (design D6) and rewrite it only with their explicit approval. Verify that `/speak status`, after `/reload`, reports the migrated settings with no configuration error.
-- [ ] 4.3 [User] Live checks, run only by the user with their own keys:
+- [x] 4.2 [Orchestrator] Show the user the current and proposed `~/.config/pi-speak/config.json` (design D6) and rewrite it only with their explicit approval. Verify that `/speak status`, after `/reload`, reports the migrated settings with no configuration error.
+- [x] 4.3 [User] Live checks, run only by the user with their own keys:
   - `/speak provider deepgram`, then `/speak text` with one short English sentence;
   - `/talk` with Deepgram in Vietnamese;
   - `/talk provider elevenlabs`, then one recording;
@@ -80,4 +80,6 @@ Verification commands:
   - if `input.language` is set, whether each provider accepts it as written (a region tag such as `vi-VN` may be refused).
 
   Record what was heard and transcribed, and any error shown. Leave this unchecked and report it as unverified until the user has run it.
-- [ ] 4.4 [Oracle gate: `oracle`] Final review gate for Wave 4, run once after 4.1–4.2 are complete and 4.3 is complete or explicitly reported as unverified, under the same rules as 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.
+
+  Result (2026-10-09): verified by the user were ElevenLabs speech with Vietnamese translation, `/speak text`, ElevenLabs voice input, and `input.language: vi` accepted by ElevenLabs, with no errors shown. Explicitly unverified: the Deepgram speech and input checks (no `DEEPGRAM_API_KEY`, by the user's choice), Deepgram's handling of the language tag, and a real-terminal Escape discard.
+- [x] 4.4 [Oracle gate: `oracle`] Final review gate for Wave 4, run once after 4.1–4.2 are complete and 4.3 is complete or explicitly reported as unverified, under the same rules as 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.

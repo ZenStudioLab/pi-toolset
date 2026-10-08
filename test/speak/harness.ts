@@ -41,11 +41,16 @@ export class FakeChild extends EventEmitter {
   kill(signal?: NodeJS.Signals | number): boolean {
     this.signals.push(signal);
     if (this.autoExitOnKill)
-      queueMicrotask(() => this.emit("exit", null, signal ?? "SIGTERM"));
+      queueMicrotask(() => {
+        this.emit("exit", null, signal ?? "SIGTERM");
+        this.emit("close", null, signal ?? "SIGTERM");
+      });
     return true;
   }
+  /** Ends the process as Node does: `exit` first, then `close` once the output has closed. */
   finish(code: number): void {
     this.emit("exit", code, null);
+    this.emit("close", code, null);
   }
   /** Delivers recorded PCM as the recorder's stdout. */
   emitAudio(bytes: Uint8Array): void {

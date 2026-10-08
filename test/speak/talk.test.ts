@@ -278,6 +278,45 @@ test("starting a recording stops this extension's own player and waits for its e
   assert.equal(h.children.length, 2, "no new player started");
 });
 
+/** Presses the shortcut while this extension's player is still stopping, which holds the start. */
+async function pressWhilePlayerStops(h: Harness) {
+  h.setFetch(async () => audioResponse());
+  await h.run("text hello");
+  await h.until(() => h.children.length === 1);
+  const player = h.children[0]!;
+  player.autoExitOnKill = false;
+  const pressed = h.pressShortcut();
+  await h.until(() => player.signals.includes("SIGTERM"));
+  return { player, pressed, fetchesBefore: h.fetchCalls.length };
+}
+
+test("Escape while the recording is starting cancels the attempt, is consumed, and starts no recorder", async () => {
+  const h = await harness();
+  const { player, pressed, fetchesBefore } = await pressWhilePlayerStops(h);
+  assert.equal(h.sendKey("\x1b"), true);
+  assert.equal(h.talkStatuses.at(-1), undefined);
+  player.emit("exit", null, "SIGTERM");
+  await pressed;
+  assert.equal(h.spawnCalls.length, 1, "only the player was spawned");
+  assert.equal(h.fetchCalls.length, fetchesBefore);
+  assert.equal(h.keyListeners.size, 0);
+  assert.equal(h.sendKey("\x1b"), false, "Escape reaches the editor once nothing is starting or recording");
+});
+
+test("a second press while the recording is starting cancels the attempt and starts no recorder", async () => {
+  const h = await harness();
+  const { player, pressed, fetchesBefore } = await pressWhilePlayerStops(h);
+  await h.pressShortcut();
+  assert.match(h.messages(), /Recording cancelled/);
+  assert.equal(h.talkStatuses.at(-1), undefined);
+  player.emit("exit", null, "SIGTERM");
+  await pressed;
+  assert.equal(h.spawnCalls.length, 1, "only the player was spawned");
+  assert.equal(h.fetchCalls.length, fetchesBefore);
+  assert.equal(h.keyListeners.size, 0);
+  assert.equal(h.sendKey("\x1b"), false);
+});
+
 test("no recording tool names the tools looked for and starts nothing", async () => {
   const h = await harness({ recorders: [] });
   await h.pressShortcut();

@@ -133,6 +133,19 @@ test("a recorder that exits on its own is a failure even when it produced audio"
   }
 });
 
+test("audio that arrives after the recorder exits but before its output closes is kept", async () => {
+  const { child, handle } = await start();
+  child.autoExitOnKill = false;
+  child.emitAudio(pcm(3200));
+  handle.stop();
+  child.emit("exit", null, "SIGINT");
+  child.emitAudio(pcm(1600));
+  child.emit("close", null, "SIGINT");
+  const exit = await handle.done;
+  assert.equal(exit.kind, "stopped");
+  if (exit.kind === "stopped") assert.equal(exit.pcm.length, 4800);
+});
+
 test("a recorder that cannot run is a failure", async () => {
   const { child, handle } = await start();
   child.emit("error", new Error("spawn rec ENOENT"));

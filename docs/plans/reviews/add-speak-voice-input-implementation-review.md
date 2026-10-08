@@ -796,3 +796,178 @@ REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
 
 Wave 3 is complete. Tasks 3.1–3.5 are marked done.
+
+## Wave 4 Review Sequence
+
+Base commit: `9cba1a0` (Wave 3 committed). Note: the first Wave 3 commit (`928d759`) carried a truncated `tasks.md` after an `sed -i` failure on this mount; it was amended before any push, and the committed file was checked at 83 lines with 16 tasks done.
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 4. Final gate reserved: task 4.4.
+
+| Assignment | Tasks | Owner | Files and topics |
+| --- | --- | --- | --- |
+| W4-A | 4.1 carry-overs W3-F1, W3-F2, W3-F3, W3-F4, cold-run check | worker (`claude-bridge/claude-sonnet-5-5`, thinking high, background) | `extensions/speak/record.ts`, `talk.ts`, `config.ts`, `README.md`; `test/speak/record.test.ts`, `talk.test.ts`, `harness.ts` |
+| W4-B | 4.1 integration check, 4.2 config migration | orchestrator | `~/.config/pi-speak/config.json` only with user approval |
+| W4-C | 4.3 live checks | user | — |
+
+### W4-A result (worker run `584ac931`)
+
+The worker reported all five items done with no deviation.
+
+- **W3-F1:** the recorder finishes on `close`, and the finish runs once. `FakeChild` emits `exit` then `close`. A new test keeps a chunk that arrives between them.
+- **W3-F2:** an Escape listener is held during the starting phase. Escape or a second press cancels the attempt with "Recording cancelled. Nothing was recorded or sent." Two new tests cover this.
+- **W3-F3:** the README sentence is added, after a `parseConfig` check that a config without `providers.elevenlabs.voiceId` parses.
+- **W3-F4:** the comment is corrected.
+- **Cold-run check:** five runs of 361/361 pass, so `until()` is unchanged.
+
+The worker reported one remaining risk. If Escape arrives during the recorder lookup, after the player has exited, the recorder is still spawned and then stopped at once. Nothing is sent.
+
+Caller verification:
+
+- The speak suite gives 361 tests, 361 pass, 0 fail, 0 cancelled.
+- The filtered type check prints nothing.
+- `git diff --check` is clean.
+
+### Task 4.1 integration check (orchestrator)
+
+Command: `strace -f -e trace=openat,execve,connect pi --offline -ne -ns -nc --no-session -e extensions/speak/index.ts --list-models zzz-no-match`. It was run twice, the first time tracing only `execve` and `connect`.
+
+- The exit code is 0, stderr is empty, and stdout is `No models matching "zzz-no-match"`.
+- The extension loaded. All 17 `extensions/speak/*.ts` modules were opened, and `~/.config/pi-speak/config.json` was read once, for `input.shortcut`.
+- There was no network use: 0 `connect` calls.
+- No recorder or player was started. The only `execve` calls were `pi` and `node`.
+- The live config is still in the old flat format, so it is rejected. Load stays silent, as D10 requires: the problem is reported on first use.
+
+### Task 4.2 config migration (orchestrator, user-approved 2026-10-09)
+
+The user chose ElevenLabs for voice input, a fixed voice-input language, and `anthropic/claude-haiku-5-5` with thinking high for translation. The old flat file is kept as `~/.config/pi-speak/config.json.flat-backup`. The new file has these settings:
+
+- `provider: elevenlabs`.
+- `providers.elevenlabs`: the voice ID and `modelId` carried over unchanged.
+- `input`: `provider: elevenlabs`, `language: vi`.
+- `locale: vi`.
+- `translation`: `anthropic/claude-haiku-5-5`, thinking high.
+
+`parseConfig` accepts the file. The defaults it resolves are `maxSeconds` 60, shortcut `alt+t`, `sttModel` `scribe_v2`, output `mp3_44100_128` and `voiceRevision` 1. `pi --list-models` lists `anthropic/claude-haiku-5-5`.
+
+Not yet verified: `/speak status` after `/reload`. It needs the user's interactive session.
+
+### Task 4.2 and 4.3 user results (2026-10-09)
+
+The user reloaded Pi with the migrated config and reported the following:
+
+- `/speak` on an answer played correctly, translated to Vietnamese by `anthropic/claude-haiku-5-5`.
+- `/talk` voice input with ElevenLabs transcribed correctly into the composer.
+- `/speak text Hello there` played correctly.
+- No errors were shown.
+
+This completes the 4.2 check that the config loads after `/reload` with no configuration error. For 4.3, these items were not run:
+
+- The optional Deepgram checks: `DEEPGRAM_API_KEY` is not set, and the user chose ElevenLabs for both directions.
+- An explicit Escape-discard report.
+- A region-tag check: `input.language` is the plain tag `vi`, not a region tag.
+
+CANDIDATE_REVISION=sha256:ae7e6be861a7a5e1981d4cb9ca883b5358d17e6b282fa2c60cfa39f8a19fe365 (SHA-256 over `git diff 9cba1a0 -- extensions test openspec`; Wave 4 adds no new files)
+
+## Round 1 - Oracle Review
+
+Run `e5a3a850` (`claude-bridge/claude-opus-5-5`, thinking high, background). The caller appended this entry, condensed from the returned text without changing any finding.
+
+Mode: FULL (INITIAL, whole wave), plus a whole-change readiness check as the final gate. Gate task 4.4 [Oracle gate: `oracle`] was used once. Owners reviewed: W4-A (`worker`, run `584ac931`), W4-B (orchestrator), W4-C (user). Gate 4.4 is owned by `oracle`.
+
+**Baseline:** `git diff 9cba1a0 -- extensions test openspec | sha256sum` gives `ae7e6be861a7a5e1981d4cb9ca883b5358d17e6b282fa2c60cfa39f8a19fe365`, which equals the recorded `CANDIDATE_REVISION`. Wave 4 adds no new files.
+
+**Verification:**
+- The speak suite ran 3 times, each 361/361 pass.
+- The filtered type check printed nothing.
+- `openspec validate add-speak-voice-input --strict` passes.
+- `git diff --check` is clean.
+- 7 mutations ran in `/tmp`. Five were caught. Two survived, neither changing behaviour that matters: a redundant once-guard, and an over-broad starting listener that only matters before `begin` returns.
+
+**Carry-overs:**
+- W3-F1 is closed (`record.ts:150,163,165`; `harness.ts:44–54`; `record.test.ts:136–147`).
+- W3-F2 is closed (`talk.ts:90–91,125–134`; `talk.test.ts:293–318`).
+- W3-F3 is closed (`README.md:102`).
+- W3-F4 is closed (`config.ts:423`).
+- The cold-run check is closed: 8 runs in total, no recurrence.
+
+**Worker's residual risk:** acceptable. An Escape during `findRecorder` spawns a recorder that is stopped at once. Its audio is never read, and no request or status line follows.
+
+**Task evidence:**
+- 4.1 is satisfied.
+- 4.2: the migration is recorded, backed up, and accepted by `parseConfig`. `/speak status` itself was not reported (W4-F2).
+- 4.3 was run in part. ElevenLabs input, ElevenLabs speech and the `vi` language tag were verified. The rest is acceptable as explicitly unverified: the Deepgram speech and input checks, the Deepgram language tag, and a real-terminal Escape discard.
+
+**Whole-change readiness:** the code and tests are ready.
+- All 10 voice-input requirements and 11 manual-speech delta requirements have implementation and scenario tests.
+- No conflict with the main spec.
+- All carry-overs are closed.
+- W3-F5 stays deferred and has not grown.
+- ADR-0004 is still accurate.
+
+### Findings
+
+**W4-F1 — P3 — `documentation / escape-window-text` — in scope.**
+- Evidence: the code consumes Escape, and cancels on a second press, while a recording is starting (`talk.ts:90–91,125–129`). The text still says "only while a recording is in progress or held" in three places: `design.md:71`, `design.md:138` and `README.md:114`. The README controls table has no row for the starting state (`README.md:107–112`). The spec sets a minimum, not an exclusive window (`specs/voice-input/spec.md:48`), so it is not contradicted.
+- SUGGESTED_CORRECTION: text-only orchestrator edits to `design.md:71,138`, `README.md:114`, and one new README table row for the starting state. Then record a new candidate revision before the terminal action.
+
+**W4-F2 — P3 — `verification / live-evidence-vs-task-wording` — in scope.**
+- Evidence: task 4.2 asks for `/speak status` after `/reload`, but only working `/speak` and `/talk` use was reported. Task 4.3 was run in part. The log says the region-tag check was not run, yet ElevenLabs accepted `vi` as written.
+- SUGGESTED_CORRECTION: for 4.2, ask the user for `/speak status`, or record that the working use stands in for it. For 4.3, record what was verified and what was not, and decide whether to check it with that note.
+
+**W3-F5 — P3 — `structure / large-module-decomposition` — not in scope (carried).**
+- DEFERRED_REASON: deferred after archive. Neither file changed in Wave 4.
+
+### Residual risks
+
+- Deepgram is untested against the real service.
+- Escape in a real terminal is unconfirmed: it is covered by the test harness only.
+- The controller would stick in "Transcribing…" if a recording tool's stdout never closed. The three supported tools do not do that.
+- The integration check may have exited before lifecycle events fired. `silence.test.ts` covers those events.
+- `.pi/settings.json` is modified and out of scope, so it stays out of the change commit.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 4, Round 1
+
+#### W4-F1 — Escape-window text lags the W3-F2 fix
+- **Oracle Severity:** P3
+- **Family:** `documentation / escape-window-text`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The spec is not contradicted, and the behaviour is correct and tested.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into the approved follow-up change (working name `add-speak-locale-help-and-send`). That change rewrites the README controls table and the push-to-talk key handling for the new `Alt+T` (transcribe and send) and `Alt+Shift+T` (transcribe only) shortcuts. Its README and design will describe Escape and a second press as cancelling a recording that is still starting. Editing the text here would invalidate this PASS for wording the follow-up change replaces anyway. This change's `design.md` is archived as history, so its own text is left as written.
+
+#### W4-F2 — Live evidence versus the task wording
+- **Oracle Severity:** P3
+- **Family:** `verification / live-evidence-vs-task-wording`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** Gate 4.4 accepts 4.3 as "complete or explicitly reported as unverified".
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:**
+  - **4.2:** `/speak status` was not run. Instead, `/speak` with translation, `/speak text` and `/talk` all worked after `/reload` with no error. Each of them loads and validates the migrated config, so that stands in for the status check.
+  - **4.3:** checked, with this note.
+    - Verified by the user: ElevenLabs speech with Vietnamese translation, `/speak text`, ElevenLabs voice input, and `input.language: vi` accepted by ElevenLabs.
+    - Explicitly unverified: Deepgram speech and Deepgram voice input (no `DEEPGRAM_API_KEY`, by the user's choice), Deepgram's handling of the language tag, and a real-terminal Escape discard.
+
+#### W3-F5 — Large modules
+- **Decision:** `DEFER_OUT_OF_SCOPE` (unchanged). Split `speech-job.ts` and `config.ts` along their responsibilities after archive.
+
+### Terminal Baseline Validation
+
+- The current candidate equals the recorded `CANDIDATE_REVISION`, `sha256:ae7e6be861a7a5e1981d4cb9ca883b5358d17e6b282fa2c60cfa39f8a19fe365`. The caller recomputed it after the Oracle run.
+- The Wave 4 boundary is unchanged: the files listed in the W4-A result, plus the user config outside the repository.
+
+### Summary
+- **Issues accepted blocking:** 0
+- **Issues accepted nonblocking:** 2. W4-F1 goes to the follow-up change; W4-F2 is recorded here.
+- **Issues deferred out of scope:** 1 (W3-F5)
+- **Issues rejected:** 0
+
+### Caller Result
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
+
+Wave 4 is complete, and tasks 4.1–4.4 are marked done. All 20 tasks of `add-speak-voice-input` are complete.
