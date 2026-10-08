@@ -627,3 +627,172 @@ REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
 
 Wave 2 is complete. Tasks 2.1–2.4 are marked done.
+
+## Wave 3 Review Sequence
+
+Base commit: `a0f85e2` (Wave 2 committed).
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 3. Final gate reserved: task 3.5.
+
+| Assignment | Tasks | Owner | Files and topics |
+| --- | --- | --- | --- |
+| W3-A | 3.1–3.4, plus the Wave 2 carry-overs W2-F2, W2-F4, W2-F5, W2-F7, W2-F8 and the earlier F6 implementation note | worker (`claude-bridge/claude-sonnet-5-5`, thinking high, background) | `extensions/speak/record.ts` (new), `deepgram.ts`, `elevenlabs.ts`, `bounded-request.ts`, `index.ts`, a new push-to-talk controller module, `README.md`; `test/speak/record.test.ts` and `talk.test.ts` (new), `provider.test.ts`, `job.test.ts`, `silence.test.ts` |
+
+One worker session owns the whole wave: 3.3 builds directly on 3.1 and 3.2, and 3.4 documents what 3.3 registers.
+
+### W3-A result (worker run `de0f136c`)
+
+The worker reported tasks 3.1–3.4 and the carry-overs (W2-F2, W2-F4, W2-F5, W2-F7, W2-F8, F6) as done. New files: `extensions/speak/record.ts`, `talk.ts`, `transcription.ts`, `test/speak/record.test.ts`, `talk.test.ts`. It changed 12 tracked files under `extensions/speak/` and `test/speak/`.
+
+Caller verification:
+
+- The speak suite gives 358 tests, 358 pass, 0 fail, 0 cancelled.
+- The filtered type check prints nothing.
+- `git diff --check` is clean.
+
+Deviations the worker reported, passed to the Oracle for judgement:
+
+- The default export is now async, because it reads `input.shortcut` at load.
+- The time cap is a byte cap (`maxSeconds × 32000`), not a wall-clock timer.
+- The elapsed time refreshes on each audio chunk.
+- `session_tree` also discards a recording.
+- If the config fails to load, `alt+t` is registered.
+- `input.language` is sent to ElevenLabs `language_code` as a BCP-47 tag.
+
+`speech-job.ts` is now 616 lines. It was already 538 at the Wave 1 base.
+
+CANDIDATE_REVISION=sha256:573bbdb38aa5fb5bd9a209a36889996786a6a7f83a40d967bdf65146f1f0dca7 (SHA-256 over `git diff a0f85e2 -- extensions test openspec`, then, for each of extensions/speak/record.ts, extensions/speak/talk.ts, extensions/speak/transcription.ts, test/speak/record.test.ts, test/speak/talk.test.ts in that order, path + NUL + bytes)
+
+## Round 1 - Oracle Review
+
+Run `1c8ce64f` (`claude-bridge/claude-opus-5-5`, thinking high, background). Entry appended verbatim by the caller.
+
+Mode: FULL (INITIAL, whole wave). Gate task 3.5 [Oracle gate: `oracle`] was used once. I reviewed the work assigned as W3-A: tasks 3.1–3.4 by `worker`, plus the carry-overs W2-F2 and W2-F7 (task 3.2), W2-F4, W2-F5 and W2-F8 (task 3.4), and the F6 note (task 3.3). Gate 3.5 belongs to `oracle`. I loaded the review-convergence skill.
+
+**Baseline:**
+- I recomputed the digest with the recorded method and got `sha256:573bbdb38aa5fb5bd9a209a36889996786a6a7f83a40d967bdf65146f1f0dca7`.
+- It equals the recorded `CANDIDATE_REVISION` both before and after the review.
+
+**Verification:**
+- The speak suite ran 49 times. The first run gave 357 passed and 1 failed; the other 48 runs, including 16 run 8 at a time, all gave 358 passed. I could not identify which test failed in that first run (see residual risks).
+- The filtered `npx tsc --noEmit` printed nothing.
+- `git diff --check -- extensions test openspec` is clean.
+- I ran 16 mutations in a throwaway copy under `/tmp`, which I then deleted. The tests caught every one: Escape not consumed; audio sent automatically at the cap; the player's exit not awaited; a late transcript not dropped; the recorder given the keys; the composer replaced instead of appended; no 0.5 s minimum; the session override ignored; the provider read at send time instead of at start; recording allowed outside the terminal; a recorder's own exit not treated as a failure; W2-F2 error-body failures swallowed; `/speak` not blocked while recording; session reset doing nothing; `tag_audio_events` dropped; the 1 MiB cap removed.
+- I ran three Node experiments on a recorder's last output (findings below). No repository file was modified and no network request was made.
+
+**Confirmed sound against `specs/voice-input/spec.md`, the manual-speech delta, D1–D10 and ADR-0004:**
+
+- **Recorder (`record.ts`):** lookup order rec, arecord, ffmpeg (`:39–74`) with the D3 arguments and `shell: false` (`:130–134`); environment from `childEnvironment`; audio in memory, capped at `maxSeconds × 32000` bytes (`:135–191`); WAV header built in memory (`:91–111`); SIGINT then SIGKILL after 2 s (`:168–178`); a requested or capped stop keeps its audio, while an own exit or no audio is a failure (`:149–161`); MIT notice kept (`:1–21`).
+- **Transcription clients:** Deepgram `/v1/listen` with `model`, `smart_format=true`, `language` or `detect_language=true`, `Authorization: Token` (`deepgram.ts:177–225`); ElevenLabs multipart `/v1/speech-to-text` with `model_id`, `tag_audio_events=false`, optional `language_code`, `xi-api-key` (`elevenlabs.ts:170–211`); both reject redirects, apply deadline and cancellation, cap responses at 1 MiB (`transcription.ts:127–137`), map failures to sanitized classes, and redact their own key.
+- **W2-F2 fixed:** `boundedRequest` reads HTTP error bodies inside its deadline and cancellation boundary (`bounded-request.ts:40–41,79–81`) for all four clients; `provider-body.test.ts` checks post-header timeout and cancellation for each.
+- **Controller (`talk.ts`):** start, stop and transcribe, held-audio transcription, 0.5 s minimum, refusal while transcribing (`:79–112`); Escape consumed only while recording or held, every other key passes through (`:188–193`); held at the cap, sent only on a later press (`:206–212`); provider, model, language, key and timeout fixed at start (`:137–184`); transcript only appended, never submitted (`:253–257`); late transcript dropped via `this.active !== rec`; status line for recording, held and transcribing, cleared on every exit path (`:260–289`); interactive terminal only (`:81–87`); F6 met — a recording waits for the player's real exit (`speech-job.ts:141–144`, `talk.test.ts:257–279`) and `/speak`, including replay, is refused while recording or held (`speech-job.ts:262–266`).
+- **Wiring (`index.ts`):** `/talk` argument parsing (`:129–141`); shortcut read at load (`:142–145,172–178`); the four lifecycle hooks only cancel or discard this extension's own work; `silence.test.ts` covers load, reload and lifecycle events with no process started and no request made.
+- **README:** voice-input section with setup, controls including the held state, the never-submitted rule and privacy statement (`README.md:98–118`); W2-F4 (`:9, :60–66`), W2-F8 (`:20–36`), W2-F5 (`:96`).
+- **W2-F7 fixed:** `job.test.ts:338–353`.
+- **Earlier waves not broken:** redaction holds (`talk.ts:291–296`, `redactFailureMessage` unchanged); speech routing, provider-separated cache, replay without generation checks, status and `quota.ts` unchanged.
+
+**Worker deviations:**
+- **Async default export:** conforming. The host awaits the extension factory (`pi-coding-agent` 1.1.0 `dist/core/extensions/loader.js:514`; 0.87.1 `:449`). D10 allows the one local read at load.
+- **Byte cap instead of a wall-clock timer:** conforming. It counts captured audio, which both providers bill; a stalled recorder never reaches the cap, but nothing is sent without a user action, and Escape and stop still work.
+- **Elapsed time per audio chunk:** conforming.
+- **`session_tree` also discards a recording:** conforming. It was already a cancel-only hook at `a0f85e2` (`index.ts:144`); a discard sends nothing; documented at `README.md:114`.
+- **`alt+t` when the config fails to load:** conforming, word for word with D10; the problem is reported on first use (`talk.ts:134–135`).
+- **BCP-47 `language_code`:** conforming to the spec's wording; residual risk below.
+
+### Findings
+
+**W3-F1 — P3 — `recorder / exit-before-stdout-drain` — in scope.**
+- Evidence: `record.ts:163` finishes on the child's `exit` event and builds the audio at `record.ts:160`. Node documents that stdio may still be open when `exit` fires, so audio written after SIGINT could arrive too late and the end of the dictation could be cut off; in the edge case a stop could be reported as "recorded no audio". Not reproduced: 0 of 70 runs across three experiments.
+- SUGGESTED_CORRECTION: finish on `close` instead (same code and signal, fires after stdio closes), keep `error` for spawn failures, make `FakeChild.finish` emit `close`, and add one test where a chunk arrives after `exit` but before `close`.
+
+**W3-F2 — P3 — `audio-coordination / asynchronous-stop-barrier` (F6 note family) — in scope.**
+- Evidence: the controller waits for the old player to exit during its starting phase (`talk.ts:145`), up to the player's 2 s kill grace (`audio.ts:7`). A press then is refused with "still starting" (`talk.ts:90–91`), and Escape is not caught because it is subscribed only at `talk.ts:188`, so Escape reaches the editor. The spec requires catching Escape only while recording or held, so this does not break the spec.
+- SUGGESTED_CORRECTION: let a press during the starting phase cancel the attempt by clearing `this.active`, so the checks at `:133,146,159` end it; or record that the bounded 2 s wait satisfies the note.
+
+**W3-F3 — P3 — `documentation / config-example-verification` — in scope.**
+- Evidence: the README example uses `SET_YOUR_AUTHORIZED_VOICE_ID` for both voices (`README.md:27,34`), and `config.ts:159–165` rejects the ElevenLabs placeholder, so the example as shipped returns `providers.elevenlabs.voiceId is still the placeholder`, contradicting task 3.4's "the config example parses". With both placeholders replaced it parses. A user who copies the example cannot use voice input (`talk.ts:134–135`) until they replace or remove that line, even for Deepgram-only use. `README.md:20` says the placeholder is refused.
+- SUGGESTED_CORRECTION: no code change; record 3.4's parse check as "parses once the placeholders are replaced; refused as shipped on purpose, per W2-F8". Optionally add a README sentence that dictation-only users may leave out `providers.elevenlabs.voiceId`.
+
+**W3-F4 — P3 — `documentation / stale-load-comment` — in scope.**
+- Evidence: the `loadConfig` comment says nothing is read at load (`config.ts:423`), but `index.ts:172` reads the config at load for the shortcut.
+- SUGGESTED_CORRECTION: say the config is read on demand, plus once at load for `input.shortcut`.
+
+**W3-F5 — P3 — `structure / large-module-decomposition` — not in Wave 3 scope.**
+- Evidence: `speech-job.ts` is 616 lines (604 at `a0f85e2`; Wave 3 added 12); `config.ts` is 508 lines, unchanged in this wave. Both exceed the global 500-line split guidance.
+- DEFERRED_REASON: both were over the limit before Wave 3; splitting is a refactor outside tasks 3.1–3.4 and can be scheduled after Wave 4.
+
+### Residual risks
+
+- 1 of 49 suite runs failed on the first cold run and the test could not be identified; the likeliest cause is the 3 s timeout in the harness `until()` helper (`harness.ts:320`).
+- ElevenLabs documents ISO-639 `language_code` values, and Deepgram may also reject a region tag such as `vi-VN`; the user would see a sanitized `invalid` error only after the upload. `README.md:66` warns that a valid tag does not prove support.
+- Real microphones, the shortcut reaching the extension in the terminal, and recognition quality stay unverified until task 4.3.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 3, Round 1
+
+#### Worker deviations
+- **Decision:** accepted as conforming, matching Oracle's judgement. The BCP-47 risk is added to the task 4.3 live checks.
+
+#### W3-F1 — Recorder finishes on `exit`, before its output closes
+- **Oracle Severity:** P3
+- **Family:** `recorder / exit-before-stdout-drain`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold; not reproduced in 70 runs.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into Wave 4 task 4.1. Finish the recording on `close`, keep `error` for spawn failures, make `FakeChild.finish` emit `close`, and add one test with a chunk between `exit` and `close`.
+
+#### W3-F2 — Escape is not caught while a recording is starting
+- **Oracle Severity:** P3
+- **Family:** `audio-coordination / asynchronous-stop-barrier`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold; the spec requires catching Escape only while recording or held. The window is at most 2 s and only when `/speak` audio was playing, but an Escape that reaches the editor can interrupt a running agent turn, which the user did not intend.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into Wave 4 task 4.1. Treat Escape or a second press during the starting phase as cancelling the attempt, by clearing `this.active` so the existing checks end it.
+
+#### W3-F3 — README example is refused as shipped
+- **Oracle Severity:** P3
+- **Family:** `documentation / config-example-verification`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None. Refusing the placeholder is the intended W2-F8 behaviour.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Task 3.4's parse check is recorded as "parses once the placeholders are replaced; refused as shipped on purpose, per W2-F8". Carried into Wave 4 task 4.1: add one README sentence that dictation-only users may leave out `providers.elevenlabs.voiceId`.
+
+#### W3-F4 — Stale `loadConfig` comment
+- **Oracle Severity:** P3
+- **Family:** `documentation / stale-load-comment`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into Wave 4 task 4.1. Say the config is read on demand, plus once at load for `input.shortcut`.
+
+#### W3-F5 — `speech-job.ts` and `config.ts` exceed 500 lines
+- **Oracle Severity:** P3
+- **Family:** `structure / large-module-decomposition`
+- **In-scope:** `NO`
+- **GOVERNING_SOURCE:** None for this change.
+- **Decision:** `DEFER_OUT_OF_SCOPE`
+- **CORRECTION:** None in this change. A responsibility-based split of both files is a follow-up after archive.
+
+#### Residual: one unexplained cold-run test failure
+- Carried into Wave 4 task 4.1: rerun the suite cold several times, and if a failure recurs, identify the test and fix its timing (likely the `until()` timeout in `harness.ts`).
+
+### Terminal Baseline Validation
+
+- The current candidate equals the recorded `CANDIDATE_REVISION`: `sha256:573bbdb38aa5fb5bd9a209a36889996786a6a7f83a40d967bdf65146f1f0dca7`, recomputed by the caller after the Oracle run.
+- Wave 3 boundary (tasks 3.1–3.4, files listed in the W3-A result): unchanged.
+
+### Summary
+- **Issues accepted blocking:** 0
+- **Issues accepted nonblocking:** 4 (W3-F1, W3-F2, W3-F3, W3-F4, all carried to Wave 4 task 4.1)
+- **Issues deferred out of scope:** 1 (W3-F5)
+- **Issues rejected:** 0
+
+### Caller Result
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
+
+Wave 3 is complete. Tasks 3.1–3.5 are marked done.

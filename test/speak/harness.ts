@@ -18,6 +18,7 @@ import {
 import type { SpawnFn } from "../../extensions/speak/audio.ts";
 import { registerSpeak } from "../../extensions/speak/index.ts";
 import { SpeechController } from "../../extensions/speak/speech-job.ts";
+import { TalkController } from "../../extensions/speak/talk.ts";
 import type { TranslationRegistry } from "../../extensions/speak/translation.ts";
 import type { TranslationFailureRecord } from "../../extensions/speak/translation-failure.ts";
 
@@ -33,6 +34,7 @@ export const VALID_CONFIG = {
 };
 
 export class FakeChild extends EventEmitter {
+  stdout = new EventEmitter();
   stderr = new EventEmitter();
   signals: (NodeJS.Signals | number | undefined)[] = [];
   autoExitOnKill = true;
@@ -44,6 +46,10 @@ export class FakeChild extends EventEmitter {
   }
   finish(code: number): void {
     this.emit("exit", code, null);
+  }
+  /** Delivers recorded PCM as the recorder's stdout. */
+  emitAudio(bytes: Uint8Array): void {
+    this.stdout.emit("data", Buffer.from(bytes));
   }
 }
 
@@ -80,6 +86,8 @@ export async function createHarness(
     config?: unknown;
     apiKey?: string | null;
     deepgramKey?: string | null;
+    /** Recording tools to install on the fake PATH, such as `["rec"]`. */
+    recorders?: string[];
     readFile?: (path: string) => Promise<string>;
     entryFailure?: boolean;
     widgetFailure?: boolean;
@@ -90,6 +98,10 @@ export async function createHarness(
   await mkdir(join(dir, "bin"));
   await writeFile(join(dir, "bin", "fakeplayer"), "#!/bin/sh\n");
   await chmod(join(dir, "bin", "fakeplayer"), 0o755);
+  for (const tool of options.recorders ?? []) {
+    await writeFile(join(dir, "bin", tool), "#!/bin/sh\n");
+    await chmod(join(dir, "bin", tool), 0o755);
+  }
   const env: Record<string, string | undefined> = {
     XDG_CONFIG_HOME: join(dir, "config"),
     XDG_CACHE_HOME: join(dir, "cache"),
@@ -135,14 +147,19 @@ export async function createHarness(
     return child;
   }) as unknown as SpawnFn;
 
-  const controller = new SpeechController({
+  const deps = {
     env,
     fetchFn,
     spawnFn,
     now: Date.now,
-    readFile: options.readFile ?? ((path) => readFile(path, "utf8")),
-  });
+    readFile: options.readFile ?? ((path: string) => readFile(path, "utf8")),
+  };
+  const controller = new SpeechController(deps);
+  // A manual clock keeps the 0.5 s minimum and the elapsed time exact.
+  let clock = 1_000_000;
+  const talk = new TalkController({ ...deps, now: () => clock }, controller);
   const commands = new Map<string, Handler>();
+  const shortcuts = new Map<string, (ctx: ExtensionCommandContext) => Promise<void>>();
   const events = new Map<string, () => void>();
   const entries: { customType: string; data: TranslationFailureRecord }[] = [];
   // SAFETY: registerSpeak uses registerCommand/on and appendEntry only after a live failure.
@@ -155,15 +172,29 @@ export async function createHarness(
     },
     registerCommand: (name: string, definition: { handler: Handler }) =>
       commands.set(name, definition.handler),
+    registerShortcut: (
+      key: string,
+      definition: { handler: (ctx: ExtensionCommandContext) => Promise<void> },
+    ) => shortcuts.set(key, definition.handler),
+    sendUserMessage: () => {
+      submitted++;
+    },
+    sendMessage: () => {
+      submitted++;
+    },
     on: (event: string, handler: () => void) => {
       events.set(event, handler);
       return () => undefined;
     },
   } as unknown as ExtensionAPI;
-  registerSpeak(api, controller);
+  let submitted = 0;
+  registerSpeak(api, controller, talk);
 
   const notices: { message: string; level?: string }[] = [];
   const statuses: (string | undefined)[] = [];
+  const talkStatuses: (string | undefined)[] = [];
+  const editor = { text: "" };
+  const keyListeners = new Set<(data: string) => { consume?: boolean } | undefined>();
   const widgets: { key: string; content: string[] | undefined }[] = [];
   let aborts = 0;
 
@@ -184,8 +215,8 @@ export async function createHarness(
       ui: {
         notify: (message: string, level?: string) =>
           notices.push({ message, level }),
-        setStatus: (_key: string, text: string | undefined) =>
-          statuses.push(text),
+        setStatus: (key: string, text: string | undefined) =>
+          (key === "speak-talk" ? talkStatuses : statuses).push(text),
         setWidget: (key: string, content: string[] | undefined) => {
           if (options.widgetFailure) throw new Error("widget unavailable");
           widgets.push({ key, content });
@@ -199,24 +230,49 @@ export async function createHarness(
     await commands.get("speak")!(args, ctx);
   }
 
-  async function runTalk(args: string, ctxOptions: CtxOptions = {}) {
+  function talkContext(ctxOptions: CtxOptions = {}) {
     const cwd = ctxOptions.cwd ?? dir;
-    const session = SessionManager.inMemory(cwd);
-    const ctx = {
+    // SAFETY: /talk and the shortcut use only the mode, the UI, and the editor and key hooks below.
+    return {
       mode: ctxOptions.mode ?? "tui",
       cwd,
       modelRegistry: ctxOptions.registry,
       ui: {
         notify: (message: string, level?: string) => notices.push({ message, level }),
-        setStatus: (_key: string, text: string | undefined) => statuses.push(text),
+        setStatus: (key: string, text: string | undefined) =>
+          (key === "speak-talk" ? talkStatuses : statuses).push(text),
         setWidget: () => undefined,
+        getEditorText: () => editor.text,
+        setEditorText: (text: string) => {
+          editor.text = text;
+        },
+        onTerminalInput: (listener: (data: string) => { consume?: boolean } | undefined) => {
+          keyListeners.add(listener);
+          return () => keyListeners.delete(listener);
+        },
       },
       isIdle: () => true,
       hasPendingMessages: () => false,
-      sessionManager: session,
+      sessionManager: SessionManager.inMemory(cwd),
       abort: () => aborts++,
     } as unknown as ExtensionCommandContext;
-    await commands.get("talk")!(args, ctx);
+  }
+
+  async function runTalk(args: string, ctxOptions: CtxOptions = {}) {
+    await commands.get("talk")!(args, talkContext(ctxOptions));
+  }
+
+  /** Presses the registered push-to-talk shortcut. */
+  async function pressShortcut(ctxOptions: CtxOptions = {}) {
+    await shortcuts.get("alt+t")!(talkContext(ctxOptions));
+  }
+
+  /** Sends a key to the terminal-input listeners; true when one consumed it (the editor never sees it). */
+  function sendKey(data: string): boolean {
+    let consumed = false;
+    for (const listener of [...keyListeners])
+      if (listener(data)?.consume) consumed = true;
+    return consumed;
   }
 
   return {
@@ -233,6 +289,21 @@ export async function createHarness(
     entries,
     run,
     runTalk,
+    pressShortcut,
+    sendKey,
+    talkStatuses,
+    editor,
+    keyListeners,
+    shortcuts,
+    get submitted() {
+      return submitted;
+    },
+    advance(ms: number) {
+      clock += ms;
+    },
+    /** The recorder processes started so far, in order. */
+    recorderChildren: () =>
+      children.filter((_, i) => /\/(rec|arecord|ffmpeg)$/.test(spawnCalls[i]!.command)),
     get aborts() {
       return aborts;
     },
@@ -261,6 +332,7 @@ export async function createHarness(
     },
     messages: () => notices.map((notice) => notice.message).join("\n"),
     async cleanup() {
+      talk.resetSession();
       controller.resetSession();
       await controller.whenIdle();
       await rm(dir, { recursive: true, force: true });

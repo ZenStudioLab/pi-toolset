@@ -335,6 +335,23 @@ for (const [label, voice] of [
   }
 }
 
+for (const mode of ["text hello", ""] as const)
+  test(`Deepgram selected without DEEPGRAM_API_KEY refuses ${mode || "localized"} speech with zero translation calls and zero fetches`, async () => {
+    const h = await harness({
+      config: { ...deepgramSpeechConfig, provider: "deepgram", locale: "en" },
+    });
+    const translation = translationFixture();
+    await h.run(mode, {
+      messages: answer("English source"),
+      registry: translation.registry,
+    });
+    await h.controller.whenIdle();
+    assert.match(h.messages(), /DEEPGRAM_API_KEY is not set/);
+    assert.equal(translation.calls.length, 0);
+    assert.equal(h.fetchCalls.length, 0, "the ElevenLabs key is not used instead");
+    assert.equal(h.spawnCalls.length, 0);
+  });
+
 test("Deepgram selected by config refuses before translation, TTS, or cache writes", async () => {
   const h = await harness({
     config: { ...deepgramSpeechConfig, provider: "deepgram" },

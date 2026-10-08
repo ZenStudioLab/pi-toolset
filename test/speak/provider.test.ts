@@ -4,12 +4,15 @@ import {
   MAX_AUDIO_BYTES,
   redact,
   synthesize,
+  transcribe as transcribeElevenLabs,
   type SynthesisRequest,
 } from "../../extensions/speak/elevenlabs.ts";
 import {
   synthesize as synthesizeDeepgram,
+  transcribe as transcribeDeepgram,
   type DeepgramSynthesisRequest,
 } from "../../extensions/speak/deepgram.ts";
+import type { TranscriptionRequest } from "../../extensions/speak/transcription.ts";
 import { API_KEY, audioResponse } from "./harness.ts";
 
 const request = (
@@ -309,3 +312,158 @@ test("redact removes every occurrence of the key", () => {
   );
   assert.equal(redact("nothing here", ""), "nothing here");
 });
+
+const transcriptionRequest = (
+  overrides: Partial<TranscriptionRequest> = {},
+): TranscriptionRequest => ({
+  wav: new Uint8Array([82, 73, 70, 70, 1, 2, 3]),
+  model: "stt-model",
+  apiKey: API_KEY,
+  timeoutMs: 5000,
+  signal: new AbortController().signal,
+  ...overrides,
+});
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+
+const deepgramTranscript = (transcript: string) =>
+  json({ results: { channels: [{ alternatives: [{ transcript }] }] } });
+const elevenLabsTranscript = (text: string) => json({ text, language_code: "vie" });
+
+test("Deepgram transcription uploads the WAV once with the model and the configured language", async () => {
+  const { calls, fetchFn } = recordingFetch(async () => deepgramTranscript(" xin chào "));
+  const result = await transcribeDeepgram(
+    transcriptionRequest({ model: "nova-3", language: "vi" }),
+    fetchFn,
+  );
+  assert.deepEqual(result, { ok: true, text: "xin chào" });
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].url,
+    "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&language=vi",
+  );
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.redirect, "manual");
+  const headers = calls[0].init.headers as Record<string, string>;
+  assert.equal(headers.Authorization, `Token ${API_KEY}`);
+  assert.equal(headers["Content-Type"], "audio/wav");
+  assert.deepEqual([...(calls[0].init.body as Uint8Array)], [82, 73, 70, 70, 1, 2, 3]);
+});
+
+test("Deepgram transcription detects the language when none is configured", async () => {
+  const { calls, fetchFn } = recordingFetch(async () => deepgramTranscript("hello"));
+  await transcribeDeepgram(transcriptionRequest({ model: "nova-3" }), fetchFn);
+  assert.equal(
+    calls[0].url,
+    "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&detect_language=true",
+  );
+});
+
+test("ElevenLabs transcription posts one multipart form without audio-event tags", async () => {
+  const { calls, fetchFn } = recordingFetch(async () => elevenLabsTranscript("hello there"));
+  const result = await transcribeElevenLabs(
+    transcriptionRequest({ model: "scribe_v2", language: "vi" }),
+    fetchFn,
+  );
+  assert.deepEqual(result, { ok: true, text: "hello there" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.elevenlabs.io/v1/speech-to-text");
+  assert.equal(calls[0].init.redirect, "manual");
+  const headers = calls[0].init.headers as Record<string, string>;
+  assert.equal(headers["xi-api-key"], API_KEY);
+  const form = calls[0].init.body as FormData;
+  assert.equal(form.get("model_id"), "scribe_v2");
+  assert.equal(form.get("tag_audio_events"), "false");
+  assert.equal(form.get("language_code"), "vi");
+  const file = form.get("file") as File;
+  assert.equal(file.type, "audio/wav");
+  assert.equal(file.size, 7);
+});
+
+test("ElevenLabs transcription omits the language when none is configured", async () => {
+  const { calls, fetchFn } = recordingFetch(async () => elevenLabsTranscript("hello"));
+  await transcribeElevenLabs(transcriptionRequest(), fetchFn);
+  assert.equal((calls[0].init.body as FormData).has("language_code"), false);
+});
+
+const transcribers = [
+  ["Deepgram", transcribeDeepgram, deepgramTranscript, "api.deepgram.com", "DEEPGRAM_API_KEY"],
+  ["ElevenLabs", transcribeElevenLabs, elevenLabsTranscript, "api.elevenlabs.io", "ELEVENLABS_API_KEY"],
+] as const;
+
+for (const [name, transcribe, transcript, host, keyEnv] of transcribers) {
+  const failures: [string, () => Response, string, RegExp][] = [
+    ["401", () => new Response("{}", { status: 401 }), "auth", new RegExp(`rejected the API key.*${keyEnv}`)],
+    ["403", () => new Response("{}", { status: 403 }), "permission", /denied access/],
+    ["404", () => new Response("{}", { status: 404 }), "not-found", /sttModel/],
+    ["422", () => new Response("{}", { status: 422 }), "invalid", /HTTP 422/],
+    ["429", () => new Response("{}", { status: 429 }), "rate-limit", /Nothing was retried/],
+    ["500", () => new Response("{}", { status: 500 }), "server", /billed is unknown/],
+    ["a redirect", () => new Response(null, { status: 302, headers: { location: "https://evil.example" } }), "redirect", /not followed/],
+    ["a non-JSON body with 200", () => new Response("<html>", { status: 200 }), "bad-response", /not a transcript/],
+    ["JSON without a transcript", () => json({ unexpected: true }), "bad-response", /not a transcript/],
+    ["an oversize response", () => new Response(new Uint8Array(1024 * 1024 + 1), { status: 200 }), "too-large", /1 MiB/],
+  ];
+  for (const [label, respond, kind, message] of failures)
+    test(`${name} transcription ${label} fails as ${kind} after one request to its own origin only`, async () => {
+      const { calls, fetchFn } = recordingFetch(async () => respond());
+      const result = await transcribe(transcriptionRequest(), fetchFn);
+      assert.ok(!result.ok);
+      assert.equal(result.kind, kind);
+      assert.match(result.message, message);
+      assert.doesNotMatch(result.message, new RegExp(API_KEY));
+      assert.equal(calls.length, 1, "no retry and no other-provider request");
+      assert.equal(new URL(calls[0].url).host, host);
+    });
+
+  test(`${name} transcription of silence returns an empty transcript`, async () => {
+    const { fetchFn } = recordingFetch(async () => transcript(""));
+    assert.deepEqual(await transcribe(transcriptionRequest(), fetchFn), { ok: true, text: "" });
+  });
+
+  test(`${name} transcription never echoes the key from an error status`, async () => {
+    const apiKey = "abcdefghijk";
+    const { fetchFn } = recordingFetch(async () => json({ detail: { status: apiKey } }, 401));
+    const result = await transcribe(transcriptionRequest({ apiKey }), fetchFn);
+    assert.ok(!result.ok);
+    assert.doesNotMatch(result.message, new RegExp(apiKey));
+  });
+
+  test(`${name} transcription without a key makes no request`, async () => {
+    const { calls, fetchFn } = recordingFetch(async () => transcript("x"));
+    const result = await transcribe(transcriptionRequest({ apiKey: " " }), fetchFn);
+    assert.ok(!result.ok);
+    assert.match(result.message, new RegExp(`${keyEnv} is not set`));
+    assert.equal(calls.length, 0);
+  });
+
+  test(`${name} transcription timeout and cancellation are sanitized and not retried`, async () => {
+    const owner = new AbortController();
+    const calls: unknown[] = [];
+    const hanging = (async (_url: string | URL, init?: RequestInit) => {
+      calls.push(1);
+      return new Promise<Response>((_resolve, reject) =>
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true }),
+      );
+    }) as typeof fetch;
+    const keepAlive = setTimeout(() => undefined, 2000);
+    try {
+      const timedOut = await transcribe(transcriptionRequest({ timeoutMs: 20 }), hanging);
+      assert.ok(!timedOut.ok);
+      assert.equal(timedOut.kind, "timeout");
+      assert.match(timedOut.message, /billed is unknown/);
+      const pending = transcribe(transcriptionRequest({ signal: owner.signal }), hanging);
+      owner.abort();
+      const cancelled = await pending;
+      assert.ok(!cancelled.ok);
+      assert.equal(cancelled.kind, "cancelled");
+      assert.equal(calls.length, 2);
+    } finally {
+      clearTimeout(keepAlive);
+    }
+  });
+}

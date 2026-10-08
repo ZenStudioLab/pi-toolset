@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { synthesize, type SynthesisRequest } from "../../extensions/speak/elevenlabs.ts";
+import {
+  synthesize,
+  transcribe as transcribeElevenLabs,
+  type SynthesisRequest,
+} from "../../extensions/speak/elevenlabs.ts";
+import {
+  synthesize as synthesizeDeepgram,
+  transcribe as transcribeDeepgram,
+} from "../../extensions/speak/deepgram.ts";
 import { API_KEY } from "./harness.ts";
 
 const request = (overrides: Partial<SynthesisRequest> = {}): SynthesisRequest => ({
@@ -94,3 +102,58 @@ test("a response stream error after headers is sanitized as network failure", as
     assert.doesNotMatch(result.message, /private stream failure/);
   }
 });
+
+/** Every client reads an HTTP error's body inside the bounded request, so a stalled body is a timeout. */
+const clients: [string, (signal: AbortSignal, timeoutMs: number, fetchFn: typeof fetch) => Promise<{ ok: boolean; kind?: string }>][] = [
+  ["ElevenLabs speech", (signal, timeoutMs, fetchFn) => synthesize(request({ signal, timeoutMs }), fetchFn)],
+  ["Deepgram speech", (signal, timeoutMs, fetchFn) => synthesizeDeepgram({ text: "Hi.", voice: "aura-2-thalia-en", apiKey: API_KEY, signal, timeoutMs }, fetchFn)],
+  ["ElevenLabs transcription", (signal, timeoutMs, fetchFn) => transcribeElevenLabs({ wav: new Uint8Array(4), model: "scribe_v2", apiKey: API_KEY, signal, timeoutMs }, fetchFn)],
+  ["Deepgram transcription", (signal, timeoutMs, fetchFn) => transcribeDeepgram({ wav: new Uint8Array(4), model: "nova-3", apiKey: API_KEY, signal, timeoutMs }, fetchFn)],
+];
+
+/** A 401 whose body never arrives until the signal fires, then fails as the real one does. */
+function stalledErrorBody(onPull: () => void, abortName: string): typeof fetch {
+  return (async (_url: string | URL, init?: RequestInit) =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          onPull();
+          init?.signal?.addEventListener(
+            "abort",
+            () => controller.error(new DOMException("stopped", abortName)),
+            { once: true },
+          );
+        },
+      }),
+      { status: 401 },
+    )) as typeof fetch;
+}
+
+for (const [name, call] of clients) {
+  test(`${name}: an error body that times out after the headers is classified as a timeout`, async () => {
+    let started!: () => void;
+    const bodyStarted = new Promise<void>((resolve) => (started = resolve));
+    const keepAlive = setTimeout(() => undefined, 2000);
+    try {
+      const pending = call(new AbortController().signal, 20, stalledErrorBody(started, "TimeoutError"));
+      await bodyStarted;
+      const result = await pending;
+      assert.equal(result.ok, false);
+      assert.equal(result.kind, "timeout");
+    } finally {
+      clearTimeout(keepAlive);
+    }
+  });
+
+  test(`${name}: an error body cancelled after the headers is classified as cancelled`, async () => {
+    const owner = new AbortController();
+    let started!: () => void;
+    const bodyStarted = new Promise<void>((resolve) => (started = resolve));
+    const pending = call(owner.signal, 5000, stalledErrorBody(started, "AbortError"));
+    await bodyStarted;
+    owner.abort();
+    const result = await pending;
+    assert.equal(result.ok, false);
+    assert.equal(result.kind, "cancelled");
+  });
+}
