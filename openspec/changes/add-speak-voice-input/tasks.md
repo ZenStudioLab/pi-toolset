@@ -83,3 +83,29 @@ Verification commands:
 
   Result (2026-10-09): verified by the user were ElevenLabs speech with Vietnamese translation, `/speak text`, ElevenLabs voice input, and `input.language: vi` accepted by ElevenLabs, with no errors shown. Explicitly unverified: the Deepgram speech and input checks (no `DEEPGRAM_API_KEY`, by the user's choice), Deepgram's handling of the language tag, and a real-terminal Escape discard.
 - [x] 4.4 [Oracle gate: `oracle`] Final review gate for Wave 4, run once after 4.1–4.2 are complete and 4.3 is complete or explicitly reported as unverified, under the same rules as 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.
+
+## 5. Wave 5: send key, session locale, help (amendment of 2026-10-09)
+
+- [x] 5.1 [Orchestrator] Amend the change for the user's requests after the live checks: write ADR-0005 (`docs/adr/0005-voice-send-and-session-locale.md`) and mark ADR-0004's delivery rule as superseded; update `proposal.md`, design D4, D5, D6, D10 and Risks, and add D11–D14 plus the provider length facts; update `specs/voice-input/spec.md` and the `specs/manual-speech/spec.md` delta. This also fixes the Wave 4 carry-over W4-F1 (Escape while a recording is starting) in the design and spec. Verify with `openspec validate add-speak-voice-input --strict`.
+- [ ] 5.2 [worker] Change `config.ts`: add `input.transcribeShortcut` (default `alt+shift+t`) and `input.sendWhenBusy` (`interrupt` or `wait`, default `interrupt`), reject equal shortcut values, and change the `input.maxSeconds` default to 120 (ceiling 300 unchanged). Verify with table cases in `test/speak/config.test.ts`: both defaults, both accepted values and a rejected value for `sendWhenBusy`, equal shortcuts rejected, and the 120 default.
+- [ ] 5.3 [worker] Add the send mode to `talk.ts` and `index.ts` per design D10 and D11:
+  - register both shortcuts at load, add `/talk send`, and keep `/talk` transcribe-only;
+  - the stopping control decides the mode, including for a held recording;
+  - in send mode, append as before, then send the whole composer with `pi.sendUserMessage` as plain text (no prompt-template or command expansion) and clear the composer only after the call returns; on failure keep the draft plus transcript and show the error;
+  - when the agent is not idle, deliver with `steer` for `interrupt` and `followUp` for `wait`;
+  - an empty or dropped transcript sends nothing;
+  - the status line names both stop keys, and the held state names the send, transcribe-only, and discard keys.
+
+  Verify with cases in `test/speak/talk.test.ts` for every new or changed scenario in `specs/voice-input/spec.md`, and update `test/speak/silence.test.ts` so loading registers both shortcuts and still starts no recorder and makes no request.
+- [ ] 5.4 [worker] Add the session and one-command speech locale per design D13: `/speak locale [<tag>|reset]` and `/speak in <tag>`, the locale order (one-command tag, then session, then config) fixed at job start and used by the Aura language check, translation, and both cache keys, and `/speak status` marking a session locale. Verify with cases in `test/speak/command.test.ts`, `test/speak/localized-job.test.ts`, and `test/speak/job.test.ts` for every new scenario in the manual-speech delta, plus an Aura voice refused for a session locale before any translation.
+- [ ] 5.5 [worker] Add the combined help per design D14 and the "Combined help for speak and voice input" requirement: `/speak help` and `/talk help` show the same text with every form, the registered shortcuts and which one sends, the Escape behaviour, and the effective locale; unknown arguments show it too. Replace the hard-coded `(default vi)`. Verify in `test/speak/command.test.ts`, including a config error while building help.
+- [ ] 5.6 [worker] Update `extensions/speak/README.md`: the controls table with both keys and the starting state (W4-F1), `/talk send`, `input.transcribeShortcut`, `input.sendWhenBusy`, the 120-second default, the locale commands, help, and a plain warning that the default `alt+t` now sends. Keep the `/<name>` note. Verify that the config example parses once its placeholders are replaced, and that every documented form matches the registered usage.
+- [ ] 5.7 [User] Live checks:
+  - `alt+t` with the agent idle: the draft and transcript are sent;
+  - `alt+t` while the agent is working: the message reaches the running turn;
+  - `alt+shift+t`: the transcript is added and nothing is sent (this also confirms the terminal delivers the key);
+  - `/speak locale en`, then `/speak`; then `/speak in ja`;
+  - `/speak help`.
+
+  Record what happened and any error shown. Leave this unchecked and report it as unverified until the user has run it.
+- [ ] 5.8 [Oracle gate: `oracle`] Review gate for Wave 5, run once after 5.2–5.6 are complete and 5.7 is complete or explicitly reported as unverified, under the same rules as 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.

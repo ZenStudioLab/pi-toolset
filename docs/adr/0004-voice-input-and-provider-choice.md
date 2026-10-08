@@ -1,6 +1,6 @@
 # ADR-0004: Push-to-Talk Voice Input and a Choice of Two Direct Providers
 
-**Status:** Accepted for implementation; runtime qualification pending.
+**Status:** Accepted; its delivery rule (the extension never submits a prompt or interrupts the agent) is superseded by [ADR-0005](0005-voice-send-and-session-locale.md).
 **Owner:** Orchestrator.
 **Change:** [add-speak-voice-input](../../openspec/changes/add-speak-voice-input/design.md).
 **Supersedes:** [ADR-0002](0002-manual-speech-egress-boundary.md) only in its restriction to ElevenLabs as the single speech destination. ADR-0002's manual-only rule for speech output, and every other decision in ADR-0002 and [ADR-0003](0003-localized-speech-translation.md), remain in force.

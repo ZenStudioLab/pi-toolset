@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Lets a Pi user dictate a prompt by push-to-talk, have it transcribed by Deepgram or ElevenLabs, and find the text in the composer to review and send, without the extension ever sending a prompt itself.
+Lets a Pi user dictate a prompt by push-to-talk, have it transcribed by Deepgram or ElevenLabs, and either find the text in the composer to review, or send it with one key press, without the extension ever sending anything the user did not ask it to send.
 
 ## ADDED Requirements
 
 ### Requirement: Recording starts only on an explicit action
 
-The extension SHALL open the microphone only when the user presses the push-to-talk shortcut or runs `/talk`. Loading, reloading, session start, ordinary prompts, tool execution, agent completion, and every other lifecycle event SHALL NOT start a recorder or make a transcription request. A missing configuration, key, or recording tool SHALL NOT block Pi from starting; it SHALL be reported only when the user tries to record.
+The extension SHALL open the microphone only when the user presses a push-to-talk shortcut or runs `/talk` or `/talk send`. Loading, reloading, session start, ordinary prompts, tool execution, agent completion, and every other lifecycle event SHALL NOT start a recorder or make a transcription request. A missing configuration, key, or recording tool SHALL NOT block Pi from starting; it SHALL be reported only when the user tries to record.
 
 #### Scenario: Silent startup and agent activity
 
@@ -22,7 +22,9 @@ The extension SHALL open the microphone only when the user presses the push-to-t
 
 ### Requirement: Talk command contract
 
-The extension SHALL register a `/talk` command with these forms: no argument (start recording; stop and transcribe if recording; or transcribe a recording held at the time cap), `provider` (report the effective input provider and whether it is a session override), `provider <name>` (select `deepgram` or `elevenlabs` for this session), and `provider reset` (return to the configured provider). An unknown argument or provider name SHALL display usage, change nothing, and make no request. The push-to-talk shortcut SHALL be read from `input.shortcut` when the extension loads, defaulting to `alt+t`; a changed shortcut takes effect after a reload.
+The extension SHALL register a `/talk` command with these forms: no argument (start recording; or stop and transcribe only; or transcribe only a recording held at the time cap), `send` (start recording; or stop, transcribe, and send; or transcribe and send a held recording), `help` (show the combined help), `provider` (report the effective input provider and whether it is a session override), `provider <name>` (select `deepgram` or `elevenlabs` for this session), and `provider reset` (return to the configured provider). An unknown argument or provider name SHALL display the combined help, change nothing, and make no request.
+
+The extension SHALL register two push-to-talk shortcuts when it loads: the send shortcut from `input.shortcut` (default `alt+t`), equivalent to `/talk send`, and the transcribe-only shortcut from `input.transcribeShortcut` (default `alt+shift+t`), equivalent to `/talk`. The two values SHALL differ; equal values SHALL be a configuration error. A changed shortcut takes effect after a reload. If the configuration cannot be read at load, both defaults SHALL be registered and the error reported on first use.
 
 #### Scenario: Unknown provider name
 
@@ -31,8 +33,13 @@ The extension SHALL register a `/talk` command with these forms: no argument (st
 
 #### Scenario: Command and shortcut are equivalent
 
-- **WHEN** the user starts recording with `/talk` and stops it with the push-to-talk shortcut
+- **WHEN** the user starts recording with `/talk` and stops it with the transcribe-only shortcut
 - **THEN** the recording is transcribed exactly as if both actions had used the same control
+
+#### Scenario: Equal shortcuts
+
+- **WHEN** `input.shortcut` and `input.transcribeShortcut` are the same key and the user presses a shortcut
+- **THEN** the configuration error is reported and no recording starts
 
 ### Requirement: Supported run mode for voice input
 
@@ -45,7 +52,7 @@ The extension SHALL record only in an interactive terminal session. In any other
 
 ### Requirement: Push-to-talk recording lifecycle
 
-The first press of the shortcut, or `/talk`, SHALL start recording. The next press or `/talk` SHALL stop recording and transcribe it. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. Audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, or sending a recording held at the time cap. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is in progress or held. When a recording reaches `input.maxSeconds` (default 60, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or `/talk` SHALL transcribe it, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
+The first press of either shortcut, `/talk`, or `/talk send` SHALL start recording. The next press or command SHALL stop recording and transcribe it, in the mode of that stopping control: send for the send shortcut and `/talk send`, transcribe only for the transcribe-only shortcut and `/talk`. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. Audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, or sending a recording held at the time cap. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is starting (waiting for this extension's playback to stop), in progress, or held. Escape or a second press while a recording is starting SHALL cancel it: no recorder keeps running, nothing is recorded, and nothing is sent. When a recording reaches `input.maxSeconds` (default 120, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or command SHALL transcribe it in that control's mode, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
 
 #### Scenario: Record and transcribe
 
@@ -57,10 +64,20 @@ The first press of the shortcut, or `/talk`, SHALL start recording. The next pre
 - **WHEN** the user presses Escape while recording
 - **THEN** the recorder stops, the audio is dropped, no request is made, and the editor does not receive the Escape key
 
+#### Scenario: The stopping control decides the mode
+
+- **WHEN** the user starts a recording with the send shortcut and stops it with the transcribe-only shortcut
+- **THEN** the transcript is appended to the composer and nothing is sent
+
+#### Scenario: Cancel while starting
+
+- **WHEN** `/speak` audio is still stopping after the user pressed a shortcut, and the user presses Escape or a shortcut again
+- **THEN** the attempt is cancelled, no audio is recorded or sent, and the Escape key does not reach the editor
+
 #### Scenario: Time cap stops and holds
 
 - **WHEN** a recording reaches the configured maximum length
-- **THEN** recording stops, no request is made, and the audio is transcribed once only when the user next presses the shortcut or runs `/talk`
+- **THEN** recording stops, no request is made, and the audio is transcribed once only when the user next presses a shortcut or runs `/talk` or `/talk send`, in that control's mode
 
 #### Scenario: Held recording discarded
 
@@ -89,7 +106,7 @@ The first press of the shortcut, or `/talk`, SHALL start recording. The next pre
 
 ### Requirement: Recording indicator
 
-While recording, the extension SHALL show a status line stating that the microphone is recording, the elapsed time, a coarse input level, and the stop and discard keys. While a recording stopped at the time cap is held, it SHALL state that the limit was reached and show the transcribe and discard keys. While transcribing, it SHALL state that transcription is in progress. The indicator SHALL be cleared when the transcript is delivered, the recording is discarded, or an error is reported.
+While recording, the extension SHALL show a status line stating that the microphone is recording, the elapsed time, a coarse input level, and the stop and discard keys. While a recording stopped at the time cap is held, it SHALL state that the limit was reached and show the send, transcribe-only, and discard keys. The recording line SHALL name both stop keys and which one sends. While transcribing, it SHALL state that transcription is in progress. The indicator SHALL be cleared when the transcript is delivered or sent, the recording is discarded, or an error is reported.
 
 #### Scenario: Indicator follows the recording
 
@@ -115,14 +132,34 @@ The extension SHALL capture 16 kHz mono 16-bit audio from the first available re
 - **WHEN** Pi shuts down or the session is replaced while recording
 - **THEN** the recorder is stopped, no request is made, and no audio file exists on disk
 
-### Requirement: Transcript goes to the composer only
+### Requirement: Transcript delivery
 
-A non-empty transcript SHALL be appended to the composer's current text, separated by one space when the existing text is non-empty and does not end with whitespace. The extension SHALL NOT submit the composer, replace its text, or send the transcript anywhere else. An empty transcript SHALL leave the composer unchanged and show a message. A transcript that arrives after its recording was cancelled, or after the session was replaced, SHALL be dropped without changing the composer.
+A non-empty transcript SHALL be appended to the composer's current text, separated by one space when the existing text is non-empty and does not end with whitespace. In transcribe-only mode the extension SHALL NOT submit the composer. In send mode it SHALL then send the whole composer text as one user message, as if the user had pressed Enter, and clear the composer. The sent text SHALL be plain: slash commands, prompt templates, and skill commands in it SHALL NOT be run. If the send fails, the composer SHALL keep the draft plus transcript and the error SHALL be shown. When the agent is working, `input.sendWhenBusy` SHALL decide the delivery: `interrupt` (default) delivers the message to the running turn at once, and `wait` queues it until the turn ends. The extension SHALL NOT replace the composer's text or send the transcript anywhere else. An empty transcript SHALL leave the composer unchanged, send nothing, and show a message. A transcript that arrives after its recording was cancelled, or after the session was replaced, SHALL be dropped without changing the composer or sending anything.
 
 #### Scenario: Append to a half-written prompt
 
 - **WHEN** the composer contains `Refactor the loader` and the transcript is `and add a test`
 - **THEN** the composer contains `Refactor the loader and add a test` and nothing is submitted
+
+#### Scenario: Send the draft and the transcript
+
+- **WHEN** the composer contains `Refactor the loader`, the agent is idle, and the user stops a recording of `and add a test` with the send shortcut
+- **THEN** one user message `Refactor the loader and add a test` is sent and the composer is empty
+
+#### Scenario: Send while the agent is working
+
+- **WHEN** the agent is working and the user sends a recording with `input.sendWhenBusy` omitted, then again with it set to `wait`
+- **THEN** the first message is delivered to the running turn at once, and the second is queued until the turn ends
+
+#### Scenario: Slash command in a sent transcript
+
+- **WHEN** the sent composer text begins with `/compact`
+- **THEN** it is sent as an ordinary user message and no command runs
+
+#### Scenario: Empty transcript in send mode
+
+- **WHEN** the provider returns no words for a recording stopped with the send shortcut
+- **THEN** nothing is sent, the composer is unchanged, and the user is told nothing was recognized
 
 #### Scenario: Empty transcript
 
@@ -179,7 +216,7 @@ Redirects SHALL be rejected. The request SHALL be bounded by the configured requ
 
 ### Requirement: Voice input secret and privacy handling
 
-The extension SHALL read `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` only from the environment and SHALL NOT write them to configuration, cache, logs, notifications, process arguments, or the recorder's environment. The extension SHALL NOT log or persist audio or transcripts; a transcript exists only in the composer. Documentation SHALL state that each recording the user sends goes to the selected provider, that this is not a zero-retention guarantee, and that a discarded recording, or one held at the time cap and not sent, never leaves the machine.
+The extension SHALL read `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` only from the environment and SHALL NOT write them to configuration, cache, logs, notifications, process arguments, or the recorder's environment. The extension SHALL NOT log or persist audio or transcripts; a transcript exists only in the composer or in the user message the user chose to send. Documentation SHALL state that each recording the user sends goes to the selected provider, that this is not a zero-retention guarantee, and that a discarded recording, or one held at the time cap and not sent, never leaves the machine.
 
 #### Scenario: Error output redaction
 

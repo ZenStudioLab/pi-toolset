@@ -40,11 +40,25 @@ When Deepgram is the speech provider, on a cache miss the extension SHALL send o
 - **WHEN** a Deepgram request fails or times out
 - **THEN** no ElevenLabs request is made and no retry occurs
 
+### Requirement: Combined help for speak and voice input
+
+`/speak help` and `/talk help` SHALL show the same help: every `/speak` and `/talk` form, the two registered push-to-talk shortcuts and which one sends, what Escape does while a recording is starting, in progress, or held, and the effective speech locale (the session override when set, otherwise the configured value). Help SHALL read the configuration only from the local file, SHALL make no provider or model request, and SHALL work in every Pi run mode. If the configuration cannot be read, help SHALL show the default shortcuts and say the configuration has an error. An unknown `/speak` or `/talk` argument SHALL show this help.
+
+#### Scenario: Help names the real shortcuts and locale
+
+- **WHEN** the configuration sets `locale` to `ja` and `input.transcribeShortcut` to `ctrl+alt+t`, and the user runs `/speak help`
+- **THEN** the help names `alt+t` as the send key, `ctrl+alt+t` as the transcribe-only key, and `ja` as the speech locale, and no request is made
+
+#### Scenario: Talk help equals speak help
+
+- **WHEN** the user runs `/talk help` and then `/speak help`
+- **THEN** both show the same text, listing both commands' forms
+
 ## MODIFIED Requirements
 
 ### Requirement: Command contract
 
-The extension SHALL register one `/speak` command with these subcommands: no argument (speak the latest eligible answer in the configured locale), `original` (speak that answer without translation), `text <text>`, `stop`, `replay`, `status`, `quota` (read-only account lookup, not speech), and `provider` with an optional `elevenlabs`, `deepgram`, or `reset` argument (session provider selection, not speech). Everything after `text` SHALL be treated as data, not as command syntax or shell input. An unknown subcommand SHALL display usage without any provider request.
+The extension SHALL register one `/speak` command with these subcommands: no argument (speak the latest eligible answer in the effective locale), `original` (speak that answer without translation), `in <tag>` (speak that answer in the given locale, for this command only), `text <text>`, `stop`, `replay`, `status`, `quota` (read-only account lookup, not speech), `provider` with an optional `elevenlabs`, `deepgram`, or `reset` argument (session provider selection, not speech), `locale` with an optional tag or `reset` (session locale selection, not speech), and `help` (the combined help, not speech). Everything after `text` SHALL be treated as data, not as command syntax or shell input. An unknown subcommand SHALL display the combined help without any provider request.
 
 #### Scenario: Unknown subcommand
 
@@ -65,6 +79,45 @@ The extension SHALL register one `/speak` command with these subcommands: no arg
 
 - **WHEN** the user runs `/speak provider deepgram`
 - **THEN** the session override is set, no provider request is made, and no playback starts
+
+#### Scenario: Locale subcommand makes no request
+
+- **WHEN** the user runs `/speak locale en`, `/speak locale`, or `/speak locale reset`
+- **THEN** the session locale is set, reported, or cleared, no provider or model request is made, and no playback starts
+
+### Requirement: Configurable speech locale without changing the conversation
+
+The extension SHALL accept a top-level speech `locale` setting defaulting to `vi` when omitted, canonicalize valid non-empty BCP-47 tags, and reject malformed values before network use. `/speak locale <tag>` SHALL set a session locale with the same validation and the same lifetime as the session provider overrides: it survives session switching, forking, and navigation, and ends on restart, reload, or `/speak locale reset`. The extension SHALL NOT write the configuration file. `/speak in <tag>` SHALL use a validated tag for that one invocation only. The effective locale of a job SHALL be the one-command tag, otherwise the session locale, otherwise the configured `locale`, fixed when the job starts. A malformed tag given to `locale` or `in` SHALL change nothing and make no request. `/speak` SHALL render the cleaned selected answer faithfully in the effective locale; it SHALL NOT modify Pi's displayed answer, conversation, system prompt, tools, or selected coding model. `/speak original` SHALL bypass translation. `/speak text` SHALL retain literal wording regardless of locale. Locale support depends on the configured models; no voice, model, or locale substitution is permitted on rejection.
+
+#### Scenario: Default Vietnamese narration of English output
+
+- **WHEN** locale is omitted and the user invokes `/speak` on an eligible English answer with translation configured
+- **THEN** the speech text is faithfully rendered in Vietnamese while the displayed English answer and main session remain unchanged
+
+#### Scenario: Explicit locale and invalid locale
+
+- **WHEN** the user sets locale to a valid tag such as `en` or `vi-VN`
+- **THEN** localized speech uses that canonical target; a malformed or empty locale instead fails before any request
+
+#### Scenario: Original and literal escape paths
+
+- **WHEN** translation is unconfigured and the user invokes `/speak original` or `/speak text Hello`
+- **THEN** normal TTS preflight applies and no translation call is made; the locale does not rewrite the supplied or selected wording
+
+#### Scenario: Session locale is not persisted
+
+- **WHEN** the configuration sets `locale` to `vi`, the user runs `/speak locale en`, speaks an answer, and Pi is restarted
+- **THEN** speech before the restart targets English, speech after it targets Vietnamese, and the configuration file is unchanged
+
+#### Scenario: One-command locale
+
+- **WHEN** the session locale is `en` and the user runs `/speak in ja`, then `/speak`
+- **THEN** the first answer is spoken in Japanese and the second in English
+
+#### Scenario: Malformed one-command locale
+
+- **WHEN** the user runs `/speak in not_a_tag`
+- **THEN** an error names the malformed tag, and no translation or speech request is made
 
 ### Requirement: Single hard length limit
 
@@ -111,7 +164,7 @@ Before any billable speech or translation request the extension SHALL validate t
 
 ### Requirement: Status reporting
 
-`/speak status` SHALL show the redacted configuration (the effective speech provider and whether it is a session override, that provider's voice identifier suffix only, model, format, player, and limit), the effective input provider and whether it is a session override, the input language, whether each of `ELEVENLABS_API_KEY` and `DEEPGRAM_API_KEY` is present without showing it, whether a recording tool was found, the current job state, and the cache location and size. It SHALL also show the effective speech locale, the configured translation provider and model or their absence, and the configured translation thinking level or host default, without credentials. It SHALL NOT make a provider or model request.
+`/speak status` SHALL show the redacted configuration (the effective speech provider and whether it is a session override, that provider's voice identifier suffix only, model, format, player, and limit), the effective input provider and whether it is a session override, the input language, whether each of `ELEVENLABS_API_KEY` and `DEEPGRAM_API_KEY` is present without showing it, whether a recording tool was found, the current job state, and the cache location and size. It SHALL also show the effective speech locale and whether it is a session override, the configured translation provider and model or their absence, and the configured translation thinking level or host default, without credentials. It SHALL NOT make a provider or model request.
 
 #### Scenario: Status shows no secret
 

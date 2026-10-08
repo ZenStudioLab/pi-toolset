@@ -971,3 +971,26 @@ REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
 
 Wave 4 is complete, and tasks 4.1–4.4 are marked done. All 20 tasks of `add-speak-voice-input` are complete.
+
+## Wave 5 Review Sequence (amendment of 2026-10-09)
+
+After the Wave 4 live checks, the user asked to amend this change instead of archiving it. They asked for:
+
+- **Send key:** `alt+t` transcribes and sends, and `alt+shift+t` transcribes only. The control that stops a recording decides which. `/talk` stays transcribe-only, and `/talk send` is added.
+- **Busy agent:** when the agent is working, a sent message interrupts its current turn by default, and `input.sendWhenBusy: "wait"` queues it instead.
+- **Recording length:** the default rises to 120 seconds, and it stays configurable. It is our own cap: Deepgram accepts up to 2 GB per request and ElevenLabs up to 3 GB or 10 hours.
+- **Speech locale:** `/speak locale <tag|reset>` sets it for the session, and `/speak in <tag>` sets it for one command.
+- **Help:** `/speak help` and `/talk help` show one combined list.
+
+The user accepted every recommendation for Q3–Q5.
+
+Task 5.1 (orchestrator) covers the artifact amendments:
+
+- ADR-0005 is added, and ADR-0004's status now marks its delivery rule as superseded.
+- `proposal.md` gains an amendment section.
+- In `design.md`, D4, D5, D6, D10 and Risks are updated. D11–D14 and two provider-limit facts are added. This includes the W4-F1 text fix.
+- `specs/voice-input/spec.md` changes: the talk contract, lifecycle, indicator, the "Transcript delivery" requirement (renamed), and privacy.
+- The manual-speech delta adds the combined-help requirement, and changes the command contract, status reporting, and the configurable-locale requirement (now MODIFIED).
+- `openspec validate add-speak-voice-input --strict` passes.
+
+Base commit for Wave 5 code: the amendment commit that follows `ff04491`.
