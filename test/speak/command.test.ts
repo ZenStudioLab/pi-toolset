@@ -274,8 +274,8 @@ const preflightFailures: [
   [
     "text over the limit",
     {},
-    `text ${"a".repeat(4001)}`,
-    /4001 characters and the limit is 4000/,
+    `text ${"a".repeat(10001)}`,
+    /10001 characters and the limit is 10000/,
   ],
   [
     "a missing player",
@@ -310,9 +310,9 @@ for (const [name, options, args, message] of preflightFailures)
     );
   });
 
-test("exactly 4000 characters is accepted with no confirmation step", async () => {
+test("exactly 10000 characters is accepted with no confirmation step", async () => {
   const h = await harness();
-  const text = "a".repeat(4000);
+  const text = "a".repeat(10000);
   await h.run("text " + text);
   await h.until(() => h.children.length === 1);
   assert.equal(h.fetchCalls.length, 1);

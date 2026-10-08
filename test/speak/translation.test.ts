@@ -121,7 +121,7 @@ for (const [name, change] of [
 
 for (const [name, response] of [
   ["empty", translatedMessage("  ")],
-  ["too long", translatedMessage("a".repeat(4001))],
+  ["too long", translatedMessage("a".repeat(10001))],
   [
     "truncated",
     { ...translatedMessage("partial"), stopReason: "length" as const },

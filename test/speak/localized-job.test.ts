@@ -182,15 +182,15 @@ for (const [name, options] of [
 
 test("oversized source is refused before translation and oversized result before TTS", async () => {
   const { h, f, ctx } = await setup();
-  await h.run("", { ...ctx, messages: answer("a".repeat(4001)) });
+  await h.run("", { ...ctx, messages: answer("a".repeat(10001)) });
   await h.controller.whenIdle();
   assert.equal(f.calls.length, 0);
-  f.setResult(async () => translatedMessage("a".repeat(4001)));
+  f.setResult(async () => translatedMessage("a".repeat(10001)));
   await h.run("", ctx);
   await h.controller.whenIdle();
   assert.equal(f.calls.length, 1);
   assert.equal(h.fetchCalls.length, 0);
-  assert.match(h.messages(), /Translation is 4001 characters/);
+  assert.match(h.messages(), /Translation is 10001 characters/);
 });
 
 for (const action of [

@@ -18,7 +18,7 @@ test("a minimal configuration gets the documented defaults", () => {
   assert.equal(result.config.locale, "vi");
   assert.equal(result.config.translation, undefined);
   assert.equal(result.config.outputFormat, "mp3_44100_128");
-  assert.equal(result.config.hardLimitChars, 4000);
+  assert.equal(result.config.hardLimitChars, 10000);
   assert.equal(result.config.requestTimeoutMs, 45_000);
   assert.equal(result.config.cache.ttlDays, 7);
   assert.equal(result.config.cache.maxBytes, 100 * 1024 * 1024);
@@ -42,7 +42,7 @@ const invalid: [string, unknown, RegExp][] = [
   ["missing model", { voiceId: valid.voiceId }, /modelId is not set/],
   [
     "limit above the ceiling",
-    { ...valid, hardLimitChars: 4001 },
+    { ...valid, hardLimitChars: 10001 },
     /hardLimitChars must be between/,
   ],
   [

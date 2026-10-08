@@ -149,11 +149,11 @@ test("explicit text keeps its wording, only normalizing whitespace and controls"
 });
 
 test("the length limit is inclusive, counts code points, and never truncates", () => {
-  assert.deepEqual(checkLength("a".repeat(4000), 4000), { ok: true });
-  assert.deepEqual(checkLength("a".repeat(4001), 4000), {
+  assert.deepEqual(checkLength("a".repeat(10000), 10000), { ok: true });
+  assert.deepEqual(checkLength("a".repeat(10001), 10000), {
     ok: false,
-    length: 4001,
-    limit: 4000,
+    length: 10001,
+    limit: 10000,
   });
-  assert.deepEqual(checkLength("😀".repeat(4000), 4000), { ok: true });
+  assert.deepEqual(checkLength("😀".repeat(10000), 10000), { ok: true });
 });
