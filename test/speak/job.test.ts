@@ -9,7 +9,7 @@ import {
   audioResponse,
   createHarness,
 } from "./harness.ts";
-import { TRANSLATION_CONFIG, translationFixture } from "./translation-fixture.ts";
+import { TRANSLATION_CONFIG, translatedMessage, translationFixture } from "./translation-fixture.ts";
 
 type Harness = Awaited<ReturnType<typeof createHarness>>;
 const open: Harness[] = [];
@@ -204,6 +204,35 @@ test("provider errors are sanitized, never retried, and leave no clip", async ()
   assert.equal(h.spawnCalls.length, 0);
 });
 
+const tokenKeys = {
+  elevenlabs: "elevenlabs_token",
+  deepgram: "deepgram_token",
+} as const;
+for (const provider of ["elevenlabs", "deepgram"] as const) {
+  test(`${provider} structured failures redact token-shaped keys in notifications`, async () => {
+    const h = await harness({
+      config: provider === "deepgram"
+        ? { ...deepgramSpeechConfig, provider: "deepgram", locale: "en" }
+        : VALID_CONFIG,
+      apiKey: tokenKeys.elevenlabs,
+      deepgramKey: tokenKeys.deepgram,
+    });
+    h.setFetch(async () =>
+      new Response(
+        JSON.stringify({ detail: { status: tokenKeys[provider] } }),
+        { status: 401 },
+      ),
+    );
+    await h.run("text hello");
+    await h.controller.whenIdle();
+    assert.match(h.messages(), /rejected the API key/);
+    for (const key of Object.values(tokenKeys))
+      assert.doesNotMatch(h.messages(), new RegExp(key));
+    assert.equal(h.fetchCalls.length, 1);
+    assert.equal(h.spawnCalls.length, 0);
+  });
+}
+
 test("an unexpected failure inside a job is reported and releases the job", async () => {
   const h = await harness();
   h.env.XDG_CACHE_HOME = join(h.dir, "config", "pi-speak", "config.json");
@@ -273,6 +302,39 @@ const deepgramSpeechConfig = {
   translation: TRANSLATION_CONFIG,
 };
 
+for (const [label, voice] of [
+  ["the shipped placeholder", "SET_YOUR_AUTHORIZED_VOICE_ID"],
+  ["a voice without a language suffix", "aura-2-thalia"],
+] as const) {
+  for (const mode of ["text hello", "original", ""] as const) {
+    test(`Deepgram refuses ${label} before ${mode || "localized"} speech work`, async () => {
+      const h = await harness({
+        config: {
+          ...deepgramSpeechConfig,
+          provider: "deepgram",
+          locale: "en",
+          providers: {
+            ...deepgramSpeechConfig.providers,
+            deepgram: { voice, sttModel: "nova-3" },
+          },
+        },
+        deepgramKey: "deepgram-test-key",
+      });
+      const translation = translationFixture();
+      await h.run(mode, {
+        messages: answer("English source"),
+        registry: translation.registry,
+      });
+      await h.controller.whenIdle();
+      assert.match(h.messages(), /Deepgram speech is not configured/);
+      assert.equal(translation.calls.length, 0);
+      assert.equal(h.fetchCalls.length, 0);
+      assert.equal(h.spawnCalls.length, 0);
+      assert.deepEqual(await h.cacheFiles(), []);
+    });
+  }
+}
+
 test("Deepgram selected by config refuses before translation, TTS, or cache writes", async () => {
   const h = await harness({
     config: { ...deepgramSpeechConfig, provider: "deepgram" },
@@ -284,7 +346,7 @@ test("Deepgram selected by config refuses before translation, TTS, or cache writ
     registry: translation.registry,
   });
   await h.controller.whenIdle();
-  assert.match(h.messages(), /Deepgram speech is not available yet/);
+  assert.match(h.messages(), /voice language en does not match locale vi/);
   assert.match(h.messages(), /Nothing was sent/);
   assert.equal(translation.calls.length, 0);
   assert.equal(h.fetchCalls.length, 0);
@@ -304,7 +366,7 @@ test("a Deepgram speech override refuses before translation or TTS and affects n
     registry: translation.registry,
   });
   await h.controller.whenIdle();
-  assert.match(h.messages(), /Deepgram speech is not available yet/);
+  assert.match(h.messages(), /voice language en does not match locale vi/);
   assert.equal(translation.calls.length, 0);
   assert.equal(h.fetchCalls.length, 0);
   assert.equal(h.spawnCalls.length, 0);
@@ -338,9 +400,87 @@ test("a provider override changed during config loading affects only the next sp
   await h.controller.whenIdle();
 
   await h.run("text next invocation");
+  await h.until(() => h.children.length === 2);
+  assert.match(h.fetchCalls[1].url, /api\.deepgram\.com/);
+  h.children[1].finish(0);
   await h.controller.whenIdle();
-  assert.match(h.messages(), /Deepgram speech is not available yet/);
+  assert.equal(h.fetchCalls.length, 2);
+});
+
+test("Deepgram synthesis uses Aura MP3, its ceiling, and never calls ElevenLabs", async () => {
+  const h = await harness({
+    config: { ...deepgramSpeechConfig, provider: "deepgram", locale: "en" },
+    apiKey: "elevenlabs-should-not-be-used",
+    deepgramKey: "deepgram-test-key",
+  });
+  await h.run("text hello");
+  await h.until(() => h.children.length === 1);
   assert.equal(h.fetchCalls.length, 1);
+  assert.match(h.fetchCalls[0].url, /^https:\/\/api\.deepgram\.com\/v1\/speak\?/);
+  assert.equal(JSON.parse(h.fetchCalls[0].init.body as string).text, "hello");
+  h.children[0].finish(0);
+  await h.controller.whenIdle();
+  await h.run("text " + "a".repeat(2001));
+  await h.controller.whenIdle();
+  assert.match(h.messages(), /deepgram limit is 2000/);
+  assert.equal(h.fetchCalls.length, 1);
+});
+
+test("Deepgram original speech skips the Aura language check", async () => {
+  const h = await harness({
+    config: { ...deepgramSpeechConfig, provider: "deepgram", locale: "vi" },
+    deepgramKey: "deepgram-test-key",
+  });
+  await h.run("original", { messages: answer("English source") });
+  await h.until(() => h.children.length === 1);
+  assert.equal(h.fetchCalls.length, 1);
+  h.children[0].finish(0);
+  await h.controller.whenIdle();
+});
+
+test("Deepgram translation failures name the provider and make no TTS request", async () => {
+  const h = await harness({
+    config: { ...deepgramSpeechConfig, provider: "deepgram", locale: "en" },
+    deepgramKey: "deepgram-test-key",
+  });
+  const translation = translationFixture();
+  translation.setResult(async () => ({
+    ...translatedMessage(""),
+    stopReason: "error",
+    content: [],
+  }));
+  await h.run("", { messages: answer("source"), registry: translation.registry });
+  await h.controller.whenIdle();
+  assert.match(h.messages(), /Nothing was sent to Deepgram/);
+  assert.equal(h.fetchCalls.length, 0);
+});
+
+test("an ElevenLabs clip is not reused when Deepgram is selected", async () => {
+  const h = await harness({ deepgramKey: "deepgram-test-key" });
+  await h.run("text same");
+  await h.until(() => h.children.length === 1);
+  h.children[0].finish(0);
+  await h.controller.whenIdle();
+  await h.writeConfig({ ...deepgramSpeechConfig, provider: "deepgram", locale: "en" });
+  await h.run("text same");
+  await h.until(() => h.children.length === 2);
+  assert.equal(h.fetchCalls.length, 2);
+  assert.match(h.fetchCalls[1].url, /api\.deepgram\.com/);
+  h.children[1].finish(0);
+  await h.controller.whenIdle();
+});
+
+test("replay remains available after selecting Deepgram and makes no provider request", async () => {
+  const h = await harness({ deepgramKey: "deepgram-test-key" });
+  await startPlaying(h, "replay me");
+  h.children[0].finish(0);
+  await h.controller.whenIdle();
+  await h.run("provider deepgram");
+  await h.run("replay");
+  await h.until(() => h.children.length === 2);
+  assert.equal(h.fetchCalls.length, 1);
+  h.children[1].finish(0);
+  await h.controller.whenIdle();
 });
 
 test("status shows redacted configuration, key presence, job state, and cache usage without a request", async () => {

@@ -2,6 +2,8 @@
 
 Routing: focus mode. `worker` is the default implementer for grouped work and keeps one session across waves where practical. The orchestrator owns the ADR, spec and design amendments, reconciliation, task completion, and commits. `oracle` reviews each completed wave; it does not review individual tasks.
 
+From Wave 2 round 2 on, only `worker` (`claude-bridge/claude-sonnet-5-5`, thinking high) and `oracle` (`claude-bridge/claude-opus-5-5`, thinking high) are dispatched, and both always run in the background (async). A foreground child runs inside the parent Pi process without the parent's extensions, so `pi-claude-bridge` never records its system prompt and every request fails with `prompt-capture: no capture for this … system prompt`. A background child is its own Pi process and records its own prompt. Background runs can still be steered.
+
 Verification commands:
 
 - **Speak tests:** `node --experimental-strip-types --test test/speak/*.test.ts`.
@@ -25,8 +27,8 @@ Verification commands:
 
 ## 2. Wave 2: Deepgram speech output
 
-- [ ] 2.1 [worker] Add Deepgram synthesis to a new `deepgram.ts` per the "Deepgram synthesis request" requirement: fixed `/v1/speak` origin, `model` set to the voice, MP3, `Authorization: Token`, using the bounded-request helper. Verify with table cases in `test/speak/provider.test.ts`: success, JSON error document, redirect, timeout, missing key, and no ElevenLabs request on failure.
-- [ ] 2.2 [worker] Make `speech-job.ts` choose the speech provider:
+- [x] 2.1 [worker] Add Deepgram synthesis to a new `deepgram.ts` per the "Deepgram synthesis request" requirement: fixed `/v1/speak` origin, `model` set to the voice, MP3, `Authorization: Token`, using the bounded-request helper. Verify with table cases in `test/speak/provider.test.ts`: success, JSON error document, redirect, timeout, missing key, and no ElevenLabs request on failure.
+- [x] 2.2 [worker] Make `speech-job.ts` choose the speech provider:
   - the per-provider ceiling (10000 for ElevenLabs, the Deepgram value from 1.2);
   - preflight for the selected provider's key and voice;
   - the Aura language check before translation (design D9);
@@ -35,13 +37,15 @@ Verification commands:
   - translation failure messages naming the job's provider as the one that received no text.
 
   Verify with cases in `test/speak/job.test.ts`, `test/speak/localized-job.test.ts`, and `test/speak/progress.test.ts`: Deepgram ceiling refusal, a Vietnamese locale refused with an `-en` voice before any translation call, `/speak original` not language-checked, an override not affecting a running job, no ElevenLabs request when Deepgram is selected, an ElevenLabs clip not reused for Deepgram, the Deepgram progress phase, and a translation failure naming Deepgram.
-- [ ] 2.3 [worker] Update `extensions/speak/README.md`. Cover the new config shape and the hand migration from the flat format, provider switching (session-only; the file is never written), Deepgram's limit and language rule, and the data-leaving-the-machine statement for both providers. Keep the existing `/<name>` note. Verify that every config example in the README parses with `parseConfig` in a one-off script, and that every documented command matches the registered usage text.
-- [ ] 2.4 [Oracle gate: `oracle`] Review gate for Wave 2, run once after 2.1–2.3 are complete, under the same rules as 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.
+- [x] 2.3 [worker] Update `extensions/speak/README.md`. Cover the new config shape and the hand migration from the flat format, provider switching (session-only; the file is never written), Deepgram's limit and language rule, and the data-leaving-the-machine statement for both providers. Keep the existing `/<name>` note. Verify that every config example in the README parses with `parseConfig` in a one-off script, and that every documented command matches the registered usage text.
+- [x] 2.4 [Oracle gate: `oracle`] Review gate for Wave 2, run once after 2.1–2.3 are complete, under the same rules as 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.
 
 ## 3. Wave 3: push-to-talk voice input
 
 - [ ] 3.1 [worker] Add `record.ts` per design D3: the recorder lookup order, fixed arguments with no shell, the child-environment helper from 1.6, in-memory PCM capped at `maxSeconds`, an in-memory WAV header, a coarse level value, and SIGINT-then-SIGKILL stop. Copied privateer-speak code keeps its MIT notice. Verify with a fake spawn in a new `test/speak/record.test.ts`: lookup order, no tool found, an unexpected early exit and no audio reported as failures, a requested stop (user or time cap) keeping its audio and not reported as a failure, the byte cap, the environment excluding both keys, a valid WAV header, and the process stopped on discard.
 - [ ] 3.2 [worker] Add Deepgram transcription to `deepgram.ts` and ElevenLabs transcription to `elevenlabs.ts`, per the "Fixed-destination transcription request" requirement. Verify with table cases in `test/speak/provider.test.ts`: request URL and parameters per provider (`language` versus `detect_language`, `tag_audio_events=false`), the 1 MiB response cap, redirect, timeout, empty transcript, and no other-provider request on failure.
+  - Carried from Wave 2 review (W2-F2): read HTTP error bodies inside the bounded-request boundary for every client (Deepgram speech, Deepgram transcription, ElevenLabs transcription). Add tests for an error body that times out or is cancelled after the headers arrive.
+  - Carried from Wave 2 review (W2-F7): add a `test/speak/job.test.ts` case with Deepgram selected and no `DEEPGRAM_API_KEY`, for both `text` and localized speech, expecting `DEEPGRAM_API_KEY is not set`, zero translation calls, and zero fetches.
 - [ ] 3.3 [worker] Add the push-to-talk controller and its wiring in `index.ts`:
   - the `/talk` command and the `input.shortcut` registered at load (design D10);
   - start, stop, Escape discard (D5), the 0.5-second minimum, and only one active recording or transcription;
@@ -54,6 +58,8 @@ Verification commands:
 
   Verify with a new `test/speak/talk.test.ts` covering every scenario in `specs/voice-input/spec.md`. Extend `test/speak/silence.test.ts` so load, reload, and session events start no recorder and make no request.
 - [ ] 3.4 [worker] Add a voice-input section to `extensions/speak/README.md`: setup (recording tools, keys, the `input` block), controls (including the held-at-cap state and its send and discard keys), the fact that the composer is never submitted, and the privacy statement that a recording the user sends goes to the selected provider while a discarded or held-unsent one never leaves the machine. Verify that the documented controls match the registered command and shortcut, and that the config example parses.
+  - Carried from Wave 2 review (W2-F4, W2-F8): restore the setup guidance for an authorized voice, Pi-authenticated translation, translation being optional, and `voiceRevision`. Keep defaults separate from illustrative choices, and use the recognized placeholder `SET_YOUR_AUTHORIZED_VOICE_ID` for both providers' voices in the config example.
+  - Carried from Wave 2 review (W2-F5): state that provider overrides survive session switching, forking, and navigation, and end on restart, reload, or `reset`.
 - [ ] 3.5 [Oracle gate: `oracle`] Review gate for Wave 3, run once after 3.1–3.4 are complete, under the same rules as 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.
 
 ## 4. Wave 4: integration and live checks

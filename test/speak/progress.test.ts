@@ -28,6 +28,26 @@ const labels = (h: Awaited<ReturnType<typeof createHarness>>) =>
   });
 
 // Protects the idle command's distinct widget, not the streaming Working surface.
+test("Deepgram progress names the selected provider during synthesis", async () => {
+  const h = await setup({
+    config: {
+      ...VALID_CONFIG,
+      provider: "deepgram",
+      locale: "en",
+      providers: {
+        elevenlabs: VALID_CONFIG.providers.elevenlabs,
+        deepgram: { voice: "aura-2-thalia-en", sttModel: "nova-3" },
+      },
+    },
+    deepgramKey: "deepgram-test-key",
+  });
+  await h.run("text Hello");
+  await h.until(() => h.children.length === 1);
+  assert.ok(labels(h).includes("Speech: Deepgram..."));
+  h.children[0].finish(0);
+  await h.controller.whenIdle();
+});
+
 test("idle localized speech shows each actual phase and clears on completion", async () => {
   const h = await setup({
     config: { ...VALID_CONFIG, translation: TRANSLATION_CONFIG },

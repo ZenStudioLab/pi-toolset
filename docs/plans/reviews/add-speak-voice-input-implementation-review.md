@@ -351,3 +351,279 @@ REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
 
 Wave 1 is complete. Tasks 1.1–1.7 are marked done.
+
+## Wave 2 Review Sequence
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 2. Final gate reserved: task 2.4 [Oracle gate: `oracle`], the Wave 2 review gate, run once after 2.1–2.3.
+
+| Assignment | Tasks | Owner | Bounded responsibility | Files and topics |
+| --- | --- | --- | --- | --- |
+| W2-A | 2.1, 2.2, 2.3 | worker | Deepgram synthesis client; provider routing (limit, preflight, Aura language check, cache key, progress, translation-failure wording); W1-F5 status display; W1-F6 replay not gated; README | new `extensions/speak/deepgram.ts`; `speech-job.ts`, `config.ts`, `translation.ts`, `README.md`; `test/speak/{provider,job,progress,command}.test.ts`, `harness.ts` |
+
+Caller re-verification (Wave 2 base `4a921fa`):
+
+- The speak suite gives 267 tests, 267 pass, 0 fail.
+- The filtered type check prints nothing.
+- `quota.ts` is unchanged.
+- The Wave 1 "not available yet" refusal is removed.
+- `deepgram.ts` uses the fixed origin `https://api.deepgram.com`.
+- The README has one JSON config example (the full shape), which parses with `parseConfig`. The two earlier examples (minimal, and translation-only) were merged into it. The worker reports 9/9 documented commands match the usage text.
+
+## Round 1 - Oracle Review
+
+Oracle's full Wave 2 Round 1 section is reproduced below, as indented evidence.
+
+    Mode: FULL. Gate 2.4 consumed once. Mapping reviewed: W2-A (2.1–2.3, worker); gate 2.4 (oracle).
+    Candidate identity: sha256:c0c3b10eb2e38a378a347b7f443adc05a25c8d6031f4438cc8a88b02ace54faf
+      (git diff 4a921fa bytes, then extensions/speak/deepgram.ts + NUL + bytes).
+    Verification: 267 passed / 0 failed; speak-filtered typecheck clean; README JSON parses; no files modified.
+
+    W2-F1 — P1 — secret-redaction / structured-result-notification-bypass — in scope.
+      Evidence: deepgram.ts:46–52 embeds providerStatus in messages; bounded-request.ts:69–71 permits
+      lowercase token-shaped values; speech-job.ts:540–541 displays result.message without the dual-key
+      redaction at 342–350. Reproduced: 401 with detail.status equal to either configured key displayed it.
+      SUGGESTED_CORRECTION: client errors cannot echo the request key; apply dual-key redaction before
+      displaying structured synthesis failures; token-shaped-key regressions for both keys.
+
+    W2-F2 — P2 — provider-errors / http-body-deadline-classification — in scope.
+      Evidence: deepgram.ts:107–111 and 136 read error bodies outside the bounded boundary;
+      bounded-request.ts:62–74 swallows body failures. Reproduced: 401 whose body errors at the deadline
+      returns kind "auth", not "timeout".
+      SUGGESTED_CORRECTION: consume HTTP error bodies inside the bounded boundary; add post-header
+      error-body timeout/cancellation tests.
+
+    W2-F3 — P2 — provider-preflight / placeholder-voice-validation — in scope.
+      Evidence: config.ts:319–325 generic validation only; speech-job.ts:417–423 checks presence only.
+      Reproduced: placeholder `SET-VOICE-en` with locale en entered one mocked translation request.
+      SUGGESTED_CORRECTION: reject recognized placeholder voices before translation or synthesis; tests
+      for original/literal and localized refusal with zero inference/TTS calls.
+
+    W2-F4 — P2 — documentation / consolidated-setup-guidance-loss — in scope.
+      Evidence: README.md:17–57 labels explicit translation choices as "defaults" and drops instructions
+      for an authorized voice, Pi-authenticated translation, omitting translation for original/literal
+      use, and incrementing voiceRevision after re-cloning.
+      SUGGESTED_CORRECTION: restore those instructions; distinguish defaults from illustrative choices.
+
+    W2-F5 — P2 — provider-selection / documented-override-lifetime — in scope.
+      Evidence: README.md:85 says overrides change "only the current session".
+      SUGGESTED_CORRECTION: document survival across switch/fork/navigation and ending on restart,
+      reload, or reset.
+
+    W2-F6 — P3 — provider-selection / invocation-snapshot-test-retention — in scope.
+      Evidence: the deferred-config snapshot test formerly at test/speak/job.test.ts:314 was replaced;
+      no equivalent remains. Runtime snapshotting (speech-job.ts:265–266,379) is intact.
+      SUGGESTED_CORRECTION: restore the deferred-config regression, expecting real Deepgram routing.
+
+    Confirmed sound: fixed Deepgram origin, headers, MP3, text-only body, redirect rejection, 20 MiB cap,
+    no retry/fallback, 413 mapping, both ceilings on source and translated text, key checks before
+    translation, Aura language check before translation (localized only), provider-separated cache with
+    revision 0, provider-named progress and failure wording, W1-F5 fixed, W1-F6 fixed, ElevenLabs and
+    quota unchanged.
+
+PROPOSED_REVIEW_ACTION=PATCH
+
+---
+
+## Caller Assessment — Wave 2, Round 1
+
+I checked each finding against the code. W2-F1 is confirmed: `speech-job.ts:540` shows `result.message` unredacted, while `describeError` (342–350) redacts both keys.
+
+#### W2-F1 — Structured provider errors can disclose either API key
+- **Oracle Severity:** P1
+- **Family:** `secret-redaction / structured-result-notification-bypass`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** Modified requirement "Secret and privacy handling": neither key in notifications. This is a concrete secret-exposure risk.
+- **Decision:** `ACCEPT_BLOCKING`
+- **CORRECTION:** Pass every provider failure message through the existing two-key redaction before it is shown, at one shared point. The Deepgram client also redacts its own request key. Add regressions with token-shaped keys for both `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` echoed in `detail.status`.
+
+#### W2-F2 — HTTP error-body deadline failures bypass bounded classification
+- **Oracle Severity:** P2
+- **Family:** `provider-errors / http-body-deadline-classification`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The HTTP status was received and the message is sanitized; only the timeout and auth classification differs.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into Wave 3 task 3.2, whose transcription clients reuse the same error-body path. Consume HTTP error bodies inside the bounded boundary for all clients (Deepgram speech, Deepgram transcription, ElevenLabs transcription), with post-header error-body timeout and cancellation tests.
+
+#### W2-F3 — Deepgram placeholder voices pass generation preflight
+- **Oracle Severity:** P2 (caller re-grades P1)
+- **Family:** `provider-preflight / placeholder-voice-validation`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** Modified requirement "Preflight before any billable request": the selected provider's voice must be set and not a placeholder before any billable translation or speech request. Oracle reproduced a billable translation call made with a placeholder voice.
+- **Decision:** `ACCEPT_BLOCKING`
+- **CORRECTION:** Refuse the shipped placeholder (`SET_YOUR_AUTHORIZED_VOICE_ID`) and any Deepgram voice without a language suffix (the `-xx` final segment of `aura-...` ids) before translation or synthesis. There is no voice catalogue. Tests cover original/literal and localized refusal with zero inference and zero TTS calls.
+
+#### W2-F4 — README consolidation lost necessary setup guidance
+- **Oracle Severity:** P2
+- **Family:** `documentation / consolidated-setup-guidance-loss`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The user's config migration (task 4.2) is done with the orchestrator, not from the README.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into Wave 3 task 3.4, the README owner in Wave 3. Restore the authorized-voice, Pi-authenticated translation, translation-optional, and `voiceRevision` instructions, and separate defaults from illustrative choices.
+
+#### W2-F5 — README misstates override lifetime
+- **Oracle Severity:** P2
+- **Family:** `provider-selection / documented-override-lifetime`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The runtime behavior is correct; only the wording is wrong.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into Wave 3 task 3.4. Document that overrides survive session switching, forking, and navigation, and end on restart, reload, or `reset`.
+
+#### W2-F6 — Invocation-snapshot regression coverage was removed
+- **Oracle Severity:** P3 (caller re-grades P1)
+- **Family:** `provider-selection / invocation-snapshot-test-retention`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** The Wave 1 caller correction for W1-F4 required this test as evidence for the "Speech provider selection" requirement (a running job is not affected by a change). Removing it leaves an accepted blocker fix unprotected.
+- **Decision:** `ACCEPT_BLOCKING`
+- **CORRECTION:** Restore the deferred-config-read regression, with the second invocation now expecting real Deepgram routing.
+
+### Summary
+- **Issues accepted blocking:** 3 (W2-F1, W2-F3, W2-F6)
+- **Issues accepted nonblocking:** 3 (W2-F2 to task 3.2; W2-F4 and W2-F5 to task 3.4)
+- **Issues deferred out of scope:** 0
+- **Issues rejected:** 0
+
+### Caller Result
+
+REVIEW_ACTION=PATCH
+CONSENSUS_STATUS=NEEDS_REVISION
+
+## Round 2 - Implementation Assignments
+
+Wave handled: 2 (remediation). Final gate reserved: task 2.4, reused in PATCH mode.
+
+| Assignment | Findings | Owner | Files and topics |
+| --- | --- | --- | --- |
+| W2-A (round 2) | W2-F1, W2-F3, W2-F6 | worker (replacement session) | `extensions/speak/speech-job.ts`, `deepgram.ts`, `test/speak/job.test.ts` |
+
+The worker session was aborted by the user before it returned a result. I reconciled its partial writes from the session transcript:
+
+- **W2-F1:** structured failure messages now go through one shared two-key redaction (`redactFailureMessage`) before display, and `deepgram.ts` redacts its own request key in every status message. Token-shaped key regressions cover both providers.
+- **W2-F3:** a Deepgram voice equal to the shipped placeholder, or without a two-letter language suffix, is refused before translation or synthesis. Tests cover both cases.
+- **W2-F6:** the deferred-config regression is restored, and its second invocation now expects real Deepgram routing.
+
+Its last actions were the final test and type-check runs. Caller verification of the partial writes:
+
+- The speak suite gives 276 tests, 276 pass, 0 fail.
+- The filtered type check prints nothing.
+- `git diff --check` is clean.
+
+I accept the writes as the complete Round 2 remediation.
+
+PATCH_BASELINE_REVISION=sha256:bf4f3271f24db78568e71bfb83e0baaba270d6d227b95260c14df03cb9bec694 (SHA-256 over `git diff 4a921fa -- extensions test openspec`, then path + NUL + bytes of extensions/speak/deepgram.ts)
+
+The digest is scoped to `extensions test openspec`. An unscoped `git diff` also covers this review log and `.pi/settings.json`, so it changes whenever either file is edited. That is why an earlier unscoped value (`sha256:92938e7a…`) was replaced before any Oracle run used it.
+
+Routing change from this point (user, 2026-10-09): use the claude-bridge preset for subagents, with only `worker` and `oracle` allowed. `worker` runs on `claude-bridge/claude-sonnet-5-5` (thinking high) and `oracle` on `claude-bridge/claude-opus-5-5` (thinking high). Earlier rounds ran on the project-configured `openai-codex` models.
+
+## Round 2 - Oracle Review
+
+Run `273fe546` (`claude-bridge/claude-opus-5-5`, thinking high, background). Entry appended verbatim by the caller.
+
+Mode: PATCH. Gate task 2.4 [Oracle gate: `oracle`] reused after the caller's PATCH. Owner mapping reviewed: W2-A (tasks 2.1–2.3, worker), plus the Round 2 remediation of W2-F1, W2-F3 and W2-F6 (worker replacement session, partial writes reconciled by the caller). Gate 2.4 is owned by `oracle`.
+
+**Baseline:**
+- I recomputed the digest with the recorded method: `git diff 4a921fa -- extensions test openspec`, then `extensions/speak/deepgram.ts`, a NUL byte, and that file's bytes.
+- It gives `sha256:bf4f3271f24db78568e71bfb83e0baaba270d6d227b95260c14df03cb9bec694`. This equals the latest `PATCH_BASELINE_REVISION`, both before and after the review.
+
+**Verification:**
+- `node --experimental-strip-types --test test/speak/*.test.ts`: 276 tests, 276 pass, 0 fail.
+- The filtered `npx tsc --noEmit` printed nothing.
+- `git diff --check -- extensions test openspec` is clean.
+- Extra checks ran only in a throwaway copy under `/tmp`, which was then deleted. They were one mutation run and one ad-hoc missing-key test. No repository file was modified and no network request was made.
+
+**Accepted blockers, verified fixed:**
+
+- **W2-F1 — `secret-redaction / structured-result-notification-bypass` — fixed.**
+  - `speech-job.ts:342–350` (`redactFailureMessage`) redacts both keys. `describeError` (352–355) and the display of structured synthesis failures (`speech-job.ts:552–553`) both go through it.
+  - `deepgram.ts:52–85` also redacts its own request key in every status message that includes provider detail.
+  - Tests at `test/speak/job.test.ts:207–234` use token-shaped keys (`elevenlabs_token`, `deepgram_token`) that pass the `/^[a-z_]{3,40}$/` filter in `bounded-request.ts:70`.
+  - Mutation check: with the shared redaction removed at `speech-job.ts:553`, the ElevenLabs token test fails. That test therefore protects the shared redaction point.
+
+- **W2-F3 — `provider-preflight / placeholder-voice-validation` — fixed to the caller's bar.**
+  - `speech-job.ts:420–432` refuses an empty voice, `SET_YOUR_AUTHORIZED_VOICE_ID`, and any voice without a `-[a-z]{2}` suffix. This runs inside generation preflight, before translation, cache lookup or synthesis.
+  - Tests at `test/speak/job.test.ts:305–336` cover both cases across `text`, `original` and localized speech. Each expects zero translation calls, zero fetches, zero player starts and no cache files.
+
+- **W2-F6 — `provider-selection / invocation-snapshot-test-retention` — fixed.**
+  - `test/speak/job.test.ts:376–408` brings back the deferred-config-read regression.
+  - An override set while the config read is held does not change the running job, which sends its request to `api.elevenlabs.io`. The next run sends its request to `api.deepgram.com`.
+
+**Whole-wave regression sweep:**
+
+- **Deepgram client:** confirmed sound.
+  - The origin is fixed; the request uses `/v1/speak?model=<voice>&encoding=mp3`, `Authorization: Token`, and a text-only JSON body (`deepgram.ts:96–117`).
+  - Redirects are rejected, there are no retries, and the audio is capped at 20 MiB.
+  - 413 maps to `too-long`, and 5xx and timeout messages say billing is unknown.
+- **Routing:** confirmed sound. ElevenLabs and Deepgram are chosen per job (`speech-job.ts:528–550`), and `job.test.ts:410–427` confirms no ElevenLabs request when Deepgram is selected.
+- **Limits:** confirmed sound. The provider ceiling is applied before length checks (`speech-job.ts:384–390`). It is shared by the source check and the translation output check (`translation.ts`, `validateLength`).
+- **Preflight:** confirmed sound.
+  - For localized speech the key is checked before translation (`speech-job.ts:402–409`). For other speech it is checked after the cache lookup and before synthesis (`speech-job.ts:517–524`).
+  - An ad-hoc test in the `/tmp` copy confirmed `DEEPGRAM_API_KEY is not set` with zero translation calls and zero fetches, for both `text` and localized speech.
+- **Aura language check:** confirmed sound. It applies only to localized speech, before translation (`speech-job.ts:434–445`), and `/speak original` skips it (`job.test.ts:429–439`).
+- **Cache key:** confirmed sound. Deepgram uses provider `deepgram`, its voice, model `aura`, `mp3`, and revision `0` (`speech-job.ts:487–512`). `job.test.ts:458` covers not reusing an ElevenLabs clip.
+- **Progress:** confirmed sound. The synthesis phase is labelled from `job.provider` (`speech-job.ts:278–286`), and `progress.test.ts:31` covers Deepgram.
+- **Translation-failure wording:** confirmed sound. `noSpeech` names the job's provider in every failure branch (`translation.ts:64–65`), and `job.test.ts:441–456` covers Deepgram.
+- **Status:** confirmed sound. The Deepgram voice is shown by suffix only, the model as `Aura voice model`, plus the input model and both key presences (`config.ts:479–503`).
+- **Replay:** confirmed sound. Replay runs preflight with generation checks off (`speech-job.ts:563`), and `job.test.ts:473` covers replay after selecting Deepgram.
+- **README:** no new defect beyond the carried-over W2-F4 and W2-F5. One P3 is recorded below.
+- **Unchanged:** ElevenLabs synthesis and `quota.ts` are unchanged.
+
+**Findings:**
+
+- **W2-F7 — P3 — `provider-preflight / selected-provider-key-test-coverage` — in scope.**
+  - Evidence: the spec's "Missing key for the selected provider" scenario (Deepgram selected, `DEEPGRAM_API_KEY` unset) has no Deepgram test. The only `DEEPGRAM_API_KEY is not set` checks in the code are `speech-job.ts:402–409` and `517–524`, and no file in `test/speak/` checks that message.
+  - The runtime behavior is correct: an ad-hoc test in the `/tmp` copy passed for both `text` and localized speech.
+  - SUGGESTED_CORRECTION: add a `job.test.ts` case with Deepgram selected and no `deepgramKey`, for both `text` and localized speech. It should expect the `DEEPGRAM_API_KEY is not set` message, zero translation calls and zero fetches. This can be folded into task 3.2's tests; it is not a Wave 2 blocker.
+
+- **W2-F8 — P3 — `documentation / consolidated-setup-guidance-loss` (W2-F4 family, evidence update) — not in Wave 2 scope.**
+  - Evidence: `extensions/speak/README.md:24` gives `"voiceId": "YOUR_VOICE_ID"` as the example ElevenLabs voice. `config.ts:159–165` rejects only `SET_YOUR_AUTHORIZED_VOICE_ID` and other `SET_` values, so a config copied from the README passes validation and preflight. Localized speech could then pay for a translation before ElevenLabs rejects the voice.
+  - This was already in the README at the Wave 2 base `4a921fa`.
+  - DEFERRED_REASON: this was already there before Wave 2 and is only a documentation problem, so it belongs with the carried-over W2-F4. In task 3.4, use the recognized placeholder `SET_YOUR_AUTHORIZED_VOICE_ID` in the example (or explain how to choose an authorized voice) when the setup guidance is restored.
+
+**Carried items, not re-graded:** W2-F2 (task 3.2), W2-F4 and W2-F5 (task 3.4) remain outside Wave 2 blocking scope. No new instance of them appeared.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 2, Round 2
+
+#### W2-F1, W2-F3, W2-F6 (accepted blockers from Round 1)
+- **Decision:** verified fixed. Oracle's evidence matches my re-run before dispatch: 276/276 tests pass, the filtered type check is clean, and `git diff --check` is clean.
+
+#### W2-F7 — No Deepgram missing-key test
+- **Oracle Severity:** P3
+- **Family:** `provider-preflight / selected-provider-key-test-coverage`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The runtime behavior matches the "Missing key for the selected provider" scenario, and only the regression test is missing.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into Wave 3 task 3.2. Add a `job.test.ts` case with Deepgram selected and no `deepgramKey`, for both `text` and localized speech, that expects `DEEPGRAM_API_KEY is not set`, zero translation calls and zero fetches.
+
+#### W2-F8 — README example voice passes validation
+- **Oracle Severity:** P3
+- **Family:** `documentation / consolidated-setup-guidance-loss` (W2-F4 family)
+- **In-scope:** `NO` (already at the Wave 2 base `4a921fa`)
+- **GOVERNING_SOURCE:** None reaching the blocking threshold.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into Wave 3 task 3.4 with W2-F4. The README config example uses the recognized placeholder `SET_YOUR_AUTHORIZED_VOICE_ID` for both providers' voices.
+
+### Terminal Baseline Validation
+
+- The current candidate equals the latest `PATCH_BASELINE_REVISION`: `sha256:bf4f3271f24db78568e71bfb83e0baaba270d6d227b95260c14df03cb9bec694`, recomputed by the caller after the Oracle run.
+- Wave 2 boundary (tasks 2.1–2.3, files listed in Rounds 1–2): unchanged.
+
+### Routing Policy Confirmed
+
+`claude-bridge` subagents run in the background only. A foreground child runs inside the parent Pi process without the parent's extensions, so `pi-claude-bridge` never records the child's replaced system prompt and every request fails with `prompt-capture: no capture for this … system prompt` (two failed foreground Oracle runs this round). A background child is its own Pi process, loads `pi-claude-bridge`, and records its own prompt; run `273fe546` completed this way. Steering still works for background runs.
+
+### Summary
+- **Issues accepted blocking:** 0 this round (3 fixed from Round 1)
+- **Issues accepted nonblocking:** 2 (W2-F7 to task 3.2; W2-F8 to task 3.4)
+- **Issues deferred out of scope:** 0
+- **Issues rejected:** 0
+
+### Caller Result
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
+
+Wave 2 is complete. Tasks 2.1–2.4 are marked done.

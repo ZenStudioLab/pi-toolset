@@ -6,6 +6,10 @@ import {
   synthesize,
   type SynthesisRequest,
 } from "../../extensions/speak/elevenlabs.ts";
+import {
+  synthesize as synthesizeDeepgram,
+  type DeepgramSynthesisRequest,
+} from "../../extensions/speak/deepgram.ts";
 import { API_KEY, audioResponse } from "./harness.ts";
 
 const request = (
@@ -229,6 +233,73 @@ test("a network error is reported without an automatic retry and without the key
   assert.equal(result.kind, "network");
   assert.doesNotMatch(result.message, new RegExp(API_KEY));
   assert.equal(calls.length, 1);
+});
+
+const deepgramRequest = (
+  overrides: Partial<DeepgramSynthesisRequest> = {},
+): DeepgramSynthesisRequest => ({
+  text: "Hello there.",
+  voice: "aura-2-thalia-en",
+  apiKey: API_KEY,
+  timeoutMs: 5000,
+  signal: new AbortController().signal,
+  ...overrides,
+});
+
+test("Deepgram sends one fixed Aura MP3 request and returns audio", async () => {
+  const { calls, fetchFn } = recordingFetch(async () => audioResponse());
+  const result = await synthesizeDeepgram(deepgramRequest(), fetchFn);
+  assert.ok(result.ok);
+  assert.deepEqual([...result.bytes], [1, 2, 3, 4]);
+  assert.equal(calls[0].url, "https://api.deepgram.com/v1/speak?model=aura-2-thalia-en&encoding=mp3");
+  assert.equal(calls[0].init.redirect, "manual");
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), { text: "Hello there." });
+  const headers = calls[0].init.headers as Record<string, string>;
+  assert.equal(headers.Authorization, `Token ${API_KEY}`);
+  assert.equal(headers["Content-Type"], "application/json");
+});
+
+for (const [name, response, kind, message] of [
+  ["JSON error document", () => new Response('{"error":"nope"}', { status: 200, headers: { "content-type": "application/json" } }), "bad-response", /not audio/],
+  ["redirect", () => new Response(null, { status: 302, headers: { location: "https://evil.example" } }), "redirect", /not followed/],
+  ["authentication failure", () => new Response("{}", { status: 401 }), "auth", /rejected the API key/],
+] as const)
+  test(`Deepgram ${name} is sanitized and not retried`, async () => {
+    const { calls, fetchFn } = recordingFetch(async () => response());
+    const result = await synthesizeDeepgram(deepgramRequest(), fetchFn);
+    assert.ok(!result.ok);
+    assert.equal(result.kind, kind);
+    assert.match(result.message, message);
+    assert.doesNotMatch(result.message, new RegExp(API_KEY));
+    assert.equal(calls.length, 1);
+  });
+
+test("Deepgram missing key makes no request", async () => {
+  const { calls, fetchFn } = recordingFetch(async () => audioResponse());
+  const result = await synthesizeDeepgram(deepgramRequest({ apiKey: "" }), fetchFn);
+  assert.ok(!result.ok);
+  assert.equal(result.kind, "auth");
+  assert.equal(calls.length, 0);
+});
+
+test("Deepgram timeout is unknown-billing and makes no ElevenLabs request", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const fetchFn = (async (url: string | URL, init?: RequestInit) => {
+    calls.push({ url: String(url), init: init ?? {} });
+    return new Promise<Response>((_resolve, reject) =>
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("timed out", "TimeoutError")), { once: true }),
+    );
+  }) as typeof fetch;
+  const keepAlive = setTimeout(() => undefined, 2000);
+  try {
+    const result = await synthesizeDeepgram(deepgramRequest({ timeoutMs: 20 }), fetchFn);
+    assert.ok(!result.ok);
+    assert.equal(result.kind, "timeout");
+    assert.match(result.message, /billed is unknown/);
+    assert.equal(calls.length, 1);
+  } finally {
+    clearTimeout(keepAlive);
+  }
 });
 
 test("redact removes every occurrence of the key", () => {

@@ -416,6 +416,10 @@ test("status reports both key presences and marks the speech override without va
   assert.match(text, /input language: vi-VN/);
   assert.match(text, /ELEVENLABS_API_KEY: present/);
   assert.match(text, /DEEPGRAM_API_KEY: present/);
+  assert.match(text, /model: Aura voice model/);
+  assert.match(text, /input model: nova-3/);
+  assert.doesNotMatch(text, /aura-2-thalia-en/);
+  assert.doesNotMatch(text, /^model:.*nova-3$/m);
   assert.doesNotMatch(text, /test-secret-key|deepgram-secret-value/);
   assert.equal(h.fetchCalls.length, 0);
 });

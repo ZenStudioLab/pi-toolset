@@ -58,7 +58,7 @@ export const audioResponse = (): Response =>
     headers: { "content-type": "audio/mpeg" },
   });
 
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 export interface CtxOptions {
   mode?: string;
