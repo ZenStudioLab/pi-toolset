@@ -8,7 +8,7 @@
   },
   "homepage": "https://github.com/ZenStudioLab/pi-toolset#readme",
   "bugs": { "url": "https://github.com/ZenStudioLab/pi-toolset/issues" },
-  "files": ["extensions/whimsical-activity/", "THIRD_PARTY_NOTICES.md"],
+  "files": ["extensions/whimsical-activity/", "extensions/subagent-profiles/", "THIRD_PARTY_NOTICES.md"],
   "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
   "license": "MIT",
   "author": "ZenStudioLab",
@@ -20,7 +20,7 @@
     "test": "node --experimental-strip-types --test test/whimsical-activity/*.test.ts test/speak/*.test.ts test/subagent-profiles/*.test.mjs",
     "check": "npm run typecheck && npm test"
   },
-  "pi": { "extensions": ["./extensions/whimsical-activity/index.ts"] },
+  "pi": { "extensions": ["./extensions/whimsical-activity/index.ts", "./extensions/subagent-profiles/index.ts"] },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",

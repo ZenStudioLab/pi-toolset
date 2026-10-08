@@ -15,6 +15,7 @@ Generated profiles carry a `$generatedBy` marker. Never hand-edit them; change t
 ```
 /gen-subagent-profiles           # check only: list stale profiles and unmanaged files
 /gen-subagent-profiles apply     # regenerate and write the profiles
+/gen-subagent-profiles show      # list every profile with its agents, models, and thinking levels
 /gen-subagent-profiles edit      # open presets.seed.mjs (the seed) in Emacs
 /gen-subagent-profiles usage     # open this README in Emacs
 ```
@@ -46,7 +47,10 @@ presets: {
 - `extends` inherits a preset; `agents` merge per role and per field.
 - A role without `model` uses the resolved preset's `defaultModel`.
 - `defaultModel` is required after inheritance. Preset names match `[A-Za-z0-9][\w.-]*`.
+- A preset cannot mix `claude-bridge/` and `anthropic/` models; the generator rejects it.
 
 ## After generating
 
 Load a profile with `/subagents-load-profile <name>` (user settings) or `/load-sub-agents <name>` (project settings). Verify the live mapping with `/subagents-models`.
+
+To view one profile in pi, type `/subagents-show-profile` and press Tab to pick a name from the list. It prints the agents, models, and thinking levels without calling any model. With no name, it prints every profile. `/subagents-check-profile <name>` also suggests names, but it probes each model, so it is slower.
