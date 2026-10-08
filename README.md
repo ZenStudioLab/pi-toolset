@@ -44,7 +44,7 @@ Stock mode shows one bundled word per agent loop with Pi's native spinner. It ad
 
 ### Optional advanced host
 
-For native saved settings, animation presets/colors, timed word rotation, width reservation, synchronous wait arbitration, and observed metadata, follow the [advanced host guide](extensions/whimsical-activity/host-patch/README.md). Only the documented patched 0.99.2 base is qualified. If the advanced registration API exists, it is authoritative even when it declines registration; stock never becomes a competing fallback.
+For native saved settings, animation presets/colors, timed word rotation, width reservation, synchronous wait arbitration, and observed metadata, follow the [advanced host guide](extensions/whimsical-activity/host-patch/README.md). The guide documents exact patched 0.99.2 and 1.1.0 bases and their verification limits. If the advanced registration API exists, it is authoritative even when it declines registration; stock never becomes a competing fallback.
 
 ### Troubleshooting
 
@@ -60,6 +60,8 @@ Tested with Node **22.19.0**:
 - Stock **0.99.2**: real released loader, agent lifecycle with an offline controlled provider, InteractiveMode/native editor and status rendering, cancellation/restoration, native prompts/retry/compaction, narrow widths, and packed-entry loading outside this repository. An isolated real CLI terminal startup/quit also checked the local trial command.
 - Published **0.87.1** development packages: actual loader/runner integration plus focused unit tests. This is not a full interactive rendering qualification of 0.87.1.
 - Advanced **0.99.2**, base `005af57d88ee23b33778f343a9595b32e67ff788` plus supplied patch: focused native lifecycle/render/preference regressions.
+
+Advanced **1.1.0**, base `abe508e1b89912adde45528136c3221eb69acdd7` plus supplied patch, was checked separately with Node 24.3.0: the host quality check passed, along with 2,918 coding-agent tests (50 skipped) and 351 toolset tests. See the [advanced qualification notes](extensions/whimsical-activity/host-patch/README.md#qualification) for broader-suite failures and manual-verification limits.
 
 Peer ranges follow Pi's host-provided-package convention; they are not a claim that every Pi version is tested. No live provider calls are needed for these checks. Stock uses normal Pi layout and can omit/truncate words at narrow widths; it does not reserve the advanced fixed slot.
 
