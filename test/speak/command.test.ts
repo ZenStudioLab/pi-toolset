@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { SPEAK_USAGE } from "../../extensions/speak/index.ts";
+import { SPEAK_USAGE, TALK_USAGE } from "../../extensions/speak/index.ts";
 import { VALID_CONFIG, answer, createHarness } from "./harness.ts";
 import {
   TRANSLATION_CONFIG,
@@ -261,21 +261,21 @@ const preflightFailures: [
   ],
   [
     "the placeholder voice",
-    { config: { ...VALID_CONFIG, voiceId: "SET_YOUR_AUTHORIZED_VOICE_ID" } },
+    { config: { ...VALID_CONFIG, providers: { elevenlabs: { ...VALID_CONFIG.providers.elevenlabs, voiceId: "SET_YOUR_AUTHORIZED_VOICE_ID" } } } },
     "text hello",
     /placeholder/,
   ],
   [
     "a missing model",
-    { config: { voiceId: VALID_CONFIG.voiceId, player: VALID_CONFIG.player } },
+    { config: { providers: { elevenlabs: { voiceId: "AbCdEf1234567890" } }, player: VALID_CONFIG.player } },
     "text hello",
-    /modelId is not set/,
+    /providers\.elevenlabs\.voiceId and providers\.elevenlabs\.modelId/,
   ],
   [
     "text over the limit",
     {},
     `text ${"a".repeat(10001)}`,
-    /10001 characters and the limit is 10000/,
+    /10001 characters and the elevenlabs limit is 10000/,
   ],
   [
     "a missing player",
@@ -339,4 +339,83 @@ test("a cache hit needs neither the API key nor a request, but a new text does n
   await h.controller.whenIdle();
   assert.match(h.messages(), /ELEVENLABS_API_KEY is not set/);
   assert.equal(h.fetchCalls.length, 1);
+});
+
+test("speech provider override reports, resets, and makes no request", async () => {
+  const h = await harness({
+    config: { ...VALID_CONFIG, provider: "elevenlabs" },
+  });
+  await h.run("provider deepgram");
+  assert.match(h.messages(), /speech provider: deepgram \(session override\)/);
+  await h.run("provider");
+  assert.match(h.messages(), /speech provider: deepgram \(session override\)/);
+  await h.run("provider reset");
+  assert.match(h.messages(), /speech provider: elevenlabs$/);
+  assert.equal(h.fetchCalls.length, 0);
+  assert.equal(h.spawnCalls.length, 0);
+});
+
+test("session navigation cleanup preserves both provider overrides until explicit reset", async () => {
+  const h = await harness({ config: { ...VALID_CONFIG, input: { provider: "deepgram" } } });
+  await h.run("provider deepgram");
+  await h.runTalk("provider elevenlabs");
+
+  for (const event of [
+    "session_before_switch",
+    "session_before_fork",
+    "session_tree",
+    "session_shutdown",
+  ]) {
+    h.events.get(event)!();
+    await h.run("provider");
+    assert.match(h.notices.at(-1)!.message, /speech provider: deepgram \(session override\)/);
+    await h.runTalk("provider");
+    assert.match(h.notices.at(-1)!.message, /input provider: elevenlabs \(session override\)/);
+  }
+
+  await h.run("provider reset");
+  await h.runTalk("provider reset");
+  await h.run("provider");
+  assert.match(h.notices.at(-1)!.message, /speech provider: elevenlabs$/);
+  await h.runTalk("provider");
+  assert.match(h.notices.at(-1)!.message, /input provider: deepgram$/);
+  quiet(h);
+});
+
+test("unknown provider names show usage and preserve the override", async () => {
+  const h = await harness();
+  await h.run("provider deepgram");
+  await h.run("provider openai");
+  assert.match(h.notices.at(-1)!.message, /Usage: \/speak provider/);
+  await h.run("provider");
+  assert.match(h.notices.at(-1)!.message, /deepgram \(session override\)/);
+  await h.runTalk("provider whisper");
+  assert.equal(h.notices.at(-1)!.message, TALK_USAGE);
+  await h.runTalk("provider");
+  assert.match(h.notices.at(-1)!.message, /input provider: deepgram/);
+  assert.equal(h.fetchCalls.length, 0);
+});
+
+test("status reports both key presences and marks the speech override without values", async () => {
+  const h = await harness({
+    deepgramKey: "deepgram-secret-value",
+    config: {
+      ...VALID_CONFIG,
+      providers: {
+        elevenlabs: VALID_CONFIG.providers.elevenlabs,
+        deepgram: { voice: "aura-2-thalia-en" },
+      },
+      input: { provider: "deepgram", language: "VI-vn" },
+    },
+  });
+  await h.run("provider deepgram");
+  await h.run("status");
+  const text = h.notices.at(-1)!.message;
+  assert.match(text, /speech provider: deepgram \(session override\)/);
+  assert.match(text, /input provider: deepgram/);
+  assert.match(text, /input language: vi-VN/);
+  assert.match(text, /ELEVENLABS_API_KEY: present/);
+  assert.match(text, /DEEPGRAM_API_KEY: present/);
+  assert.doesNotMatch(text, /test-secret-key|deepgram-secret-value/);
+  assert.equal(h.fetchCalls.length, 0);
 });

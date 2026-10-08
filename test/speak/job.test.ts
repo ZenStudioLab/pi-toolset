@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
-import { rm } from "node:fs/promises";
+import { readFile as fsReadFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import {
   API_KEY,
   VALID_CONFIG,
+  answer,
   audioResponse,
   createHarness,
 } from "./harness.ts";
+import { TRANSLATION_CONFIG, translationFixture } from "./translation-fixture.ts";
 
 type Harness = Awaited<ReturnType<typeof createHarness>>;
 const open: Harness[] = [];
@@ -262,6 +264,85 @@ for (const event of [
   });
 }
 
+const deepgramSpeechConfig = {
+  ...VALID_CONFIG,
+  providers: {
+    elevenlabs: VALID_CONFIG.providers.elevenlabs,
+    deepgram: { voice: "aura-2-thalia-en", sttModel: "nova-3" },
+  },
+  translation: TRANSLATION_CONFIG,
+};
+
+test("Deepgram selected by config refuses before translation, TTS, or cache writes", async () => {
+  const h = await harness({
+    config: { ...deepgramSpeechConfig, provider: "deepgram" },
+    deepgramKey: "deepgram-test-key",
+  });
+  const translation = translationFixture();
+  await h.run("", {
+    messages: answer("Hello from the configured provider."),
+    registry: translation.registry,
+  });
+  await h.controller.whenIdle();
+  assert.match(h.messages(), /Deepgram speech is not available yet/);
+  assert.match(h.messages(), /Nothing was sent/);
+  assert.equal(translation.calls.length, 0);
+  assert.equal(h.fetchCalls.length, 0);
+  assert.equal(h.spawnCalls.length, 0);
+  assert.deepEqual(await h.cacheFiles(), []);
+});
+
+test("a Deepgram speech override refuses before translation or TTS and affects no cache", async () => {
+  const h = await harness({
+    config: { ...deepgramSpeechConfig, provider: "elevenlabs" },
+    deepgramKey: "deepgram-test-key",
+  });
+  const translation = translationFixture();
+  await h.run("provider deepgram");
+  await h.run("", {
+    messages: answer("Hello from the session override."),
+    registry: translation.registry,
+  });
+  await h.controller.whenIdle();
+  assert.match(h.messages(), /Deepgram speech is not available yet/);
+  assert.equal(translation.calls.length, 0);
+  assert.equal(h.fetchCalls.length, 0);
+  assert.equal(h.spawnCalls.length, 0);
+  assert.deepEqual(await h.cacheFiles(), []);
+});
+
+test("a provider override changed during config loading affects only the next speech invocation", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reads = 0;
+  const h = await harness({
+    config: deepgramSpeechConfig,
+    deepgramKey: "deepgram-test-key",
+    readFile: async (path) => {
+      reads++;
+      await gate;
+      return fsReadFile(path, "utf8");
+    },
+  });
+  await h.run("text first invocation");
+  await h.until(() => reads === 1);
+
+  const override = h.run("provider deepgram");
+  release();
+  await override;
+  await h.until(() => h.children.length === 1);
+  assert.match(h.fetchCalls[0].url, /api\.elevenlabs\.io/);
+  h.children[0].finish(0);
+  await h.controller.whenIdle();
+
+  await h.run("text next invocation");
+  await h.controller.whenIdle();
+  assert.match(h.messages(), /Deepgram speech is not available yet/);
+  assert.equal(h.fetchCalls.length, 1);
+});
+
 test("status shows redacted configuration, key presence, job state, and cache usage without a request", async () => {
   const h = await harness();
   const child = await startPlaying(h);
@@ -278,7 +359,7 @@ test("status shows redacted configuration, key presence, job state, and cache us
   assert.match(after, /\(1 clips, 4 bytes\)/);
   for (const text of [during, after]) {
     assert.doesNotMatch(text, new RegExp(API_KEY));
-    assert.doesNotMatch(text, new RegExp(VALID_CONFIG.voiceId));
+    assert.doesNotMatch(text, new RegExp(VALID_CONFIG.providers.elevenlabs.voiceId));
   }
   assert.equal(h.fetchCalls.length, 1);
 });

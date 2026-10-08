@@ -41,7 +41,7 @@ test("loading registers only /speak and four cancel-only lifecycle handlers, usi
   }) as typeof fetch;
   try {
     const { commands, events, used } = load();
-    assert.deepEqual(commands, ["speak"]);
+    assert.deepEqual(commands, ["speak", "talk"]);
     assert.deepEqual([...events.keys()].sort(), [
       "session_before_fork",
       "session_before_switch",

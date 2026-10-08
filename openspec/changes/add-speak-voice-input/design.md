@@ -112,17 +112,29 @@ Each job fixes its provider settings when it starts. A speech job captures its c
 
 A Deepgram voice's language is the segment after its last hyphen (`aura-2-thalia-en` gives `en`). For localized `/speak`, this check runs before translation, so a mismatch costs nothing. `/speak original` and `/speak text` are not checked, because the extension doesn't know the language of that text.
 
-The Deepgram ceiling of 2,000 characters is recalled, not confirmed in the fetched documentation. Task 1.2 confirms it, and the orchestrator amends the spec value if it differs.
+The Deepgram ceiling of 2,000 characters is confirmed in the documentation (see Verified Provider Facts).
 
 ### D10. Shortcut
 
-`input.shortcut` is read once when the extension loads (a local file read, no network), defaulting to `alt+t`. If the config can't be read at load, the default is registered and the error is reported on first use. Task 1.2 checks that `alt+t` is free in this Pi version.
+`input.shortcut` is read once when the extension loads (a local file read, no network), defaulting to `alt+t`. If the config can't be read at load, the default is registered and the error is reported on first use. The user confirmed `alt+t` is free in Pi (see Verified Provider Facts).
+
+## Verified Provider Facts
+
+Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
+
+| Fact | Result | Source |
+| --- | --- | --- |
+| Deepgram Aura per-request text limit | 2,000 characters for Aura-2 and Aura-1; longer input returns HTTP 413 "Input Text Exceeded Character Limit" | https://developers.deepgram.com/docs/text-to-speech.md ("Input Text Limit"), https://developers.deepgram.com/docs/errors.md |
+| `detect_language` with Nova-3 on recorded audio | Supported for pre-recorded audio. With `model=nova-3`, Deepgram uses Nova-3 when it supports the detected language and otherwise falls back to the next model (Nova-2, then older) | https://developers.deepgram.com/docs/language-detection ("Model Selection") |
+| Vietnamese with Nova-3 | `vi` is listed for `nova-3` | https://developers.deepgram.com/docs/models-languages-overview |
+| ElevenLabs Scribe model id | `scribe_v2` is the model in ElevenLabs' own request example | https://elevenlabs.io/docs/api-reference/speech-to-text/convert |
+| `alt+t` free in Pi | Confirmed by the user | Review log `docs/plans/reviews/add-speak-voice-input-review.md` |
 
 ## Risks / Trade-offs
 
 - **Wrong or muted input device.** A recording can capture silence that is still uploaded and billed. → The level bar shows a flat line before the user stops, and Escape discards for free.
 - **Audio can't be recalled once sent.** → Nothing is sent without an explicit send (stopping a recording, or sending a held one), and a discard is always free.
-- **Deepgram facts recalled from memory** (the speech character limit, whether `detect_language` works with Nova-3 for recorded audio, the `scribe_v2` model id). → Task 1.2 checks the current documentation before the code depends on them, and the spec is amended if they differ.
+- **Provider facts can change after verification** (the speech character limit, language detection, model ids). → They were checked against current documentation on 2026-10-08 (Verified Provider Facts). Provider errors are surfaced sanitized rather than assumed away, and task 4.3's live check exercises them.
 - **Key conflicts:** `alt+t` may be taken by the terminal or by Pi, and Escape is shared with the editor. → The shortcut is configurable and checked in 1.2. Escape is consumed only while a recording is in progress or held.
 - **`PULSE_SERVER` can point at a remote audio server.** → It is kept, because local audio needs it. The README says audio routing is the operator's setting.
 - **Breaking config change.** → It affects only the user's own local file. The loader names the new location for every old key, and task 4.2 migrates the file with the user's approval.

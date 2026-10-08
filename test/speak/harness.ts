@@ -3,6 +3,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   rm,
   writeFile,
@@ -22,8 +23,12 @@ import type { TranslationFailureRecord } from "../../extensions/speak/translatio
 
 export const API_KEY = "test-secret-key-123";
 export const VALID_CONFIG = {
-  voiceId: "AbCdEf1234567890",
-  modelId: "eleven_flash_v2_5",
+  providers: {
+    elevenlabs: {
+      voiceId: "AbCdEf1234567890",
+      modelId: "eleven_flash_v2_5",
+    },
+  },
   player: { command: "fakeplayer", args: ["--play", "{file}"] },
 };
 
@@ -74,6 +79,8 @@ export async function createHarness(
   options: {
     config?: unknown;
     apiKey?: string | null;
+    deepgramKey?: string | null;
+    readFile?: (path: string) => Promise<string>;
     entryFailure?: boolean;
     widgetFailure?: boolean;
     entrySink?: (customType: string, data: TranslationFailureRecord) => void;
@@ -91,6 +98,8 @@ export async function createHarness(
   };
   if (options.apiKey !== null)
     env.ELEVENLABS_API_KEY = options.apiKey ?? API_KEY;
+  if (options.deepgramKey !== undefined && options.deepgramKey !== null)
+    env.DEEPGRAM_API_KEY = options.deepgramKey;
   if (options.config !== null) {
     await mkdir(join(dir, "config", "pi-speak"), { recursive: true });
     await writeFile(
@@ -131,6 +140,7 @@ export async function createHarness(
     fetchFn,
     spawnFn,
     now: Date.now,
+    readFile: options.readFile ?? ((path) => readFile(path, "utf8")),
   });
   const commands = new Map<string, Handler>();
   const events = new Map<string, () => void>();
@@ -189,6 +199,26 @@ export async function createHarness(
     await commands.get("speak")!(args, ctx);
   }
 
+  async function runTalk(args: string, ctxOptions: CtxOptions = {}) {
+    const cwd = ctxOptions.cwd ?? dir;
+    const session = SessionManager.inMemory(cwd);
+    const ctx = {
+      mode: ctxOptions.mode ?? "tui",
+      cwd,
+      modelRegistry: ctxOptions.registry,
+      ui: {
+        notify: (message: string, level?: string) => notices.push({ message, level }),
+        setStatus: (_key: string, text: string | undefined) => statuses.push(text),
+        setWidget: () => undefined,
+      },
+      isIdle: () => true,
+      hasPendingMessages: () => false,
+      sessionManager: session,
+      abort: () => aborts++,
+    } as unknown as ExtensionCommandContext;
+    await commands.get("talk")!(args, ctx);
+  }
+
   return {
     dir,
     env,
@@ -202,6 +232,7 @@ export async function createHarness(
     events,
     entries,
     run,
+    runTalk,
     get aborts() {
       return aborts;
     },

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import {
   playerArgs,
-  playerEnvironment,
+  childEnvironment,
   resolveExecutable,
   startPlayer,
   type SpawnFn,
@@ -40,14 +40,16 @@ test("the audio path stays one argument, whatever characters it has", async () =
   assert.deepEqual(exit, { kind: "finished" });
 });
 
-test("the ElevenLabs key is removed from the player's environment and nothing else is", async () => {
-  const clean = playerEnvironment({ ELEVENLABS_API_KEY: API_KEY, KEEP: "1" });
-  assert.deepEqual(clean, { KEEP: "1" });
+test("both provider keys are removed from the player's environment and audio settings stay", async () => {
+  const clean = childEnvironment({ ELEVENLABS_API_KEY: API_KEY, DEEPGRAM_API_KEY: "deep-secret", PULSE_SERVER: "pulse", KEEP: "1" });
+  assert.deepEqual(clean, { PULSE_SERVER: "pulse", KEEP: "1" });
   const exit = await run(
-    "process.exit(process.env.ELEVENLABS_API_KEY === undefined && process.env.KEEP === '1' ? 0 : 7)",
+    "process.exit(process.env.ELEVENLABS_API_KEY === undefined && process.env.DEEPGRAM_API_KEY === undefined && process.env.PULSE_SERVER === 'pulse' && process.env.KEEP === '1' ? 0 : 7)",
     "f",
     {
       ELEVENLABS_API_KEY: API_KEY,
+      DEEPGRAM_API_KEY: "deep-secret",
+      PULSE_SERVER: "pulse",
       KEEP: "1",
     },
   ).done;

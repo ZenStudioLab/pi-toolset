@@ -10,14 +10,25 @@ import {
   readApiKey,
 } from "../../extensions/speak/config.ts";
 
-const valid = { voiceId: "AbCdEf1234567890", modelId: "eleven_flash_v2_5" };
+const valid = {
+  providers: {
+    elevenlabs: { voiceId: "AbCdEf1234567890", modelId: "eleven_flash_v2_5" },
+  },
+};
 
 test("a minimal configuration gets the documented defaults", () => {
   const result = parseConfig(valid);
   assert.ok(result.ok);
   assert.equal(result.config.locale, "vi");
   assert.equal(result.config.translation, undefined);
-  assert.equal(result.config.outputFormat, "mp3_44100_128");
+  assert.equal(result.config.provider, "elevenlabs");
+  assert.equal(result.config.input.provider, "deepgram");
+  assert.equal(result.config.input.maxSeconds, 60);
+  assert.equal(result.config.input.shortcut, "alt+t");
+  assert.equal(result.config.providers.elevenlabs.outputFormat, "mp3_44100_128");
+  assert.equal(result.config.providers.elevenlabs.voiceRevision, 1);
+  assert.equal(result.config.providers.elevenlabs.sttModel, "scribe_v2");
+  assert.equal(result.config.providers.deepgram.sttModel, "nova-3");
   assert.equal(result.config.hardLimitChars, 10000);
   assert.equal(result.config.requestTimeoutMs, 45_000);
   assert.equal(result.config.cache.ttlDays, 7);
@@ -28,18 +39,16 @@ test("a minimal configuration gets the documented defaults", () => {
 
 const invalid: [string, unknown, RegExp][] = [
   ["not an object", [], /JSON object/],
-  ["missing voice", { modelId: "m_1" }, /voiceId is not set/],
   [
     "placeholder voice",
-    { ...valid, voiceId: VOICE_ID_PLACEHOLDER },
+    { providers: { elevenlabs: { ...valid.providers.elevenlabs, voiceId: VOICE_ID_PLACEHOLDER } } },
     /placeholder/,
   ],
   [
     "unsafe voice characters",
-    { ...valid, voiceId: "a/b/c/d/e/f" },
+    { providers: { elevenlabs: { ...valid.providers.elevenlabs, voiceId: "a/b/c/d/e/f" } } },
     /voiceId must be/,
   ],
-  ["missing model", { voiceId: valid.voiceId }, /modelId is not set/],
   [
     "limit above the ceiling",
     { ...valid, hardLimitChars: 10001 },
@@ -192,6 +201,47 @@ test("the API key comes only from the environment and is trimmed", () => {
   assert.equal(readApiKey({ ELEVENLABS_API_KEY: "   " }), undefined);
   assert.equal(readApiKey({}), undefined);
 });
+
+test("provider blocks and input settings are parsed independently", () => {
+  const result = parseConfig({
+    provider: "deepgram",
+    providers: {
+      elevenlabs: { voiceId: "AbCdEf1234567890", modelId: "eleven_flash_v2_5", sttModel: "scribe_v2" },
+      deepgram: { voice: "aura-2-thalia-en", sttModel: "nova-3" },
+    },
+    input: { provider: "elevenlabs", language: "VI-vn", maxSeconds: 300, shortcut: "ctrl+r" },
+  });
+  assert.ok(result.ok);
+  assert.equal(result.config.provider, "deepgram");
+  assert.equal(result.config.input.language, "vi-VN");
+  assert.equal(result.config.providers.deepgram.voice, "aura-2-thalia-en");
+});
+
+for (const [key, location] of Object.entries({
+  voiceId: "providers.elevenlabs.voiceId",
+  modelId: "providers.elevenlabs.modelId",
+  outputFormat: "providers.elevenlabs.outputFormat",
+  voiceRevision: "providers.elevenlabs.voiceRevision",
+})) {
+  test(`rejects old flat ${key} with its new location`, () => {
+    const result = parseConfig({ ...valid, [key]: "old-value" });
+    assert.ok(!result.ok);
+    assert.match(result.problem, new RegExp(`${key}.*${location}`));
+  });
+}
+
+for (const [name, input] of [
+  ["zero", { ...valid, input: { maxSeconds: 0 } }],
+  ["above maximum", { ...valid, input: { maxSeconds: 301 } }],
+  ["fractional", { ...valid, input: { maxSeconds: 1.5 } }],
+  ["malformed language", { ...valid, input: { language: "vi_VN" } }],
+] as const) {
+  test(`rejects ${name} input setting`, () => {
+    const result = parseConfig(input);
+    assert.ok(!result.ok);
+    assert.match(result.problem, /input\.(maxSeconds|language)/);
+  });
+}
 
 test("the status view shows only the voice suffix and whether a key exists", () => {
   const result = parseConfig(valid);

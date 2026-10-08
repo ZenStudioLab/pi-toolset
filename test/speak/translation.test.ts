@@ -11,8 +11,7 @@ import {
 
 function setup() {
   const parsed = parseConfig({
-    voiceId: "voice123",
-    modelId: "eleven_flash_v2_5",
+    providers: { elevenlabs: { voiceId: "voice123", modelId: "eleven_flash_v2_5" } },
     translation: TRANSLATION_CONFIG,
   });
   assert.ok(parsed.ok);
