@@ -2,7 +2,7 @@
 
 **Status:** Accepted for implementation; runtime qualification pending.
 **Owner:** Orchestrator.
-**Change:** [add-manual-speak-extension](../../openspec/changes/add-manual-speak-extension/design.md).
+**Change:** [add-manual-speak-extension](../../openspec/changes/archive/2026-10-08-add-manual-speak-extension/design.md).
 
 ## Context
 

@@ -1,10 +1,9 @@
-# Spec Delta
+# manual-speech Specification
 
 ## Purpose
-
 Lets a Pi user explicitly ask for a completed assistant answer, or text they supply, to be spoken in their own authorized cloned voice, while keeping the speech extension silent and free of provider spend during all other Pi activity. The locale amendment renders answer-based speech in a configurable target language without changing Pi's written conversation.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Speech occurs only on explicit request
 
@@ -122,16 +121,16 @@ For `/speak text <text>` the extension SHALL send the supplied wording unchanged
 
 ### Requirement: Single hard length limit
 
-The extension SHALL refuse to synthesize prepared text longer than 4000 characters, SHALL state the length and the limit, and SHALL NOT truncate it, split it across several requests, or substitute a summary. The configured `hardLimitChars` MAY lower this ceiling. For localized speech, apply the limit separately to the cleaned source before translation and the translated result before TTS, counting Unicode code points. Text at or below the limit SHALL proceed to remaining preflight checks without a confirmation prompt.
+The extension SHALL refuse to synthesize prepared text longer than 10000 characters, SHALL state the length and the limit, and SHALL NOT truncate it, split it across several requests, or substitute a summary. The configured `hardLimitChars` MAY lower this ceiling. For localized speech, apply the limit separately to the cleaned source before translation and the translated result before TTS, counting Unicode code points. Text at or below the limit SHALL proceed to remaining preflight checks without a confirmation prompt.
 
 #### Scenario: Oversized answer
 
-- **WHEN** the prepared text is 4001 characters
+- **WHEN** the prepared text is 10001 characters
 - **THEN** the extension refuses, reports the length and limit, suggests supplying shorter text with `/speak text`, and makes no provider request
 
 #### Scenario: Within limit
 
-- **WHEN** the prepared text is 4000 characters
+- **WHEN** the prepared text is 10000 characters
 - **THEN** the extension proceeds to preflight checks with no extra confirmation
 
 ### Requirement: Preflight before any billable request

@@ -2,7 +2,7 @@
 
 **Status:** Accepted for implementation; translation runtime qualification pending.
 **Owner:** Orchestrator.
-**Change:** [add-manual-speak-extension](../../openspec/changes/add-manual-speak-extension/design.md).
+**Change:** [add-manual-speak-extension](../../openspec/changes/archive/2026-10-08-add-manual-speak-extension/design.md).
 **Supersedes:** [ADR-0002](0002-manual-speech-egress-boundary.md) only in its restriction to one TTS network origin and no inference. All other decisions remain applicable.
 
 ## Context

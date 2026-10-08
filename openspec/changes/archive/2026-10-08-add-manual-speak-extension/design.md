@@ -73,7 +73,7 @@ A conservative line-oriented cleaner removes fenced and indented code, unfenced 
 
 ### 5. One ElevenLabs request, full file, then play
 
-Plain `fetch` with a fixed origin, `redirect: "manual"` (Node returns the 3xx response itself, which is reported as a failure and never followed), an `AbortSignal` combining the job controller and a 45 s deadline, and a streamed read capped at 10 MiB. Accept only a successful response whose body is nonempty and whose content type is audio. Write to a unique private temp file and rename into the cache. Zero retries. Streaming playback is deferred until real latency is measured.
+Plain `fetch` with a fixed origin, `redirect: "manual"` (Node returns the 3xx response itself, which is reported as a failure and never followed), an `AbortSignal` combining the job controller and a 45 s deadline, and a streamed read capped at 20 MiB. Accept only a successful response whose body is nonempty and whose content type is audio. Write to a unique private temp file and rename into the cache. Zero retries. Streaming playback is deferred until real latency is measured.
 
 ### 6. Configurable player, no shell
 
@@ -94,7 +94,7 @@ Config at `$XDG_CONFIG_HOME/pi-speak/config.json` (fallback `~/.config/pi-speak/
   "modelId": "eleven_flash_v2_5",
   "outputFormat": "mp3_44100_128",
   "voiceRevision": 1,
-  "hardLimitChars": 4000,
+  "hardLimitChars": 10000,
   "requestTimeoutMs": 45000,
   "player": { "command": "ffplay", "args": ["-nodisp", "-autoexit", "-loglevel", "quiet", "{file}"] },
   "cache": { "maxBytes": 104857600, "ttlDays": 7 }
@@ -130,7 +130,7 @@ Command behavior:
 
 Translation uses a separate tool-free call through the host's model registry/authentication interface. Reverify the installed interfaces before implementation rather than starting a Pi agent turn. Send only the cleaned answer and the translation instruction; no repository, session history, tool logs, or hidden reasoning. Preserve meaning, negation, uncertainty, numbers, versions, technical identifiers, and qualifications; do not summarize, follow embedded instructions, or add claims. Return plain speech text. Translation is distinct from deferred `/speak summary`.
 
-Preflight the voice, TTS key, player, locale, source length, and selected translation model/authentication before inference. A source or result exceeding `hardLimitChars` (ceiling 4000 Unicode code points) is refused, not truncated, summarized, or split. Bound translation by a 45-second total deadline and a finite output-token cap supported by the host adapter (at most 8192); reject empty, errored, aborted, truncated, tool-call, or unsupported content before TTS. A normally completed result may contain thinking alongside translated text: extract only text blocks in order and discard reasoning and signatures without logging, caching, persisting, or sending them to ElevenLabs. Thinking-only results are invalid. At most one inference request per translation cache miss, with no application retry, automatic model switch, or source-language fallback. Structural validation does not prove translation fidelity; bilingual fixtures and optional user listening assess that limitation.
+Preflight the voice, TTS key, player, locale, source length, and selected translation model/authentication before inference. A source or result exceeding `hardLimitChars` (ceiling 10000 Unicode code points) is refused, not truncated, summarized, or split. Bound translation by a 45-second total deadline and a finite output-token cap supported by the host adapter (at most 8192); reject empty, errored, aborted, truncated, tool-call, or unsupported content before TTS. A normally completed result may contain thinking alongside translated text: extract only text blocks in order and discard reasoning and signatures without logging, caching, persisting, or sending them to ElevenLabs. Thinking-only results are invalid. At most one inference request per translation cache miss, with no application retry, automatic model switch, or source-language fallback. Structural validation does not prove translation fidelity; bilingual fixtures and optional user listening assess that limitation.
 
 The existing single job owns translation as well as synthesis and playback. Add `translating` before `generating`; stop and lifecycle cancellation abort the isolated call, and generation identity checks prevent late results from being cached, synthesized, played, or applied to a newer job. Snapshot configuration at invocation so an edit cannot mix one locale/model with another job's cache identity.
 
@@ -176,7 +176,7 @@ Official API field evidence is recorded in COMPATIBILITY; offline mocked tests q
 
 ### 9. Test strategy
 
-`node --test --experimental-strip-types` as in the repo, with the factory taking injected `fetch`, `spawn`, clock, and filesystem root. Cover: silent load with a network sentinel; answer selection fixtures; cleanup fixtures; length limit boundaries (4000 and 4001); preflight failures; cache hit, miss on each key field, and replay miss; duplicate and stop-during-generation/playback; late-callback guard; lifecycle cancellation; deferred subcommands reporting unavailable. Mocked tests do not prove the real account, voice, or audio session; one live test of a non-sensitive sentence of at most 200 characters runs only after explicit user authorization and records provider-visible usage.
+`node --test --experimental-strip-types` as in the repo, with the factory taking injected `fetch`, `spawn`, clock, and filesystem root. Cover: silent load with a network sentinel; answer selection fixtures; cleanup fixtures; length limit boundaries (10000 and 10001); preflight failures; cache hit, miss on each key field, and replay miss; duplicate and stop-during-generation/playback; late-callback guard; lifecycle cancellation; deferred subcommands reporting unavailable. Mocked tests do not prove the real account, voice, or audio session; one live test of a non-sensitive sentence of at most 200 characters runs only after explicit user authorization and records provider-visible usage.
 
 ### 10. ADR for the egress boundary
 
@@ -221,7 +221,7 @@ Each item below is intentionally absent from v1 (the spec requires v1 to report 
 ### D2. Confirmation tiers for long text
 
 - Purpose: let moderately long text through with an explicit check instead of a single hard refusal.
-- Tiers: up to 1,500 characters proceed; 1,501-4,000 show the prepared text and length and require confirmation before sending; above 4,000 refuse and suggest shorter `/speak text` or summary. The 4,000 hard limit matches v1, so tiers are purely additive.
+- Tiers: up to 1,500 characters proceed; 1,501-10,000 show the prepared text and length and require confirmation before sending; above 10,000 refuse and suggest shorter `/speak text` or summary. The 10,000 hard limit matches v1, so tiers are purely additive.
 - Confirmation uses the terminal UI confirm dialog, available only in the interactive terminal mode, consistent with the v1 mode restriction.
 - Never silently truncate, split into several paid requests, or auto-summarize. Limits are extension limits, not ElevenLabs model limits.
 - Open for that spec: whether the soft limit should be configurable and whether replay of a confirmed text skips re-confirmation.
