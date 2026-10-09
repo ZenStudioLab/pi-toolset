@@ -199,7 +199,7 @@ Verification commands:
   - after the Round 4 proposal review, apply the caller's correction batch for H1, H2, M1–M5, L1 and L2 (see `docs/plans/reviews/add-speak-voice-input-review.md`).
 
   Verify with `openspec validate add-speak-voice-input --strict`.
-- [ ] 8.2 [worker] Add the settings and keys, per D16 and D17:
+- [x] 8.2 [worker] Add the settings and keys, per D16 and D17:
   - **Split `config.ts` first.** It is 579 lines. Move the parsing of the `input` settings into its own module along that boundary, so both files stay under 500 lines; verify with `wc -l`.
   - **Settings:**
     - `input.commandShortcut` (default `alt+m`) and `input.skillShortcut` (default `alt+i`), with the D10 list rules and uniqueness across all four shortcut settings;
@@ -210,7 +210,7 @@ Verification commands:
   - **Help and the status lines,** including the held line, name the new keys, as do the D16 notes on drafts and interactive commands.
 
   Verify with table cases in `test/speak/config.test.ts`, registration cases in `test/speak/silence.test.ts`, and help cases in `test/speak/command.test.ts`.
-- [ ] 8.3 [worker] Add command and skill matching and delivery, per D16:
+- [x] 8.3 [worker] Add command and skill matching and delivery, per D16:
   - a pure matcher in a new module, `extensions/speak/voice-command.ts`;
   - the command and skill stop modes in `talk.ts`, with no streaming for recordings started with these keys;
   - delivery of listed and unlisted targets into the editor, with warnings that never repeat the transcript.
@@ -229,7 +229,7 @@ Verification commands:
   - an empty transcript.
 
   Also add `test/speak/talk.test.ts` cases for every scenario of "Voice command and skill keys", and one streaming case to `test/speak/talk-stream.test.ts`.
-- [ ] 8.4 [worker] Update `extensions/speak/README.md`. Cover:
+- [x] 8.4 [worker] Update `extensions/speak/README.md`. Cover:
   - the command and skill keys;
   - aliases, including one for an interactive command such as `/model`, with its empty-editor rule;
   - that the draft becomes the arguments;
@@ -237,7 +237,7 @@ Verification commands:
   - the no-streaming rule.
 
   Verify that the config examples parse.
-- [ ] 8.5 [worker] Add hold Space to talk, per D17 and the "Hold Space to talk" requirement:
+- [x] 8.5 [worker] Add hold Space to talk, per D17 and the "Hold Space to talk" requirement:
   - **Detector:**
     - a new module with an injectable clock, timers and deferral (`setImmediate` in production);
     - given the registered push-to-talk keys at load;
@@ -282,7 +282,7 @@ Verification commands:
     - three Spaces typed by hand within 120 ms, or Spaces typed during a pause in Pi, count as a hold;
     - streaming with the stop phrase on;
   - that another key discards the recording.
-- [ ] 8.6 [Orchestrator] After 8.2–8.5, and with the user's approval, set `input.holdSpace: true` in the user's config, with a backup first. Verify it with `parseConfig`.
+- [x] 8.6 [Orchestrator] After 8.2–8.5, and with the user's approval, set `input.holdSpace: true` in the user's config, with a backup first. Verify it with `parseConfig`.
 - [ ] 8.7 [User] Live checks:
   - `alt+m`, then "opsx apply loop" with arguments;
   - `alt+i`, then a skill name;

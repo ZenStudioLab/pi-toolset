@@ -1897,3 +1897,16 @@ The worker run `ac80de27` is terminal and completed.
   - 8.6 waits for the user's approval of the config change;
   - 8.7 is unverified;
   - gate 8.8 runs after 8.6.
+
+### W8-B (orchestrator), task 8.6
+
+- **Approval:** the user approved the change ("setup this for me").
+- **Backup:** `~/.config/pi-speak/config.json.bak-20261009-141700`.
+- **Change:** `input.holdSpace: true` was added. The diff is the single added key; formatting is kept at a two-space indent.
+- **Check with `parseConfig`:**
+  - the result is `ok`, with `holdSpace: true`;
+  - the shortcut lists are unchanged;
+  - the command key is `["alt+m"]` and the skill key is `["alt+i"]`;
+  - `stopOnPhrase: true`, language `vi`;
+  - no keys or voice IDs were printed.
+- **Tasks:** 8.2–8.6 are ticked. 8.7 (the user's live checks) and the 8.8 gate remain.
