@@ -216,9 +216,9 @@ The detector is its own module, with an injectable clock, timers and deferral (`
 **Reading input.** The detector classifies each input it sees:
 - **Space press or repeat:** an input that is a single space.
 - **Space release:** a key-release event whose key is Space (`isKeyRelease` together with a Space match).
-- **Ignored** (a closed list): release events of keys other than Space, and input that starts with ESC, is not a bracketed paste, and that pi-tui's `parseKey` cannot decode, such as terminal replies. These are never counted, and never end or stop anything.
+- **Ignored** (a closed list): release events of keys other than Space, and the terminal's cell-size reply `CSI 6;<h>;<w> t`, the only terminal reply Pi 1.1.0 passes to extension input listeners (`pi-tui/dist/tui.js:603,702`). These are never counted, and never end or stop anything.
 - **Passed through:** Escape and the registered push-to-talk keys (`matchesKey` against the load-time list). They pass unchanged, so their own handlers act.
-- **Other input:** everything else, including text in any script, such as a Vietnamese letter, and bracketed paste. A paste is recognized first, by its `\x1b[200~` start. Because other input only discards (below), anything misclassified ends in a discard, never in a send.
+- **Other input:** everything else, including text in any script, such as a Vietnamese letter, keys `parseKey` cannot decode (such as Ctrl+F5 or media keys), and bracketed paste. A paste is recognized first, by its `\x1b[200~` start. Because other input only discards (below), anything misclassified ends in a discard, never in a send.
 
 **Recognition.** A Space press within 120 ms of the previous Space is a repeat, and the second repeat in a row recognizes a hold. In the probed terminal that is the fourth Space: the press, the first auto-repeat after about 0.5 s, then two repeats 30 ms apart. Every Space before recognition reaches the editor. The *counted run* is the number of Spaces this listener passed to the editor since the last input that was not a Space.
 
@@ -285,7 +285,7 @@ Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
 - **A wrong "release" could send a partial dictation** (ADR-0008). → A quiet gap ends a hold only after pending input is read, another key discards the recording, release events of other keys are ignored, and the release acts only on the recording that hold started. Losing window focus while holding still counts as letting go; this is a documented limit.
 - **Holding Space in a selector or dialog starts a recording** (ADR-0008), because the input listener runs before every component. → It is off by default. The status line shows the recording, and Escape discards it before the release.
 - **A misheard command name** (ADR-0007). → The result goes into the editor and runs only on Enter. Matching never guesses between equal names, and aliases fix names that are hard to transcribe.
-- **Cost:** Deepgram and ElevenLabs bill per audio second. → The time cap (120 s by default, at most 300) bounds a recording's length, and a recording held at the cap is never sent without a press.
+- **Cost:** Deepgram and ElevenLabs bill per audio second. → The time cap (120 s by default, at most 300) bounds a recording's length, and a recording held at the cap is never sent without a press or, for a Space hold, letting go of Space.
 
 ## Migration Plan
 

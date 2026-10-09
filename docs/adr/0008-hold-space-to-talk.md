@@ -24,9 +24,9 @@ A probe in the user's terminal (Ghostty on Linux, `TERM_PROGRAM=ghostty`) on 202
 - **still starting:** it is cancelled;
 - **already ended in any other way:** nothing happens.
 
-**Typing during a hold discards the recording.** Another key stops Space's key repeat, so a release could no longer be told apart from the typing. That key reaches the editor, and the hold's recording is discarded exactly as Escape discards it; nothing is sent, and with the stop phrase off nothing is uploaded. With the stop phrase on, audio already streamed is not recalled. The hold then just consumes Spaces until it ends. Escape and the push-to-talk keys, including the command and skill keys, behave as usual. Only key releases other than Space's and undecodable terminal replies are ignored; any other input, including text in any script, counts as typing. This adds no new way for audio to leave the machine and no new held state.
+**Typing during a hold discards the recording.** Another key stops Space's key repeat, so a release could no longer be told apart from the typing. That key reaches the editor, and the hold's recording is discarded exactly as Escape discards it; nothing is sent, and with the stop phrase off nothing is uploaded. With the stop phrase on, audio already streamed is not recalled. The hold then just consumes Spaces until it ends. Escape and the push-to-talk keys, including the command and skill keys, behave as usual. Only key releases other than Space's and the terminal's cell-size reply are ignored; any other input, including text in any script, counts as typing. This adds no new way for audio to leave the machine and no new held state.
 
-**Lifecycle.** The setting is read at load and applies after `/reload`. The listener is subscribed on every session start, because Pi drops it when a session is replaced. A session change discards the hold's recording and clears its timers, and the spent hold stays unrecognizable until Space is released.
+**Lifecycle.** The setting is read at load and applies after `/reload`. The listener is subscribed on every session start, because Pi drops it when a session is replaced. A session change discards the hold's recording and clears its timers. The spent hold then ends at the first input arriving more than 300 ms after its last Space, and that input is handled normally.
 
 ## Consequences
 

@@ -853,3 +853,197 @@ PATCH_BASELINE_REVISION=sha256:0d77fe153ebaca8c48dd0acc055d87446bd4fabea684d727b
   - ADR-0008: the removal wording, the upload claim, the merge, freeze-queued Spaces and the input classes.
   - Task 8.5: tests and the README list.
 - **This is Round 4, the last of this sequence.** The caller will emit `PASS` if no accepted blocker remains, otherwise `HUMAN_DECISION`.
+
+---
+
+## Round 4 - Oracle Review
+
+### Baseline and mode
+
+**Mode: PATCH; Round 4 of at most 4 in this sequence.** I recomputed the SHA-256 over UTF-8 relative path + NUL + file bytes, in the inclusion predicate's seven-file order:
+
+    sha256:0d77fe153ebaca8c48dd0acc055d87446bd4fabea684d727b4769a07a7c53ebf
+
+It equals the caller's Round 3 `PATCH_BASELINE_REVISION`. The target, source, inclusion predicate and exclusions are unchanged, and I did not widen them. `git diff 47446d8 80cb230` shows that only `design.md`, the voice-input spec, `tasks.md` and ADR-0008 changed; the proposal, the manual-speech spec and ADR-0007 are byte-identical to the Round 3 candidate.
+
+**Coverage:**
+- All four changed files, read in full where Wave 8 is concerned (D17 and Risks, "Hold Space to talk" and the lifecycle requirement, task 8.5–8.8, ADR-0008). The unchanged files were swept again only for Wave 8 statements that the Round 3 edits could contradict.
+- Pi 1.1.0 `pi-tui`, read and exercised locally with `node` (no network):
+  - `keys.js`: `parseKey` (999), `parseKittySequence` (417, with `funcCodes` at 453 covering only 2, 3, 5, 6, 7 and 8), `isKeyRelease` (363);
+  - `tui.js:675–746`, the input path: color replies and color-scheme reports are consumed before the listeners (679, 682); the listeners run at 687; the cell-size reply is consumed only afterwards (702, queried at 603);
+  - `terminal.js`: keyboard flags 7 (12–14), the paste re-wrapped as one `\x1b[200~…\x1b[201~` chunk (174–176), program-status and keyboard-negotiation replies consumed before input (153–160, 246–257), and no focus or mouse reporting;
+  - `stdin-buffer.js:163–220`: input that does not start with ESC is split into single characters.
+
+No network was used, the config file was not read, and no repository tests were run. The only file changed is this log.
+
+### Round 3 corrections: verification
+
+| Item | Where it is now | Status |
+| --- | --- | --- |
+| R3-M1: closed ignored list, everything else is other input, paste first | D17 `design.md:219, 221`; spec `:362, 368`; scenarios `spec.md:429–437`; `ADR-0008:27`; tests `tasks.md:261` | **Applied in D17, the spec and ADR-0008, with tests.** It is not carried into task 8.5's class list (`tasks.md:246`). The closed list's second part still covers real keys that Pi cannot decode. Both points are tracked as the recurring R3-M1 below. |
+| R3-L1: ADR-0008 removal wording, merge, freeze-queued Spaces; README | `ADR-0008:19, 38, 39`; `tasks.md:281` | **Applied.** The README list still leaves out the hand-typed accidental hold (R4-L1). |
+| R3-L2: "nothing is uploaded" while streaming | `ADR-0008:27`; `spec.md:426–427` | **Applied and consistent** with `spec.md:446`. |
+| R3-L3: reset ending; "Draftx" | `design.md:233`; `spec.md:370`; scenario `:424–427`; test `tasks.md:262` | **Applied.** The test still has no expected result, and `ADR-0008:29` keeps the older wording (R4-L2). |
+| R3-L4: held line at the cap says releasing Space sends | `design.md:246`; `spec.md:372` | **Applied.** No task 8.5 case checks it, and one risk line still says "never sent without a press" (R4-L2). |
+
+**Feasibility of the closed list against Pi 1.1.0.** Every class can be implemented exactly as written:
+- A paste reaches the listener as one chunk starting with `\x1b[200~` (`terminal.js:174–176`). `parseKey` returns `undefined` for it and `isKeyRelease` returns `false`, so checking for paste first is both possible and necessary.
+- A Vietnamese letter typed as plain text reaches the listener as one character that does not start with ESC (`stdin-buffer.js`). It falls outside the ignored list and is therefore other input.
+- Under flags 7 its release reports as `\x1b[7889;1:3u`. `isKeyRelease` returns `true` for that, so it is correctly ignored.
+- The cell-size reply `\x1b[6;20;10t` starts with ESC and `parseKey` cannot decode it, so it is ignored.
+
+### Family check: `hold-space / detector-controller-identity`
+
+**It does not recur.** The Round 3 edits leave the handle, the `send`/`discard` table (`design.md:237–244`) and the spent state untouched. The one new rule, the reset ending (`design.md:233`; `spec.md:370`), runs only after a reset, and a reset has already ended the handle's recording (the table's last row). That ending therefore calls nothing, or acts on a recording that is already over, and "that input is then handled normally" begins an ordinary new count. No ending can act on a different recording, or on the same recording twice.
+
+### Findings
+
+#### R3-M1 (recurring variant) — Medium: the "ignored" class still covers real keys that Pi cannot decode, and task 8.5 still states the old predicate
+
+- **Family / root:** `hold-space / release-inference`, the same root as R3-M1 (the ignored class captures real user input, so a keypress can end in a send). I track it as the same issue, not a new one. It is not structural: one predicate and one task line fix it. It is not `detector-controller-identity`.
+- **In scope:** Yes (D17 Reading input, the "Hold Space to talk" requirement, task 8.5).
+- **Evidence:**
+  - **(a) Real keys inside the closed list.** Ignored includes "input that starts with ESC, is not a bracketed paste, and that pi-tui's `parseKey` cannot decode" (`design.md:219`; `spec.md:362`). Run against Pi 1.1.0's `parseKey` with the Kitty protocol active, these real key presses return `undefined`:
+    - modified function keys, `\x1b[15;2~` and `\x1b[15;5~` (Shift or Ctrl+F5), because `funcCodes` covers only 2, 3, 5, 6, 7 and 8 (`keys.js:453`);
+    - `\x1b[1;5P` (Ctrl+F1) and the Kitty F1/F2 forms `\x1b[P` and `\x1b[Q`;
+    - F13 and above (`\x1b[57376u`), Menu, Pause and Print Screen (57361–57363), and media and volume keys (57428 and up);
+    - Ctrl or Alt with a non-Latin letter (`\x1b[7889;5u`).
+
+    Each is ignored and the editor inserts nothing, but pressing it stops Space's key repeat. The quiet gap then ends the hold about 300 ms later, and `endHold(handle, "send")` sends the dictation while Space is still held. That contradicts the rationale at `design.md:235` and `ADR-0008:27` (another key stops the repeat, so the recording is discarded). It also falsifies the new guarantee at `design.md:221`: "anything misclassified ends in a discard, never in a send". This is a gap in my own Round 3 suggestion, which used the `parseKey` test as a stand-in for "terminal reply".
+  - **What actually reaches the listener:** in Pi 1.1.0 the only terminal reply that reaches an extension input listener during normal use is the cell-size reply `CSI 6;<h>;<w>t`. It is queried at `tui.js:603` and consumed only after the listeners, at `tui.js:702`. Color replies and scheme reports are consumed before the listeners (`tui.js:679, 682`), and program-status and keyboard-negotiation replies in `terminal.js:153–160, 246–257`. Pi turns on no focus or mouse reporting. The broad `parseKey` test therefore buys nothing beyond that one reply.
+  - **(b) Task 8.5 still has the pre-fix predicate.** `tasks.md:246` reads "ignored (not decodable by `parseKey` and not printable)". That is the wording R3-M1 rejected, in the artifact the worker carries out. The test at `tasks.md:261` would catch the Vietnamese-letter case, but the task's own class list contradicts D17 and the spec. "bracketed paste" also appears twice in the test list (`tasks.md:261, 266`).
+  - **Consequence and calibration:** no typed text is changed and nothing is sent that the user was not already dictating to send. The harm is an early send of a possibly partial dictation, the same class as the documented focus-loss limit (`design.md:252`). The keys involved are rare during dictation, and many media keys are taken by the desktop before they reach the terminal. That puts it below High. Under `"interrupt"`, though, a partial message can redirect a running turn (`design.md:285`), so it is more than wording.
+- **SUGGESTED_CORRECTION:**
+  1. Narrow the ignored list to what Pi actually delivers. Ignored is release events of keys other than Space, plus the cell-size reply `CSI 6;<h>;<w>t`; everything else is other input. Unknown replies then discard, which is the safe direction. Apply this in `design.md:219`, `spec.md:362` and `ADR-0008:27`, and delete or qualify the "never in a send" sentence at `design.md:221`.
+  2. Name the cell-size reply in the scenario at `spec.md:434–437`.
+  3. Replace `tasks.md:246` with the D17 classes. Add a test: a modified function key (`\x1b[15;5~`) during an engaged hold, then the quiet gap, discards and sends nothing. Drop the duplicate "bracketed paste" at `tasks.md:266`.
+  4. If the caller would rather keep the `parseKey` test, list instead "keys Pi cannot decode (modified function keys, F13 and above, media keys) act like focus loss: the hold sends after 300 ms" among the limits in D17, ADR-0008 and the README. Then remove the "never in a send" sentence, and fix `tasks.md:246` all the same.
+
+#### R4-L1 — Low: the README list in task 8.5 leaves out the hand-typed accidental hold
+
+- **Family / root:** `hold-space / recognition-precision` (R3-L1 lineage).
+- **In scope:** Yes.
+- **Evidence:** D17 says the limits are "stated in ADR-0008 and the README" (`design.md:250`). Its accidental-hold limit has two cases: three Spaces typed within 120 ms, and Spaces arriving together after a pause (`design.md:254`; `ADR-0008:39`). The README list in task 8.5 names only the pause case (`tasks.md:281`), and it also leaves out "letting go within 0.5 s sends nothing" with the streaming caveat.
+- **SUGGESTED_CORRECTION:** replace `tasks.md:281` with "accidental holds: three fast Spaces typed by hand, or Spaces that arrive together after a pause in Pi; letting go within 0.5 s sends nothing, but with the stop phrase on the audio may already have streamed".
+
+#### R4-L2 — Low: three small leftovers from R3-L3 and R3-L4
+
+- **Family / root:** `verification-coverage / wave8-live-and-docs` (R3-L3), with `wave8-propagation / entry-points-modes-and-privacy` (R3-L4).
+- **In scope:** Yes.
+- **Evidence:**
+  - The test "a hold ended by arrival time after a session reset" (`tasks.md:262`) has no expected result, and the scenario "Session replaced during a hold" (`spec.md:439–442`) does not say what a later tap does. `ADR-0008:29` still says the spent hold "stays unrecognizable until Space is released". That is true on terminals that report a release, but it is not the arrival-time rule of `design.md:233` and `spec.md:370`.
+  - The held line saying "release Space to send" (`design.md:246`; `spec.md:372`) has no task 8.5 case; "Display: the status line and help" (`tasks.md:255`) is generic.
+  - The Cost risk says "a recording held at the cap is never sent without a press" (`design.md:288`). With the setting on, letting go of Space sends a held recording that a hold started (`design.md:243`; `ADR-0008:23`). That is still an explicit action, but it is not a press.
+- **SUGGESTED_CORRECTION:**
+  - Add the expected result to `tasks.md:262`: the session is replaced during a hold, Space is released, and a tap one second later types one space.
+  - Align `ADR-0008:29` with `design.md:233`.
+  - Add a task 8.5 case: a hold-started recording reaches the cap, the held line says releasing Space sends, and the release sends it.
+  - Say "never sent without an explicit press or Space release" at `design.md:288`.
+
+### Regression sweep: checked and found sound
+
+- **Paste first, then releases, then the cell-size reply.** The order is implementable. `isKeyRelease` already refuses paste chunks (`keys.js:367–369`), so a paste containing ":3u" cannot be read as a release.
+- **Text in any script:** non-ESC input reaches the listener one character at a time (`stdin-buffer.js:212–215`), so a Vietnamese letter, a decomposed letter's combining marks, and a letter committed by an input method are each other input and discard. "Text in another script during a hold" holds as written.
+- **Send key during a hold:** CSI-u push-to-talk presses such as `\x1b[116;3u` decode, and their releases are releases. Neither falls into the parseKey leg, so suggestion 1 does not affect "Send key during a hold".
+- **Egress sentence and privacy:** `spec.md:60`, the Round 3 wording at `ADR-0008:27` and `spec.md:426–427`, and the privacy requirement at `spec.md:446` agree that a discard sends nothing and, with the stop phrase on, cannot recall audio already streamed.
+- **Reset ending:** "that input is handled normally" never consumes a typed character after a reset. A Space more than 300 ms later starts a new count, and Space still held across a reset (repeats every 30 ms) keeps the hold spent, matching "no recording starts on the later repeats" (`spec.md:441–442`).
+- **Unchanged files:** the proposal, the manual-speech help requirement and ADR-0007 are byte-identical to the candidate Round 3 found sound. Nothing in the Round 3 edits contradicts them.
+
+### Recommendation
+
+R3-M1's fix is right where the contract is decided: D17, the spec and ADR-0008 now make "other input" the default, and a Vietnamese letter or a paste discards. Two things are left, both cheap.
+- **The ignored list is still too broad.** Its `parseKey` test also catches real keys that Pi cannot decode. These are rare keys, and the harm is an early send of the user's own dictation rather than typed text being sent, so I keep it at Medium. Narrowing the list to the one reply Pi actually delivers, the cell-size reply, makes the "never in a send" guarantee true and removes the special case.
+- **Task 8.5's class list still carries the old predicate.** It is a one-line fix.
+
+R4-L1 and R4-L2 are documentation and test-coverage items. No finding is Critical or High, the `detector-controller-identity` family does not recur, and nothing is structural. If the caller applies these suggestions as nonblocking corrections, the candidate changes and its new revision needs to be recorded before any terminal action. No fifth review is needed for edits of this size. No implementation handoff is warranted from this review.
+
+### Residual risks
+
+- **Terminals other than the probed Ghostty setup** may send Space repeats or text differently. The contract fails safe (no hold is recognized, or the input discards), but this is not verified live.
+- **Repeat resuming after another key** (Round 3 residual) is unchanged and not probed.
+- **The cell-size reply as the only listener-visible reply** is true of Pi 1.1.0 as read here. A later Pi that adds new replies would make them other input, which discards and does not send.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+---
+
+## Caller Assessment — Round 4
+
+### Review Mode
+- `change_bundle`
+
+### Convergence Mode
+- `PATCH` (Round 4 of 4). The candidate `sha256:0d77fe15…3ebf` was verified by the Oracle.
+
+### Review Subject
+- `add-speak-voice-input`, Wave 8. Oracle run `d2751b56`.
+
+### Per-Issue Evaluation
+
+#### R4-M1 — Real keys could still be "ignored" (an R3-M1 leftover), and task 8.5 kept the old rule
+- **Oracle Severity:** Medium
+- **Family:** `hold-space / release-inference`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The harm is an early send of a dictation the user started to send, with no typed text sent, comparable to the documented focus-loss limit.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** applied as follows.
+  - "Ignored" is now only the releases of keys other than Space plus the cell-size reply `CSI 6;<h>;<w> t`, the only reply Pi 1.1.0 passes to extension listeners (`tui.js:603,702`, per the Oracle's local check).
+  - Undecodable keys are other input, so the design's statement that a misclassification can only discard now holds.
+  - The change is made in D17, the spec and ADR-0008.
+  - Scenarios: "Terminal reply" is updated, and "Undecodable key during a hold" is added.
+  - The task 8.5 rule and its tests are corrected, and the duplicate paste case is removed.
+
+#### R4-L1 — README list misses hand-typed holds
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** added to the README list in task 8.5.
+
+#### R4-L2 — Small gaps
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** applied as follows.
+  - The after-reset test now states its expected result.
+  - The ADR-0008 lifecycle wording matches the rule that a spent hold ends at the first input arriving more than 300 ms after its last Space.
+  - A test of the held line at the time cap is added to task 8.5.
+  - The cost risk now covers sending on Space release.
+
+### Summary
+- **Issues accepted blocking:** 0
+- **Issues accepted nonblocking:** 3
+- **Issues deferred out of scope:** 0
+- **Issues rejected:** 0
+- **Sequence total:**
+  - accepted blocking: 4, all fixed (R1-M1 and R1-M2 raised to High, R2-H1 through the single rebuild, R3-M1 raised to High);
+  - the `hold-space / detector-controller-identity` family did not recur after the rebuild (Rounds 3 and 4).
+
+### Terminal Baseline Validation
+
+- The nonblocking corrections above changed the candidate after Round 4. As the Oracle advised, the new revision is recorded before the terminal action:
+
+  PATCH_BASELINE_REVISION=sha256:c84c80670a4bb06a8fae903d602a6a7ffb7a4787123d9087241face167d2d803
+
+- **Unchanged boundary:** `BASELINE_TARGET`, `BASELINE_SOURCE`, `BASELINE_INCLUSION_PREDICATE` and `BASELINE_EXCLUSIONS` are unchanged from the Frozen Baseline and the rebuild record.
+- **Current candidate:** it equals the latest recorded revision above, as the caller recomputed after the edits.
+- **Validation:** `openspec validate add-speak-voice-input --strict` passes.
+- **No fifth review:** the post-review edits are wording and test lists in families already reviewed. No accepted blocking finding remains, and the cap allows no Round 5.
+
+### Caller Result
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
+
+### Carry-forward for `/opsx-apply-loop`
+
+- **Routing:**
+  - Selected reviewer: `oracle`, on `claude-bridge/claude-opus-5-5:high`.
+  - Default implementation specialist: `worker`, on `claude-bridge/claude-sonnet-5-5:high`.
+  - Both run only in the background.
+  - Focus mode: `focus`. Orchestrator mode: `normal`.
+  - The user limits delegation to `worker` and `oracle`.
+- **Wave 8 owners:**
+  - tasks 8.2–8.5: `worker`, grouped as one focus assignment;
+  - task 8.6: orchestrator, with the user's approval;
+  - task 8.7: the user;
+  - task 8.8: the `oracle` gate.
+- **Residual risks, for the live checks:**
+  - a terminal that resumes Space's repeat after another key is released can start a new hold;
+  - key-repeat behaviour outside the probed Ghostty setup is unknown;
+  - Vietnamese input methods are unknown.

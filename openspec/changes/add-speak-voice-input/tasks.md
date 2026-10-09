@@ -243,7 +243,7 @@ Verification commands:
     - given the registered push-to-talk keys at load;
     - subscribed on each interactive `session_start`, with its timers cleared on shutdown and session changes;
     - a module-level spent state that survives those resets.
-  - **Input classes:** Space press, Space release, ignored (not decodable by `parseKey` and not printable), passed through, and other input.
+  - **Input classes:** Space press, Space release, ignored (only other keys' releases and the cell-size reply `CSI 6;<h>;<w> t`), passed through, and other input.
   - **Controller entry points:**
     - `startHold()` (fully idle only) returns a handle that survives the change from starting to recording to held;
     - `endHold(handle, "send" | "discard")` follows the D17 table;
@@ -258,8 +258,9 @@ Verification commands:
   Verify with a fake clock in a new `test/speak/hold-space.test.ts`:
   - every scenario of the requirement, stating the exact editor text;
   - the release of an arrow key and of Escape;
-  - a Vietnamese letter, a bracketed paste, and an undecodable terminal reply during a hold;
-  - a hold ended by arrival time after a session reset;
+  - a Vietnamese letter, an undecodable key such as `\x1b[15;5~`, and a cell-size reply during a hold;
+  - after a session reset: repeats 30 ms apart stay consumed and start nothing, and the first input more than 300 ms after the last Space is handled normally (a Space is typed);
+  - the held line at the time cap of a hold-started recording says that releasing Space sends;
   - the send key as CSI-u during a hold;
   - other input while starting, while recording (streamed and not), and while held at the cap, each followed by the quiet gap: nothing is sent;
   - a stall where the timer and queued Spaces are due together, using the injected deferral;
@@ -278,7 +279,7 @@ Verification commands:
     - dialogs;
     - the cursor in the middle of the text;
     - a merge within 300 ms;
-    - Spaces typed during a pause in Pi count as a hold;
+    - three Spaces typed by hand within 120 ms, or Spaces typed during a pause in Pi, count as a hold;
     - streaming with the stop phrase on;
   - that another key discards the recording.
 - [ ] 8.6 [Orchestrator] After 8.2–8.5, and with the user's approval, set `input.holdSpace: true` in the user's config, with a backup first. Verify it with `parseConfig`.

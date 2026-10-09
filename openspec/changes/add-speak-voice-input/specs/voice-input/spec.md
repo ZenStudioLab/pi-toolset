@@ -359,7 +359,7 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 
 **Ending.**
 - The hold SHALL end on a key-release event for Space, or when no Space has arrived for 300 ms. The quiet gap SHALL be confirmed only after pending input has been read.
-- Release events of keys other than Space, and input that starts with ESC, is not a bracketed paste, and cannot be decoded as a key, SHALL be ignored. Every other input SHALL count as other input.
+- Release events of keys other than Space, and the terminal's cell-size reply (`CSI 6;<h>;<w> t`), SHALL be ignored. Every other input SHALL count as other input.
 - Ending an engaged hold SHALL act only on the recording that hold started:
   - **starting:** cancel it;
   - **recording or held:** send it, exactly as the send key does;
@@ -433,8 +433,13 @@ Session replacement and shutdown SHALL discard the hold's recording and clear it
 
 #### Scenario: Terminal reply during a hold
 
-- **WHEN** an undecodable escape sequence that is not a paste arrives during a hold
+- **WHEN** the terminal's cell-size reply arrives during a hold
 - **THEN** it is ignored and the hold continues
+
+#### Scenario: Undecodable key during a hold
+
+- **WHEN** the user presses a key Pi cannot decode, such as Ctrl+F5, during a hold-started recording
+- **THEN** it counts as other input and the recording is discarded, not sent
 
 #### Scenario: Session replaced during a hold
 
