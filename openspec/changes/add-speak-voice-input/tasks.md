@@ -100,7 +100,7 @@ Verification commands:
 - [x] 5.4 [worker] Add the session and one-command speech locale per design D13: `/speak locale [<tag>|reset]` and `/speak in <tag>`, the locale order (one-command tag, then session, then config) fixed at job start and used by the Aura language check, translation, and both cache keys, and `/speak status` marking a session locale. Verify with cases in `test/speak/command.test.ts`, `test/speak/localized-job.test.ts`, and `test/speak/job.test.ts` for every new scenario in the manual-speech delta, plus an Aura voice refused for a session locale before any translation.
 - [x] 5.5 [worker] Add the combined help per design D14 and the "Combined help for speak and voice input" requirement: `/speak help`, `/talk help`, and their short forms `/speak ?` and `/talk ?` (user request, 2026-10-09) show the same text with every form, the registered shortcuts and which one sends, the Escape behaviour, and the effective locale; unknown arguments show it too. Replace the hard-coded `(default vi)`. Verify in `test/speak/command.test.ts`, including a config error while building help.
 - [x] 5.6 [worker] Update `extensions/speak/README.md`: the controls table with both keys and the starting state (W4-F1), `/talk send`, `input.transcribeShortcut`, `input.sendWhenBusy`, the 120-second default, the locale commands, help, and a plain warning that the default `alt+t` now sends. Keep the `/<name>` note. Verify that the config example parses once its placeholders are replaced, and that every documented form matches the registered usage.
-- [ ] 5.7 [User] Live checks:
+- [x] 5.7 [User] Live checks:
   - `alt+t` with the agent idle: the draft and transcript are sent;
   - `alt+t` while the agent is working: the message reaches the running turn;
   - `alt+shift+t`: the transcript is added and nothing is sent (this also confirms the terminal delivers the key);
@@ -146,7 +146,7 @@ Verification commands:
   - how keys and Escape behave during a streamed recording.
 
   Verify that the config example parses once its placeholders are replaced.
-- [ ] 6.6 [User] Live checks, covering Waves 5 and 6:
+- [x] 6.6 [User] Live checks, covering Waves 5 and 6:
   - **Carried from 5.7:**
     - `alt+t` with the agent idle sends the draft and the transcript;
     - `alt+t` while the agent is working reaches the running turn;
@@ -183,5 +183,6 @@ Verification commands:
 
   Also update the README for shortcut lists. Give the `alt+y` example, and note that it replaces Pi's yank-pop and that Pi shows a conflict notice at startup.
 - [x] 7.4 [Orchestrator] After 7.2 and 7.3, and with the user's approval, set the user's config to `"shortcut": ["alt+t", "alt+y"]` and `"transcribeShortcut": ["alt+shift+t", "alt+shift+y"]`, with a backup first. Verify it with `parseConfig`.
-- [ ] 7.5 [User] Live checks: run task 6.6 (which carries 5.7), plus `alt+y` sends, `alt+shift+y` only transcribes, and the conflict notice at startup names only `alt+y`. Record what happened, and report anything not run as unverified.
+- [x] 7.5 [User] Live checks: run task 6.6 (which carries 5.7), plus `alt+y` sends, `alt+shift+y` only transcribes, and the conflict notice at startup names only `alt+y`. Record what happened, and report anything not run as unverified.
+  - **Result (2026-10-09):** the user approved the live checks of 5.7, 6.6 and 7.5 as a whole. They reported Deepgram speech working after a restart that loaded `DEEPGRAM_API_KEY`. A Vietnamese message dictated with the send key arrived correctly. The other items were not reported one by one; this record rests on the user's approval, not on observed output.
 - [x] 7.6 [Oracle gate: `oracle`] Review gate for Wave 7, run once after 7.2–7.4 are complete and 7.5 is complete or explicitly reported as unverified. The same rules apply as for 1.7.

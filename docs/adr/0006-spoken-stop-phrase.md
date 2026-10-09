@@ -1,6 +1,6 @@
 # ADR-0006: A Spoken Stop Phrase, Using Live ElevenLabs Transcription
 
-**Status:** Accepted for implementation; runtime qualification pending.
+**Status:** Accepted. The user approved the live checks on 2026-10-09 (task 7.5 of `add-speak-voice-input`).
 **Owner:** Orchestrator.
 **Change:** [add-speak-voice-input](../../openspec/changes/add-speak-voice-input/design.md) (Wave 6 amendment of 2026-10-09).
 **Supersedes:**
