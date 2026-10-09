@@ -72,7 +72,8 @@ test("each recorded chunk is streamed while the audio is kept for the level bar 
   ]);
   assert.match(mixed(h.talkStatuses), /Recording 0:00 █ /);
   audio(child, 40000);
-  await h.until(() => mixed(h.talkStatuses).includes("limit reached"));
+  await h.until(() => socket.chunks().at(-1)?.commit === true);
+  assert.match(mixed(h.talkStatuses), /limit reached/);
   assert.equal(socket.chunks().length, 4, "two chunks, the capped part of the third, and the final commit");
   assert.equal(h.fetchCalls.length, 0);
 });
@@ -534,6 +535,7 @@ test("a phrase segment that arrives after the time cap, before the recorder exit
   child.autoExitOnKill = false;
   audio(child, 40000);
   assert.deepEqual(child.signals, ["SIGINT"]);
+  assert.match(h.talkStatuses.at(-1)!, /Recording limit reached \(1 s\), not sent/, "held at once, before the recorder exits");
   socket.committed("add a test, let's go");
   assert.equal(h.sent.length, 0);
   assert.equal(h.editor.text, "Draft");
@@ -556,6 +558,7 @@ test("a control pressed after the time cap, before the recorder exits, waits for
   const { child, socket } = await startLive(h);
   child.autoExitOnKill = false;
   audio(child, 40000);
+  assert.match(h.talkStatuses.at(-1)!, /Recording limit reached \(1 s\), not sent/, "held at once, before the recorder exits");
   await h.pressTranscribeShortcut();
   assert.equal(h.talkStatuses.at(-1), "Transcribing…");
   socket.committed("held words");

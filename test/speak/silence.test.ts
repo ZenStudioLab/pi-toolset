@@ -73,6 +73,13 @@ for (const [name, input, expected] of [
   ["both come from the configuration", { shortcut: "ctrl+alt+m", transcribeShortcut: "ctrl+alt+n" }, ["ctrl+alt+m", "ctrl+alt+n"]],
   ["one set key keeps the other's default", { shortcut: "ctrl+alt+m" }, ["ctrl+alt+m", "alt+shift+t"]],
   ["equal keys register both defaults", { shortcut: "alt+x", transcribeShortcut: "alt+x" }, ["alt+t", "alt+shift+t"]],
+  [
+    "every key of both lists is registered",
+    { shortcut: ["alt+t", "alt+y"], transcribeShortcut: ["alt+shift+t", "alt+shift+y"] },
+    ["alt+t", "alt+y", "alt+shift+t", "alt+shift+y"],
+  ],
+  ["a key repeated across the lists registers both defaults", { shortcut: ["alt+t", "alt+y"], transcribeShortcut: ["alt+shift+t", "Alt+Y"] }, ["alt+t", "alt+shift+t"]],
+  ["a list with five keys registers both defaults", { shortcut: ["alt+a", "alt+b", "alt+c", "alt+d", "alt+e"] }, ["alt+t", "alt+shift+t"]],
 ] as const)
   test(`the shortcuts at load: ${name}`, async () => {
     const { shortcuts, used } = await load(JSON.stringify({ input }));

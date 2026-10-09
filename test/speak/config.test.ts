@@ -25,8 +25,8 @@ test("a minimal configuration gets the documented defaults", () => {
   assert.equal(result.config.provider, "elevenlabs");
   assert.equal(result.config.input.provider, "deepgram");
   assert.equal(result.config.input.maxSeconds, 120);
-  assert.equal(result.config.input.shortcut, "alt+t");
-  assert.equal(result.config.input.transcribeShortcut, "alt+shift+t");
+  assert.deepEqual(result.config.input.shortcut, ["alt+t"]);
+  assert.deepEqual(result.config.input.transcribeShortcut, ["alt+shift+t"]);
   assert.equal(result.config.input.sendWhenBusy, "interrupt");
   assert.equal(result.config.input.stopOnPhrase, false);
   assert.deepEqual(result.config.input.stopPhrases, ["let's go"]);
@@ -225,8 +225,8 @@ test("provider blocks and input settings are parsed independently", () => {
   });
   assert.ok(result.ok);
   assert.equal(result.config.input.maxSeconds, 300);
-  assert.equal(result.config.input.shortcut, "ctrl+r");
-  assert.equal(result.config.input.transcribeShortcut, "ctrl+shift+r");
+  assert.deepEqual(result.config.input.shortcut, ["ctrl+r"]);
+  assert.deepEqual(result.config.input.transcribeShortcut, ["ctrl+shift+r"]);
   assert.equal(result.config.input.sendWhenBusy, "wait");
   assert.equal(result.config.provider, "deepgram");
   assert.equal(result.config.input.language, "vi-VN");
@@ -257,6 +257,16 @@ for (const [name, input] of [
   ["equal shortcuts", { ...valid, input: { shortcut: "alt+x", transcribeShortcut: "alt+x" } }],
   ["equal shortcuts differing in case", { ...valid, input: { shortcut: "Alt+X", transcribeShortcut: "alt+x" } }],
   ["a shortcut equal to the other's default", { ...valid, input: { shortcut: "alt+shift+t" } }],
+  ["five send keys", { ...valid, input: { shortcut: ["alt+a", "alt+b", "alt+c", "alt+d", "alt+e"] } }],
+  ["five transcribe keys", { ...valid, input: { transcribeShortcut: ["alt+a", "alt+b", "alt+c", "alt+d", "alt+e"] } }],
+  ["an empty send list", { ...valid, input: { shortcut: [] } }],
+  ["an empty transcribe list", { ...valid, input: { transcribeShortcut: [] } }],
+  ["a blank key in a list", { ...valid, input: { shortcut: ["alt+t", " "] } }],
+  ["a non-string key in a list", { ...valid, input: { shortcut: ["alt+t", 5] } }],
+  ["a key repeated within a list", { ...valid, input: { shortcut: ["alt+y", "alt+y"] } }],
+  ["a key repeated within a list, differing in case", { ...valid, input: { transcribeShortcut: ["alt+shift+y", "ALT+SHIFT+Y"] } }],
+  ["a key repeated across the lists", { ...valid, input: { shortcut: ["alt+t", "alt+y"], transcribeShortcut: ["alt+shift+t", "alt+y"] } }],
+  ["a key repeated across the lists, differing in case", { ...valid, input: { shortcut: ["alt+t", "Alt+Y"], transcribeShortcut: ["alt+shift+t", "alt+y"] } }],
   ["a non-boolean stopOnPhrase", { ...valid, input: { stopOnPhrase: "yes" } }],
   ["a numeric stopOnPhrase", { ...valid, input: { stopOnPhrase: 1 } }],
   ["stopPhrases that is not a list", { ...valid, input: { stopPhrases: "let's go" } }],
@@ -273,6 +283,25 @@ for (const [name, input] of [
     assert.match(result.problem, /input\.(maxSeconds|language|sendWhenBusy|transcribeShortcut|shortcut|stopOnPhrase|stopPhrases)/);
   });
 }
+
+for (const [name, input, send, transcribe] of [
+  ["strings", { shortcut: "alt+y", transcribeShortcut: "alt+shift+y" }, ["alt+y"], ["alt+shift+y"]],
+  ["lists", { shortcut: ["alt+t", "alt+y"], transcribeShortcut: ["alt+shift+t", "alt+shift+y"] }, ["alt+t", "alt+y"], ["alt+shift+t", "alt+shift+y"]],
+  ["four keys each", { shortcut: ["alt+a", "alt+b", "alt+c", "alt+d"], transcribeShortcut: ["alt+e", "alt+f", "alt+g", "alt+h"] }, ["alt+a", "alt+b", "alt+c", "alt+d"], ["alt+e", "alt+f", "alt+g", "alt+h"]],
+  ["one list and one default", { shortcut: ["alt+t", "alt+y"] }, ["alt+t", "alt+y"], ["alt+shift+t"]],
+] as const)
+  test(`the shortcut settings accept ${name} and are read as lists`, () => {
+    const result = parseConfig({ ...valid, input });
+    assert.ok(result.ok);
+    assert.deepEqual(result.config.input.shortcut, send);
+    assert.deepEqual(result.config.input.transcribeShortcut, transcribe);
+  });
+
+test("a repeated shortcut key is a configuration error that names the key", () => {
+  const result = parseConfig({ ...valid, input: { shortcut: ["alt+t", "alt+y"], transcribeShortcut: ["alt+shift+t", "ALT+Y"] } });
+  assert.ok(!result.ok);
+  assert.match(result.problem, /input\.shortcut and input\.transcribeShortcut must be different keys; "ALT\+Y" is repeated/);
+});
 
 test("the stop phrase settings are read, with phrases trimmed and at most 10 of 1 to 40 characters", () => {
   const result = parseConfig({

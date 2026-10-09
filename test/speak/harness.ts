@@ -218,7 +218,7 @@ export async function createHarness(
     now: Date.now,
     readFile: options.readFile ?? ((path: string) => readFile(path, "utf8")),
   };
-  const registered = options.shortcuts ?? { send: "alt+t", transcribe: "alt+shift+t" };
+  const registered = options.shortcuts ?? { send: ["alt+t"], transcribe: ["alt+shift+t"] };
   const controller = new SpeechController(deps, registered);
   // A manual clock keeps the 0.5 s minimum and the elapsed time exact.
   let clock = 1_000_000;
@@ -342,14 +342,19 @@ export async function createHarness(
     await commands.get("talk")!(args, talkContext(ctxOptions));
   }
 
-  /** Presses the registered send shortcut (`alt+t` unless `shortcuts` was given). */
+  /** Presses the first registered send shortcut (`alt+t` unless `shortcuts` was given). */
   async function pressShortcut(ctxOptions: CtxOptions = {}) {
-    await shortcuts.get(registered.send)!(talkContext(ctxOptions));
+    await shortcuts.get(registered.send[0]!)!(talkContext(ctxOptions));
   }
 
-  /** Presses the registered transcribe-only shortcut (`alt+shift+t` unless `shortcuts` was given). */
+  /** Presses the first registered transcribe-only shortcut (`alt+shift+t` unless `shortcuts` was given). */
   async function pressTranscribeShortcut(ctxOptions: CtxOptions = {}) {
-    await shortcuts.get(registered.transcribe)!(talkContext(ctxOptions));
+    await shortcuts.get(registered.transcribe[0]!)!(talkContext(ctxOptions));
+  }
+
+  /** Presses one registered key by name, whichever mode it belongs to. */
+  async function pressKey(key: string, ctxOptions: CtxOptions = {}) {
+    await shortcuts.get(key)!(talkContext(ctxOptions));
   }
 
   /** Sends a key to the terminal-input listeners; true when one consumed it (the editor never sees it). */
@@ -377,6 +382,7 @@ export async function createHarness(
     runTalk,
     pressShortcut,
     pressTranscribeShortcut,
+    pressKey,
     sendKey,
     sent,
     hostErrors,

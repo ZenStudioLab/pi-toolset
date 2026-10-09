@@ -175,6 +175,7 @@ test("a control pressed after the time cap, before the recorder exits, uploads o
   const child = await startRecording(h);
   child.autoExitOnKill = false;
   audio(child, 40000);
+  assert.match(h.talkStatuses.at(-1)!, /Recording limit reached \(1 s\), not sent/, "held at once, before the recorder exits");
   await h.pressTranscribeShortcut();
   assert.equal(h.talkStatuses.at(-1), "Transcribing…");
   assert.equal(h.fetchCalls.length, 0, "nothing is uploaded before the recorder exits");
@@ -187,11 +188,30 @@ test("a control pressed after the time cap, before the recorder exits, uploads o
   const second = await startRecording(discarded);
   second.autoExitOnKill = false;
   audio(second, 40000);
+  assert.match(discarded.talkStatuses.at(-1)!, /Recording limit reached \(1 s\), not sent/);
   assert.equal(discarded.sendKey("\x1b"), true);
   second.finish(0);
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(discarded.fetchCalls.length, 0);
   assert.equal(discarded.talkStatuses.at(-1), undefined);
+});
+
+test("a recording started with a transcribe key and stopped with the second send key is sent, and every key is registered", async () => {
+  const keys = { send: ["alt+t", "alt+y"], transcribe: ["alt+shift+t", "alt+shift+y"] };
+  const h = await harness({
+    shortcuts: keys,
+    config: baseConfig({ shortcut: keys.send, transcribeShortcut: keys.transcribe }),
+  });
+  assert.deepEqual([...h.shortcuts.keys()], [...keys.send, ...keys.transcribe]);
+  h.editor.text = "Draft";
+  await h.pressKey("alt+shift+y");
+  await h.until(() => h.recorderChildren().length === 1);
+  audio(h.recorderChildren()[0]!);
+  h.advance(2000);
+  await h.pressKey("alt+y");
+  await h.until(() => h.sent.length === 1);
+  assert.deepEqual(h.sent.map((m) => m.text), ["Draft xin chào"]);
+  assert.equal(h.editor.text, "");
 });
 
 test("Escape or a session change discards a held recording; the next shortcut starts a new one", async () => {

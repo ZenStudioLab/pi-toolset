@@ -164,7 +164,7 @@ test("an unknown subcommand and an empty text command show the combined help and
 test("/speak help and /talk help, and their ? short form, show the same text with every form, both keys, Escape, and the locale", async () => {
   const h = await harness({
     config: { ...VALID_CONFIG, locale: "ja" },
-    shortcuts: { send: "alt+t", transcribe: "ctrl+alt+t" },
+    shortcuts: { send: ["alt+t", "alt+y"], transcribe: ["ctrl+alt+t", "ctrl+alt+y"] },
   });
   for (const word of ["help", "?"]) {
     await h.run(word);
@@ -180,8 +180,8 @@ test("/speak help and /talk help, and their ? short form, show the same text wit
     "/talk provider [deepgram|elevenlabs|reset]", "/talk help | ?",
   ])
     assert.ok(speakHelp!.includes(form), form);
-  assert.match(speakHelp!, /alt\+t sends: .*same as \/talk send/);
-  assert.match(speakHelp!, /ctrl\+alt\+t transcribes only: .*same as \/talk\)/);
+  assert.match(speakHelp!, /alt\+t \/ alt\+y sends: .*same as \/talk send/);
+  assert.match(speakHelp!, /ctrl\+alt\+t \/ ctrl\+alt\+y transcribes only: .*same as \/talk\)/);
   assert.match(speakHelp!, /Escape: while a recording is starting it cancels .* recording or held .* discards/);
   assert.match(speakHelp!, /Speech locale: ja \(configured\)/);
   assert.doesNotMatch(speakHelp!, /default vi/);
@@ -219,7 +219,7 @@ for (const [name, config] of [
   ["no configuration file", null],
 ] as const)
   test(`help with ${name} still shows the registered keys, says the configuration has an error, and makes no request`, async () => {
-    const h = await harness({ config, shortcuts: { send: "ctrl+alt+m", transcribe: "ctrl+alt+n" } });
+    const h = await harness({ config, shortcuts: { send: ["ctrl+alt+m"], transcribe: ["ctrl+alt+n"] } });
     await h.run("help");
     const text = h.notices.at(-1)!.message;
     assert.match(text, /ctrl\+alt\+m sends:/);

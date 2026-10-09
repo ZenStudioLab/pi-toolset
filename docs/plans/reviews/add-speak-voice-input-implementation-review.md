@@ -1599,3 +1599,125 @@ Task 7.1 (orchestrator): D10, the talk contract (with an "Extra keys per mode" s
 | W7-A | 7.2, 7.3 | worker (`claude-bridge/claude-sonnet-5-5`, thinking high, background) | `extensions/speak/config.ts`, `index.ts`, `help.ts`, `talk.ts`, `README.md`; `test/speak/config.test.ts`, `silence.test.ts`, `talk.test.ts`, `talk-stream.test.ts`, `command.test.ts` |
 | W7-B | 7.4 | orchestrator | user config, with approval and a backup |
 | W7-C | 7.5 | user | live checks for Waves 5–7 |
+
+### W7-A result (worker run `8da8d64b`)
+
+The worker reported tasks 7.2 and 7.3 done.
+
+- **Config:** both shortcut settings accept a string or a list of 1–4 keys, stored as arrays (`Shortcuts` is `{send: string[]; transcribe: string[]}`). A key repeated within a list or across both, ignoring case, is an error that names the key.
+- **Registration:** `index.ts` registers every key, and only the defaults on a config error.
+- **Help and status lines:** they name every key, joined by `formatKeys`.
+- **W6-F5:** `onCapped` now redraws the status line, so the held line shows before the recorder exits. One mutation proves it: removing the call fails 3 new assertions.
+- **W6-F4:** the README failure list now names a recorder failure.
+- **README:** a new "Extra shortcut keys" section warns about yank-pop and the conflict notice. All 3 JSON blocks parse.
+
+**Deviation:** one existing stream test now waits for the final commit chunk instead of the "limit reached" status, which now appears earlier because of W6-F5. A separate assertion for the status was kept.
+
+**Size:** `talk.ts` is 484 lines and `config.ts` 579 (W3-F5, deferred).
+
+**Caller verification:** 538 tests, 538 pass, 0 fail (519 before). The filtered type check prints nothing, and `git diff --check` is clean.
+
+### Task 7.4 (orchestrator)
+
+Under the user's approval (option a), `~/.config/pi-speak/config.json` now sets `input.shortcut` to `["alt+t","alt+y"]` and `input.transcribeShortcut` to `["alt+shift+t","alt+shift+y"]`. The backup is `config.json.bak-20261009-090304`. `parseConfig` accepts the file.
+
+CANDIDATE_REVISION=sha256:56f07a934fb011ddae33127989f0732c64cbf8bd94119c7a6a41ddc9e2e14c3f (SHA-256 over `git diff 9ee7cc3 -- extensions test openspec`; Wave 7 adds no new files)
+
+Task 7.5, the user live checks, has not been run yet. The gate runs now with 7.5 reported as unverified. Any live-check failure reopens this wave as a patch.
+
+## Round 1 - Oracle Review (Wave 7)
+
+Run `56651773` (`claude-bridge/claude-opus-5-5`, thinking high, background). The caller condensed the returned text without changing any finding.
+
+**Gate and baseline:** gate task 7.6, INITIAL mode, plus a whole-change readiness check. The candidate `sha256:56f07a934fb011ddae33127989f0732c64cbf8bd94119c7a6a41ddc9e2e14c3f` matches, before and after the review.
+
+**Owners reviewed:**
+- Task 7.1: orchestrator, `9ee7cc3`.
+- W7-A: worker run `8da8d64b`.
+- W7-B: orchestrator, the user config. It was not read.
+- W7-C: user, task 7.5, unverified.
+
+**Checks:**
+- 538/538 in 3 runs; the filtered type check is clean; `openspec validate --strict` passes; `git diff --check` is clean.
+- 12 mutations in `/tmp`: 9 caught. Of the 3 survivors, 1 is equivalent (the `onCapped` phase guard) and 2 are real gaps (W7-F1).
+
+**Pi 1.1.0:**
+- `tui.editor.yankPop` is bound to `alt+y` (`pi-tui/dist/keybindings.js:72`) and is not reserved (`runner.js:9-28`).
+- On a conflict, the extension wins with a diagnostic (`runner.js:468`), shown at startup (`interactive-mode.js:1456-1457`).
+- `alt+t`, `alt+shift+t` and `alt+shift+y` have no built-in binding. The README is accurate.
+
+**Confirmed sound:**
+- **Config:** `config.ts:376-383,390-391,411-421`.
+- **Registration:** `index.ts:13,145-154,191-197`.
+- **Help:** `help.ts:42-44`.
+- **Scenario test:** `talk.test.ts:199-215`.
+- **W6-F5:** `talk.ts:208-212`, with assertions before the exit.
+- **W6-F4:** `README.md:175`.
+- **README extra keys:** `README.md:120-127`.
+- **Worker deviation** (the stream test now waits for the final commit chunk): accepted.
+
+**Whole-change readiness:**
+- All voice-input requirements, 10 of them including "Spoken stop phrase", and the manual-speech delta (3 added and 9 modified) have implementation and test evidence.
+- The carry-overs are closed, and W3-F5 and W5-F4 are deferred.
+- The ADR statuses are consistent. ADR-0006 stays "runtime qualification pending" until 7.5.
+
+**Findings:**
+- **W7-F1 — P3 — `test-coverage/mutation-survivors` — in scope.**
+  - The recording and held status lines name every key (`talk.ts:465,467`), but no test checks them with two-key lists. Reducing either line to the first key passes.
+  - SUGGESTED_CORRECTION: assert the two-key recording line in `talk.test.ts:199`, and the two-key held line in one more case. Show that both mutations then fail.
+- **W7-F2 — P3 — `docs-accuracy` — in scope.**
+  - Three places still describe the old single-key setup: `design.md:144` ("the two shortcuts"), `README.md:143` ("both stop keys (which one sends)") and `config.ts:492` ("the two shortcuts").
+  - SUGGESTED_CORRECTION: reword each to cover every key.
+- **W3-F5 — P3 — deferred.** `config.ts` 579 lines, `speech-job.ts` 659, `talk.ts` 484.
+- **W5-F4 — P3 — deferred.** Pi still offers no way to read whether it is compacting.
+
+**Residual risks:**
+- Task 7.5 is unverified: whether the terminal delivers `alt+shift+y`, whether the startup notice names only `alt+y`, the VAD race and `commit_throttled` after a pause, and Vietnamese in the live model.
+- Uniqueness ignores case but not modifier order, as Pi itself does.
+- ADR-0006 must lose its "pending" status before archive.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 7, Round 1
+
+#### W7-F1 — Multi-key status lines are not tested
+- **Oracle Severity:** P3
+- **Family:** `test-coverage/mutation-survivors`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The behaviour is correct, and only the assertion is missing.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into the post-live-check patch: the two status assertions and the mutation proof.
+
+#### W7-F2 — Text that still describes a single key per mode
+- **Oracle Severity:** P3
+- **Family:** `docs-accuracy`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into the post-live-check patch: `design.md` D14 (orchestrator), `README.md:143` and the `config.ts:492` comment.
+
+#### W3-F5, W5-F4
+- **Decision:** `DEFER_OUT_OF_SCOPE` (unchanged). Both are recorded for an archive note, so they outlive this log.
+
+### Terminal Baseline Validation
+
+- The current candidate equals the recorded `CANDIDATE_REVISION`, `sha256:56f07a934fb011ddae33127989f0732c64cbf8bd94119c7a6a41ddc9e2e14c3f`. The caller recomputed it after the Oracle run.
+- The Wave 7 boundary is unchanged: tasks 7.2 and 7.3, plus 7.4 outside the repository.
+
+### Summary
+- **Issues accepted blocking:** 0
+- **Issues accepted nonblocking:** 2 (W7-F1, W7-F2), carried to the post-live-check patch
+- **Issues deferred out of scope:** 2 (W3-F5, W5-F4)
+- **Issues rejected:** 0
+
+### Caller Result
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
+
+Wave 7 code is complete. Tasks 7.2–7.4 and 7.6 are marked done.
+
+**Before archive, these remain:**
+1. The user runs the live checks 7.5, which carry 6.6 and 5.7.
+2. A post-live-check patch for W7-F1, W7-F2 and any live-check findings, followed by a short Oracle check.
+3. ADR-0006's status is changed to accepted once the checks pass.
