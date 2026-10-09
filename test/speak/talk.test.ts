@@ -207,11 +207,19 @@ test("a recording started with a transcribe key and stopped with the second send
   await h.pressKey("alt+shift+y");
   await h.until(() => h.recorderChildren().length === 1);
   audio(h.recorderChildren()[0]!);
+  assert.match(h.talkStatuses.at(-1)!, /— alt\+t \/ alt\+y stop and send · alt\+shift\+t \/ alt\+shift\+y stop, transcribe only ·/);
   h.advance(2000);
   await h.pressKey("alt+y");
   await h.until(() => h.sent.length === 1);
   assert.deepEqual(h.sent.map((m) => m.text), ["Draft xin chào"]);
   assert.equal(h.editor.text, "");
+
+  const capped = await harness({
+    shortcuts: keys,
+    config: baseConfig({ shortcut: keys.send, transcribeShortcut: keys.transcribe, maxSeconds: 1 }),
+  });
+  audio(await startRecording(capped), 40000);
+  assert.match(capped.talkStatuses.at(-1)!, /not sent — alt\+t \/ alt\+y send · alt\+shift\+t \/ alt\+shift\+y transcribe only ·/);
 });
 
 test("Escape or a session change discards a held recording; the next shortcut starts a new one", async () => {

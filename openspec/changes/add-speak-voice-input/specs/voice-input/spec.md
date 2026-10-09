@@ -48,7 +48,7 @@ The extension SHALL register push-to-talk shortcuts when it loads: the send shor
 
 ### Requirement: Supported run mode for voice input
 
-The extension SHALL record only in an interactive terminal session. In any other Pi run mode, `/talk` and the shortcut SHALL report that voice input is unsupported without starting a recorder or making a request.
+The extension SHALL record only in an interactive terminal session. In any other Pi run mode, `/talk` and every push-to-talk shortcut SHALL report that voice input is unsupported without starting a recorder or making a request.
 
 #### Scenario: Non-terminal mode
 

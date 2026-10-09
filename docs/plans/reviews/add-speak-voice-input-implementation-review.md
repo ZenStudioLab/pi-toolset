@@ -1721,3 +1721,79 @@ Wave 7 code is complete. Tasks 7.2–7.4 and 7.6 are marked done.
 1. The user runs the live checks 7.5, which carry 6.6 and 5.7.
 2. A post-live-check patch for W7-F1, W7-F2 and any live-check findings, followed by a short Oracle check.
 3. ADR-0006's status is changed to accepted once the checks pass.
+
+## Post-Live-Check Patch (Wave 7, orchestrator)
+
+**User report, 2026-10-09:**
+- After a `/speak provider deepgram` session override, the user restarted Pi with `DEEPGRAM_API_KEY` loaded and reported "test: work. approve."
+- That confirms Deepgram speech (`/speak text`). The other 7.5 items were not reported one by one and stay unverified until the user confirms them.
+
+**W7-F1:** done in `test/speak/talk.test.ts`, inside the "Extra keys per mode" test.
+- The recording line is now asserted with two keys per mode.
+- A capped two-key harness asserts the held line.
+- Mutations in a `/tmp` copy, deleted afterwards: reducing the recording line to the first key fails 1 test, and reducing the held line fails 1 test.
+
+**W7-F2:** done.
+- D14 now names every shortcut and which ones send (`design.md:144`).
+- `README.md:143` now reads "the stop keys of each mode (which ones send)".
+- The `config.ts` load comment now says "for the shortcuts".
+
+**Verification:** 538/538 in 2 runs; the filtered type check prints nothing; `git diff --check` is clean; `openspec validate --strict` passes.
+
+PATCH_BASELINE_REVISION=sha256:d56c15de6d6d7ca35f1b28b4aa30f72bf20132bb8e9fb11f3cf19debb54187cb (SHA-256 over `git diff 0a0e6b2 -- extensions test openspec`; no new files)
+
+## Round 2 - Oracle Review (Wave 7)
+
+Run `6a9c1eb8` (`claude-bridge/claude-opus-5-5`, thinking high, background). The caller condensed the returned text without changing any finding.
+
+**Gate and baseline:** gate task 7.6, PATCH mode. The candidate `sha256:d56c15de6d6d7ca35f1b28b4aa30f72bf20132bb8e9fb11f3cf19debb54187cb` equals the recorded `PATCH_BASELINE_REVISION`, before and after the review.
+
+**W7-F1:** fixed. The assertions are at `talk.test.ts:210,216-222`, in the test "a recording started with a transcribe key and stopped with the second send key is sent, and every key is registered" (`:199`). Each of the four first-key reductions in `render()` (`talk.ts:465,467`, send and transcribe keys) fails one test, and the unchanged copy fails none.
+
+**W7-F2:** the three rewordings are in place (`design.md:144`, `README.md:143`, `config.ts:492`). No single-key wording is left in the README, `help.ts` or D14.
+
+**Regression sweep:** 538/538 in 2 runs; the filtered type check is clean; `git diff --check` is clean; `openspec validate --strict` passes. Only assertions and wording changed.
+
+**Findings:**
+- **W7-F2 (recurrence) — P3 — `docs-accuracy` — in scope.**
+  - `specs/voice-input/spec.md:51` says "`/talk` and the shortcut SHALL report…", and `talk.ts:42` says "presses the shortcut". The behaviour is correct (`index.ts:145-154`). The wording predates Wave 7.
+  - SUGGESTED_CORRECTION: say "every push-to-talk shortcut" and "a push-to-talk shortcut".
+- **W3-F5, W5-F4 — P3 — deferred, unchanged.**
+
+**Not findings:** the completed records of task 5.3, ADR-0004:18 and ADR-0005:30 are history and are left unchanged.
+
+**Residual risks:**
+- Task 7.5 is only partly verified (Deepgram speech is confirmed).
+- ADR-0006 must lose its "pending" status before archive.
+- Uniqueness ignores case but not modifier order.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 7, Round 2
+
+#### W7-F1, W7-F2 (round 1)
+- **Decision:** verified fixed.
+
+#### W7-F2 (recurrence) — `spec.md:51`, `talk.ts:42`
+- **Oracle Severity:** P3
+- **Family:** `docs-accuracy`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** applied after this PASS, as wording only, in the same commit (`ae87557`) as the reviewed candidate. The two edits ran in parallel with the commit, and the caller chose to describe that commit accurately rather than rewrite it. The spec sentence will merge into the main spec at archive, so it should not carry the singular. It was verified by `openspec validate --strict` and the suite, not by another Oracle round, because it changes 2 lines of prose and no behaviour.
+
+#### W3-F5, W5-F4
+- **Decision:** `DEFER_OUT_OF_SCOPE` (unchanged); both are recorded for the archive note.
+
+### Terminal Baseline Validation
+
+The current candidate equals `PATCH_BASELINE_REVISION=sha256:d56c15de6d6d7ca35f1b28b4aa30f72bf20132bb8e9fb11f3cf19debb54187cb`, recomputed by the caller after the Oracle run. `git diff 0a0e6b2 ae87557` minus the two corrected files (`specs/voice-input/spec.md`, `extensions/speak/talk.ts`) hashes to the same `d56c15de…`, so the commit is the reviewed candidate plus exactly the 2-line correction. After the correction: `openspec validate --strict` passes, 538/538 tests pass, and the filtered type check is clean.
+
+### Caller Result
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
+
+The Wave 7 code review is closed. Before archive, two things remain:
+1. The user's answer on which 7.5 checks ran (Deepgram speech is confirmed).
+2. The ADR-0006 status change, once the checks are confirmed.

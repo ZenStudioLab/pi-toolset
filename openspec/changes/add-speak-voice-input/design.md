@@ -141,7 +141,7 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 
 ### D14. Combined help
 
-`/speak help` and `/talk help`, and their short forms `/speak ?` and `/talk ?`, print the same text: every `/speak` and `/talk` form, the two shortcuts registered at load with their modes, what Escape does while starting, recording, and held, and the effective speech locale (config value, or the session override when set). Help reads the config file on demand (a local read, no network) for the locale only; the shortcuts it names, like those in the recording status lines, are the ones registered at load, so an edited but not yet reloaded shortcut is never shown. If the file can't be read, help still names the registered shortcuts and says the configuration has an error. Unknown arguments still print this help. Help works in every run mode and makes no request.
+`/speak help` and `/talk help`, and their short forms `/speak ?` and `/talk ?`, print the same text: every `/speak` and `/talk` form, every shortcut registered at load and which ones send, what Escape does while starting, recording, and held, and the effective speech locale (config value, or the session override when set). Help reads the config file on demand (a local read, no network) for the locale only; the shortcuts it names, like those in the recording status lines, are the ones registered at load, so an edited but not yet reloaded shortcut is never shown. If the file can't be read, help still names the registered shortcuts and says the configuration has an error. Unknown arguments still print this help. Help works in every run mode and makes no request.
 
 ### D15. Spoken stop phrase over ElevenLabs live transcription
 
