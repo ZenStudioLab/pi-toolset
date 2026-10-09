@@ -195,49 +195,81 @@ Verification commands:
   - add the Wave 8 amendment to `proposal.md`;
   - in `specs/voice-input/spec.md`, add the "Voice command and skill keys" requirement and update the talk contract, the indicator and the stop-phrase streaming rule;
   - update the manual-speech help requirement;
-  - for hold Space to talk: write ADR-0008, add D17, and add the "Hold Space to talk" requirement.
+  - for hold Space to talk: write ADR-0008, add D17, and add the "Hold Space to talk" requirement;
+  - after the Round 4 proposal review, apply the caller's correction batch for H1, H2, M1–M5, L1 and L2 (see `docs/plans/reviews/add-speak-voice-input-review.md`).
 
   Verify with `openspec validate add-speak-voice-input --strict`.
-- [ ] 8.2 [worker] Add the settings and keys, per D16:
-  - **`config.ts`:**
+- [ ] 8.2 [worker] Add the settings and keys, per D16 and D17:
+  - **Split `config.ts` first.** It is 579 lines. Move the parsing of the `input` settings into its own module along that boundary, so both files stay under 500 lines; verify with `wc -l`.
+  - **Settings:**
     - `input.commandShortcut` (default `alt+m`) and `input.skillShortcut` (default `alt+i`), with the D10 list rules and uniqueness across all four shortcut settings;
-    - `input.commandAliases`, with errors on invalid values.
+    - `input.commandAliases`, with the D16 alias errors: more than 50 entries, a bad phrase or target, an empty collapsed phrase, more than 8 tokens, or a collapsed form shared with another phrase;
+    - `input.holdSpace`, read at load with the shortcuts.
   - **`index.ts`:** register every key, with the four defaults on a config error.
   - **`/talk command` and `/talk skill`.**
-  - **Help and the status lines** name the new keys.
+  - **Help and the status lines,** including the held line, name the new keys, as do the D16 notes on drafts and interactive commands.
 
   Verify with table cases in `test/speak/config.test.ts`, registration cases in `test/speak/silence.test.ts`, and help cases in `test/speak/command.test.ts`.
 - [ ] 8.3 [worker] Add command and skill matching and delivery, per D16:
-  - a pure matcher in a new module (`extensions/speak/voice-command.ts`);
+  - a pure matcher in a new module, `extensions/speak/voice-command.ts`;
   - the command and skill stop modes in `talk.ts`, with no streaming for recordings started with these keys;
-  - delivery into the editor, and the warnings for no match and for ambiguous names.
+  - delivery of listed and unlisted targets into the editor, with warnings that never repeat the transcript.
 
-  Keep `talk.ts` under 500 lines; split along a responsibility boundary if needed. Verify with matcher table cases in a new `test/speak/voice-command.test.ts`, and with `test/speak/talk.test.ts` cases for every scenario of "Voice command and skill keys". Add one streaming case to `test/speak/talk-stream.test.ts`.
-- [ ] 8.4 [worker] Update `extensions/speak/README.md` with the command and skill keys, aliases (including one for an interactive command such as `/model`), the editor-only delivery, and the no-streaming rule. Verify that the config examples parse.
+  Keep `talk.ts` under 500 lines; split along a responsibility boundary if needed.
+
+  Verify with matcher table cases in a new `test/speak/voice-command.test.ts`:
+  - longest match;
+  - an alias beating a name;
+  - ambiguity;
+  - the 8-token limit;
+  - Vietnamese diacritics;
+  - punctuation in the arguments (`.`, `?`, `…`, `,`);
+  - a `name:2` entry;
+  - skill output `/skill:<name>`;
+  - an empty transcript.
+
+  Also add `test/speak/talk.test.ts` cases for every scenario of "Voice command and skill keys", and one streaming case to `test/speak/talk-stream.test.ts`.
+- [ ] 8.4 [worker] Update `extensions/speak/README.md`. Cover:
+  - the command and skill keys;
+  - aliases, including one for an interactive command such as `/model`, with its empty-editor rule;
+  - that the draft becomes the arguments;
+  - the editor-only delivery;
+  - the no-streaming rule.
+
+  Verify that the config examples parse.
 - [ ] 8.5 [worker] Add hold Space to talk, per D17 and the "Hold Space to talk" requirement:
-  - `input.holdSpace` in `config.ts`;
-  - one terminal input listener, in a new module, with an injectable clock and timers;
-  - removal of the spaces the hold typed;
-  - start, release and cancel through the send-key path;
-  - the status line and help.
+  - **Detector:** a new module with an injectable clock and timers, subscribed on each interactive `session_start` and cleared on shutdown and session changes.
+  - **Controller entry points:** `startHold()` (fully idle only; returns a handle) and `releaseHold(handle)`.
+  - **Spaces:** removal of the counted run; consuming Spaces until the hold ends; no second recognition.
+  - **Release:** the quiet gap is confirmed after pending input with `setImmediate`. Other input ends the recording without sending.
+  - **Display:** the status line and help.
 
-  Verify with a fake clock in a new `test/speak/hold-space.test.ts` covering:
-  - each scenario of the requirement;
+  Verify with a fake clock in a new `test/speak/hold-space.test.ts`:
+  - every scenario of the requirement, stating the exact editor text;
   - bracketed paste;
-  - a `isKeyRelease` Space;
-  - repeats of 100 ms (counted) and 150 ms (not counted).
+  - a Space release from `isKeyRelease`;
+  - gaps of 100 ms (a repeat) and 150 ms (not a repeat);
+  - re-subscription after a session replacement;
+  - no call on a stale context after shutdown;
+  - a config error meaning off.
 
-  Extend `test/speak/silence.test.ts` so loading with the setting on still starts nothing, and add the setting to the README.
+  Extend `test/speak/silence.test.ts` so loading with the setting on still starts nothing. Add to the README:
+  - the setting;
+  - its limits: key repeat on and faster than 120 ms, focus loss counts as letting go, dialogs;
+  - that another key ends the recording without sending.
 - [ ] 8.6 [Orchestrator] After 8.2–8.5, and with the user's approval, set `input.holdSpace: true` in the user's config, with a backup first. Verify it with `parseConfig`.
 - [ ] 8.7 [User] Live checks:
   - `alt+m`, then "opsx apply loop" with arguments;
   - `alt+i`, then a skill name;
-  - an alias;
+  - an alias, with an empty editor and with a draft;
   - a phrase that matches nothing;
   - `alt+m` with the stop phrase on;
   - tapping Space while typing;
   - holding Space to dictate and letting go;
   - letting go quickly, right after the recording starts;
+  - Escape while Space is still held;
+  - another key while holding Space;
+  - holding Space in a selector or dialog;
   - holding Space during an `alt+shift+t` recording.
 
   Record what happened, and report anything not run as unverified.

@@ -8,7 +8,7 @@ Lets a Pi user dictate a prompt by push-to-talk, have it transcribed by Deepgram
 
 ### Requirement: Recording starts only on an explicit action
 
-The extension SHALL open the microphone only when the user presses a push-to-talk shortcut or runs `/talk` or `/talk send`. Loading, reloading, session start, ordinary prompts, tool execution, agent completion, and every other lifecycle event SHALL NOT start a recorder or make a transcription request. A missing configuration, key, or recording tool SHALL NOT block Pi from starting; it SHALL be reported only when the user tries to record.
+The extension SHALL open the microphone only when the user presses a push-to-talk shortcut, runs `/talk`, `/talk send`, `/talk command` or `/talk skill`, or, with `input.holdSpace` on, holds Space as the "Hold Space to talk" requirement defines. Loading, reloading, session start, ordinary prompts, tool execution, agent completion, and every other lifecycle event SHALL NOT start a recorder or make a transcription request. A missing configuration, key, or recording tool SHALL NOT block Pi from starting; it SHALL be reported only when the user tries to record.
 
 #### Scenario: Silent startup and agent activity
 
@@ -57,7 +57,7 @@ The extension SHALL record only in an interactive terminal session. In any other
 
 ### Requirement: Push-to-talk recording lifecycle
 
-The first press of either shortcut, `/talk`, or `/talk send` SHALL start recording. The next press or command SHALL stop recording and transcribe it, in the mode of that stopping control: send for the send shortcut and `/talk send`, transcribe only for the transcribe-only shortcut and `/talk`. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. When the spoken stop phrase is off, audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, or sending a recording held at the time cap. When it is on, audio streams while recording, as the "Spoken stop phrase" requirement states. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is starting (waiting for this extension's playback to stop), in progress, or held. Escape or a second press while a recording is starting SHALL cancel it: no recorder keeps running, nothing is recorded, and nothing is sent. When a recording reaches `input.maxSeconds` (default 120, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or command SHALL transcribe it in that control's mode, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
+The first press of any push-to-talk shortcut, or `/talk`, `/talk send`, `/talk command` or `/talk skill`, SHALL start recording; a recognized Space hold also starts one. The next press or command SHALL stop recording and transcribe it, in the mode of that stopping control: send for the send shortcut and `/talk send`, transcribe only for the transcribe-only shortcut and `/talk`, and command or skill for those keys and commands. Letting go of a Space hold SHALL stop the recording it started in send mode. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. When the spoken stop phrase is off, audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, sending a recording held at the time cap, or letting go of a Space hold. When it is on, audio streams while recording, as the "Spoken stop phrase" requirement states. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is starting (waiting for this extension's playback to stop), in progress, or held. Escape or a second press while a recording is starting SHALL cancel it: no recorder keeps running, nothing is recorded, and nothing is sent. When a recording reaches `input.maxSeconds` (default 120, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or command SHALL transcribe it in that control's mode, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
 
 #### Scenario: Record and transcribe
 
@@ -111,7 +111,7 @@ The first press of either shortcut, `/talk`, or `/talk send` SHALL start recordi
 
 ### Requirement: Recording indicator
 
-While recording, the extension SHALL show a status line stating that the microphone is recording, the elapsed time, a coarse input level, and the stop and discard keys. From the moment a recording reaches the time cap, including before the recorder has exited, and while it is held, it SHALL state that the limit was reached and show the send, transcribe-only, and discard keys. The recording line SHALL name the stop keys of every mode and which ones send. While transcribing, it SHALL state that transcription is in progress. The indicator SHALL be cleared when the transcript is delivered or sent, the recording is discarded, or an error is reported.
+While recording, the extension SHALL show a status line stating that the microphone is recording, the elapsed time, a coarse input level, and the stop and discard keys. From the moment a recording reaches the time cap, including before the recorder has exited, and while it is held, it SHALL state that the limit was reached and show the send, transcribe-only, command, skill, and discard keys. The recording line SHALL name the stop keys of every mode and which ones send. While transcribing, it SHALL state that transcription is in progress. The indicator SHALL be cleared when the transcript is delivered or sent, the recording is discarded, or an error is reported.
 
 #### Scenario: Indicator follows the recording
 
@@ -277,31 +277,56 @@ After each committed segment, when the recording's committed text ends, as whole
 
 ### Requirement: Voice command and skill keys
 
-When the command or skill key, or `/talk command` or `/talk skill`, stops a recording or releases a held one, the extension SHALL transcribe it as in transcribe-only mode and then match the transcript at that moment. In command mode the candidates SHALL be Pi's extension commands and prompt templates from `pi.getCommands()` plus the command aliases from `input.commandAliases`; in skill mode, Pi's skills, without the `skill:` prefix, plus the skill aliases (targets starting with `/skill:`). Comparison SHALL ignore case and every character other than letters and digits. The longest run of leading words, at most 8, that equals a candidate SHALL win, and an alias SHALL beat a name of equal length. On a match, the editor text SHALL become `/<name>`, then the remaining words, then the previous draft, joined by single spaces. Nothing SHALL be sent, and no command SHALL run, until the user presses Enter. With no match, or with two different names equally matched, the transcript SHALL be appended as in transcribe-only mode, with a warning. A recording started with the command or skill key SHALL NOT stream, even with the stop phrase on. `input.commandAliases` SHALL hold at most 50 entries, each a phrase of 1 to 40 characters mapped to a one-line target of 2 to 200 characters starting with `/`; any other value SHALL be a configuration error.
+When the command or skill key, or `/talk command` or `/talk skill`, stops a recording or releases a held one, the extension SHALL transcribe it as in transcribe-only mode and then match the transcript at that moment.
+
+**Candidates.**
+- In command mode, the candidates SHALL be Pi's extension commands and prompt templates from `pi.getCommands()`, under the names Pi lists, plus the command aliases.
+- In skill mode, the candidates SHALL be Pi's skills, without the `skill:` prefix, plus the skill aliases, which are targets starting with `/skill:`.
+
+**Comparison.**
+- A token SHALL be a run of non-whitespace characters.
+- Texts SHALL be compared in collapsed form: NFKC, lowercased, keeping only `\p{L}` and `\p{N}` characters.
+- The longest run of leading tokens, from 1 to 8, whose collapsed form equals a candidate's collapsed form SHALL match. An alias with that form SHALL win over names.
+- The remaining tokens, joined by single spaces with leading and trailing whitespace and punctuation removed, SHALL be the arguments.
+
+**Delivery.**
+- **Listed target:** the match is a command, template or skill in Pi's list, or an alias whose target names one. The editor text SHALL become the target (`/<name>`, `/skill:<name>`, or the alias target), then the arguments, then the previous draft, joined by single spaces.
+- **Unlisted alias target:** the target SHALL be placed alone, and only when the editor is empty and no tokens follow it.
+- **In every other case**, including no match and two different names equally matched, the transcript SHALL be appended as in transcribe-only mode, with a warning that does not repeat the transcript.
+- Nothing SHALL be sent, and no command SHALL run, until the user presses Enter.
+
+**Streaming.** A recording started with the command or skill key SHALL NOT stream, even with the stop phrase on.
+
+**Aliases.** `input.commandAliases` SHALL hold at most 50 entries. Each entry maps a phrase of 1 to 40 characters and at most 8 tokens, with a non-empty collapsed form that no other phrase shares, to a one-line target of 2 to 200 characters starting with `/`. Any other value SHALL be a configuration error.
 
 #### Scenario: Spoken command goes into the editor
 
-- **WHEN** the editor holds "fix the login bug", the user presses the command key, says "op sx apply loop, add speak voice input", and presses the command key again
+- **WHEN** the editor holds "fix the login bug", the user presses the command key, says "op sx apply loop, add speak voice input." and presses the command key again
 - **THEN** the editor holds `/opsx-apply-loop add speak voice input fix the login bug`, and nothing is sent or run
 
 #### Scenario: Spoken skill
 
-- **WHEN** the user records "review convergence" and stops with the skill key
+- **WHEN** the user records "Review convergence." and stops with the skill key
 - **THEN** the editor holds `/skill:review-convergence`
 
-#### Scenario: Alias
+#### Scenario: Alias to an interactive command
 
-- **WHEN** `input.commandAliases` maps "model" to `/model`, and the user records "model" and stops with the command key
+- **WHEN** `input.commandAliases` maps "model" to `/model`, the editor is empty, and the user records "model" and stops with the command key
 - **THEN** the editor holds `/model`, although `/model` is not in Pi's command list
+
+#### Scenario: Interactive alias with a draft
+
+- **WHEN** `input.commandAliases` maps "new session" to `/new`, the editor holds "fix the login bug", and the user records "new session" and stops with the command key
+- **THEN** the editor holds "fix the login bug new session", and a warning says the command needs an empty editor
 
 #### Scenario: No match
 
 - **WHEN** the user records "order a pizza" and stops with the command key
-- **THEN** the words are appended as with the transcribe-only key, a warning says no command matched, and nothing runs
+- **THEN** the words are appended as with the transcribe-only key, a warning says no command matched without repeating the words, and nothing runs
 
 #### Scenario: Ambiguous names
 
-- **WHEN** two different names have the same letters and digits, and the user says them
+- **WHEN** two different listed names have the same collapsed form, and the user says it
 - **THEN** the words are appended unchanged and a warning names both
 
 #### Scenario: Mode decided at the stop
@@ -316,7 +341,30 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 
 ### Requirement: Hold Space to talk
 
-The configuration SHALL accept `input.holdSpace` (boolean, default `false`); any other value SHALL be a configuration error reported on use. When it is on, the extension SHALL watch raw terminal input for Space. Only input made entirely of spaces SHALL count. The first Space SHALL always reach the editor. A Space arriving within 120 ms of the previous one SHALL count as a key repeat, and two repeats in a row SHALL start a recording as the send key does, provided no recording, held recording, or transcription exists. The Spaces typed since the hold began SHALL then be removed from the end of the editor text if it still ends with them, and later repeats SHALL be consumed. The hold SHALL end when no Space arrives for 300 ms or the terminal reports a Space release. Ending SHALL stop the recording in send mode, exactly as the send key does, or cancel it if it is still starting. The recording status line SHALL say that releasing Space sends. When the setting is off, Space SHALL reach the editor unchanged.
+**Setting.** The configuration SHALL accept `input.holdSpace` (boolean, default `false`). The value SHALL be read at load with the shortcuts, and a configuration error SHALL count as off. When it is off, Space SHALL reach the editor unchanged.
+
+**Listener.** When it is on, the extension SHALL subscribe one raw terminal input listener on each interactive session start. Session replacement and shutdown SHALL clear its state and timers.
+
+**Recognizing a hold.**
+- Only input made entirely of spaces SHALL count.
+- A Space arriving within 120 ms of the previous one SHALL be a repeat, and the second repeat in a row SHALL recognize a hold.
+- Spaces before recognition SHALL reach the editor.
+
+**Starting.**
+- On recognition, a recording SHALL start as the send key starts one, only if no recording attempt, recording, held recording, or transcription exists.
+- When it starts, the run of Spaces passed to the editor since the last input other than a Space SHALL be removed from the end of the editor text, if the text still ends with them.
+- From recognition until the hold ends, every Space SHALL be consumed, whether or not a recording started, and no second hold SHALL be recognized.
+
+**Ending.**
+- The hold SHALL end when the terminal reports a Space release, or when no Space has arrived for 300 ms. A quiet gap SHALL be confirmed only after pending input has been read.
+- Ending SHALL act only on the recording that hold started:
+  - it SHALL cancel the recording if it is still starting;
+  - it SHALL stop it in send mode, exactly as the send key does, if it is recording or held;
+  - otherwise it SHALL do nothing.
+
+**Other input during a hold.** Escape and push-to-talk keys SHALL behave as usual. Any other input SHALL reach the editor and stop the hold's recording in transcribe-only mode.
+
+**Status line.** The recording status line SHALL say that releasing Space sends.
 
 #### Scenario: Tap types a space
 
@@ -325,32 +373,57 @@ The configuration SHALL accept `input.holdSpace` (boolean, default `false`); any
 
 #### Scenario: Hold records and release sends
 
-- **WHEN** `input.holdSpace` is on, the editor holds "Draft", and the user holds Space, speaks, and lets go
-- **THEN** a recording starts once the key repeats, the spaces the hold typed are removed, and after the release the draft and the transcript are sent as with the send key
+- **WHEN** `input.holdSpace` is on, the editor holds "Draft", and the user holds Space (a press, an auto-repeat after 500 ms, then repeats every 30 ms), says "xin chào", and lets go
+- **THEN** the recording starts at the fourth Space, the editor holds "Draft" again, and after the release "Draft xin chào" is sent as with the send key
 
 #### Scenario: Release while starting
 
 - **WHEN** the user lets go of Space while the recording is still starting
 - **THEN** the attempt is cancelled and nothing is recorded or sent
 
+#### Scenario: Escape while Space is held
+
+- **WHEN** the user presses Escape during a hold-started recording and keeps holding Space, then lets go
+- **THEN** the recording is discarded, later Spaces are consumed, no new recording starts, and nothing is sent
+
+#### Scenario: Recording already ended before the release
+
+- **WHEN** the stop phrase sends a hold-started recording, or a push-to-talk key stops it and its transcription finishes, while Space is still held, and the user then lets go
+- **THEN** nothing more happens: no new recording starts and nothing else is sent
+
+#### Scenario: Refused start
+
+- **WHEN** a hold is recognized but the recording cannot start, for example because the key is missing
+- **THEN** the reason is reported once, later Spaces are consumed until the release, and no further attempt is made
+
 #### Scenario: Hold during another recording
 
-- **WHEN** a recording started with a key is in progress and the user holds Space
-- **THEN** spaces are typed as usual and the recording is unaffected
+- **WHEN** a recording, or a recording attempt that is still starting, was begun with a key, and the user holds Space
+- **THEN** spaces are typed as usual and that recording is unaffected
+
+#### Scenario: Stalled event loop
+
+- **WHEN** Pi is busy for longer than 300 ms during a hold, so the release timer and queued Spaces are due together
+- **THEN** the queued Spaces keep the hold going, and nothing is sent
+
+#### Scenario: Other key during a hold
+
+- **WHEN** the user types another key while holding Space during a hold-started recording
+- **THEN** that key reaches the editor, the transcript is appended without sending, and the remaining Spaces are consumed until the release
+
+#### Scenario: Session replaced during a hold
+
+- **WHEN** the session is replaced while Space is held
+- **THEN** the recording is discarded, the hold timers are cleared, and nothing is sent
 
 #### Scenario: Off by default
 
 - **WHEN** `input.holdSpace` is not set and the user holds Space
 - **THEN** every space reaches the editor and no recording starts
 
-#### Scenario: Other key stops a held-Space recording
-
-- **WHEN** a recording started by holding Space is stopped with the transcribe-only key while Space is still held
-- **THEN** the transcript is appended without sending, and the remaining repeats are consumed until Space is released
-
 ### Requirement: Voice input secret and privacy handling
 
-The extension SHALL read `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` only from the environment and SHALL NOT write them to configuration, cache, logs, notifications, process arguments, or the recorder's environment. The extension SHALL NOT log or persist audio or transcripts; a transcript exists only in the composer or in the user message the user chose to send. Documentation SHALL state that each recording the user sends goes to the selected provider, that this is not a zero-retention guarantee, and that a discarded recording, or one held at the time cap and not sent, never leaves the machine while the stop phrase is off. It SHALL state that while the stop phrase is on, audio streams to ElevenLabs as the user speaks, and that discarding a recording stops the message but cannot recall audio already sent. Help and `/speak status` SHALL show whether the stop phrase is on and which phrases count.
+The extension SHALL read `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` only from the environment and SHALL NOT write them to configuration, cache, logs, notifications, process arguments, or the recorder's environment. The extension SHALL NOT log or persist audio or transcripts; a transcript exists only in the composer or in the user message the user chose to send, and warnings never repeat it. Documentation SHALL state that each recording the user sends goes to the selected provider, that this is not a zero-retention guarantee, and that a discarded recording, or one held at the time cap and not sent, never leaves the machine while the stop phrase is off. It SHALL state that while the stop phrase is on, audio of every recording not started with the command or skill key streams to ElevenLabs as the user speaks, and that discarding a recording stops the message but cannot recall audio already sent. Help and `/speak status` SHALL show whether the stop phrase is on and which phrases count.
 
 #### Scenario: Error output redaction
 

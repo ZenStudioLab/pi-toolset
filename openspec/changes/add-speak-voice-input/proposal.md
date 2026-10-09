@@ -2,7 +2,7 @@
 
 ## Why
 
-The speak extension only goes one way: `/speak` reads an answer aloud in the user's ElevenLabs voice. The user also wants to dictate prompts into Pi, and wants Deepgram as a second provider for both directions, called directly with their own keys. privateer-speak 0.8.0 (MIT) shows how to do this. Its riskier parts are left out: answers spoken automatically, a microphone that sends on its own, spoken commands, and keys stored in a config file.
+The speak extension only goes one way: `/speak` reads an answer aloud in the user's ElevenLabs voice. The user also wants to dictate prompts into Pi, and wants Deepgram as a second provider for both directions, called directly with their own keys. privateer-speak 0.8.0 (MIT) shows how to do this. Its riskier parts are left out: answers spoken automatically, a microphone that sends on its own, and keys stored in a config file. (Spoken commands were later added, but only into the editor; see the Wave 8 amendment.)
 
 ## What Changes
 
@@ -41,7 +41,7 @@ Out of scope: speaking answers automatically, dictation modes that send without 
 
 ### New Capabilities
 
-- `voice-input`: push-to-talk capture, transcription by Deepgram or ElevenLabs, appending the transcript to the composer or sending it with the draft, input provider selection, and the privacy and secret rules for microphone audio.
+- `voice-input`: push-to-talk capture, transcription by Deepgram or ElevenLabs, appending the transcript to the composer or sending it with the draft, input provider selection, the spoken stop phrase, command and skill keys, hold Space to talk, and the privacy and secret rules for microphone audio.
 
 ### Modified Capabilities
 
@@ -49,8 +49,8 @@ Out of scope: speaking answers automatically, dictation modes that send without 
 
 ## Impact
 
-- **Code:** `extensions/speak/` gains a recorder, a push-to-talk controller, and a Deepgram client. `config.ts`, `speech-job.ts`, `index.ts`, and the README change. New and changed tests go in `test/speak/`.
+- **Code:** `extensions/speak/` gains a recorder, a push-to-talk controller, a Deepgram client, an ElevenLabs live transcription client (Wave 6), a command matcher and a hold-Space detector (Wave 8). `config.ts`, `speech-job.ts`, `index.ts`, and the README change. New and changed tests go in `test/speak/`.
 - **Network:** a new destination, `https://api.deepgram.com`, and the existing ElevenLabs origin also receives microphone audio for transcription.
 - **Local tools:** recording needs `rec` (SoX), `arecord`, or `ffmpeg` on the machine.
-- **Decision record:** a new ADR-0004 covers microphone audio leaving the machine and the choice between providers. ADR-0005 replaces only its never-submit rule with the send key. ADR-0002's manual-only rule for speech output still holds.
+- **Decision record:** a new ADR-0004 covers microphone audio leaving the machine and the choice between providers. ADR-0005 replaces only its never-submit rule with the send key. ADR-0006 adds the spoken stop phrase, ADR-0007 the command and skill keys, and ADR-0008 hold Space to talk. ADR-0002's manual-only rule for speech output still holds.
 - **Dependencies:** no new npm packages.

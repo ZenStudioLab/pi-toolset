@@ -118,7 +118,7 @@ The Deepgram ceiling of 2,000 characters is confirmed in the documentation (see 
 
 ### D10. Shortcut
 
-`input.shortcut` (the send keys, default `alt+t`) and `input.transcribeShortcut` (the transcribe-only keys, default `alt+shift+t`) are read once when the extension loads (a local file read, no network). Each accepts one key or a list of 1 to 4 keys, so a user can bind extra keys such as `alt+y` and `alt+shift+y` (user request, 2026-10-09). Every key in both settings must be different, compared without regard to case; a repeated key is a configuration error. If the config can't be read at load, or it has such an error, only the two defaults are registered and the error is reported on first use. Help and the recording status lines name every registered key of each mode. Pi lets an extension take a key that Pi's editor also binds, unless Pi reserves it (`runner.js:9-28`); `alt+y` is Pi's yank-pop, which is not reserved, so binding it replaces yank-pop and Pi prints a conflict notice at startup. The defaults stay free of such conflicts. The user confirmed `alt+t` is free in Pi (see Verified Provider Facts); `alt+shift+t` has no built-in Pi binding, and whether the terminal delivers it is a live check.
+`input.shortcut` (the send keys, default `alt+t`) and `input.transcribeShortcut` (the transcribe-only keys, default `alt+shift+t`) are read once when the extension loads (a local file read, no network). Each accepts one key or a list of 1 to 4 keys, so a user can bind extra keys such as `alt+y` and `alt+shift+y` (user request, 2026-10-09). Every key in both settings must be different, compared without regard to case; a repeated key is a configuration error. If the config can't be read at load, or it has such an error, only the defaults are registered (four since Wave 8, D16) and the error is reported on first use. Help and the recording status lines name every registered key of each mode. Pi lets an extension take a key that Pi's editor also binds, unless Pi reserves it (`runner.js:9-28`); `alt+y` is Pi's yank-pop, which is not reserved, so binding it replaces yank-pop and Pi prints a conflict notice at startup. The defaults stay free of such conflicts. The user confirmed `alt+t` is free in Pi (see Verified Provider Facts); `alt+shift+t` has no built-in Pi binding, and whether the terminal delivers it is a live check.
 
 ### D11. Send mode, decided at the stop
 
@@ -147,9 +147,9 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 
 **Settings.** `input.stopOnPhrase` (boolean, default `false`) turns the feature on. `input.stopPhrases` is a list of 1 to 10 phrases, each 1 to 40 characters after trimming, default `["let's go"]`. A phrase list is valid even when the feature is off, so the default costs nothing. The pause that ends a stretch of speech is fixed at 1 second; it is not a setting.
 
-**Which provider.** Only ElevenLabs streams. With the feature on and the input provider fixed at recording start being Deepgram, pressing a shortcut reports that the stop phrase needs ElevenLabs and records nothing. It never switches provider silently.
+**Which provider.** Only ElevenLabs streams. With the feature on and the input provider fixed at recording start being Deepgram, pressing any control other than the command or skill key reports that the stop phrase needs ElevenLabs and records nothing. Command and skill starts never stream (D16). It never switches provider silently.
 
-**Connection.** When a recording starts with the feature on, the extension opens Node's built-in `WebSocket` to the fixed URL `wss://api.elevenlabs.io/v1/speech-to-text/realtime` with query `model_id=scribe_v2_realtime`, `audio_format=pcm_16000`, `commit_strategy=vad`, `vad_silence_threshold_secs=1`, and `language_code` set to the primary language subtag of `input.language` when it is set (the realtime API takes ISO 639 codes). The key goes only in the `xi-api-key` header, never in the URL. The connection must open within `requestTimeoutMs`; otherwise the recording ends with a sanitized error and nothing is sent. The recorder starts only after the connection opens, so no audio is lost or buffered beyond the connection wait.
+**Connection.** When a recording not started with the command or skill key starts with the feature on, the extension opens Node's built-in `WebSocket` to the fixed URL `wss://api.elevenlabs.io/v1/speech-to-text/realtime` with query `model_id=scribe_v2_realtime`, `audio_format=pcm_16000`, `commit_strategy=vad`, `vad_silence_threshold_secs=1`, and `language_code` set to the primary language subtag of `input.language` when it is set (the realtime API takes ISO 639 codes). The key goes only in the `xi-api-key` header, never in the URL. The connection must open within `requestTimeoutMs`; otherwise the recording ends with a sanitized error and nothing is sent. The recorder starts only after the connection opens, so no audio is lost or buffered beyond the connection wait.
 
 **Streaming.** Each recorder chunk is sent as `{"message_type":"input_audio_chunk","audio_base_64":…,"commit":false,"sample_rate":16000}`. The audio is also kept in memory as today, so the time cap and the level bar work unchanged; it is never uploaded a second time. Incoming messages are capped at 64 KiB each and the accumulated text at 1 MiB; a larger message ends the recording as a provider failure.
 
@@ -170,35 +170,84 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 
 **Settings.** `input.commandShortcut` (default `alt+m`) and `input.skillShortcut` (default `alt+i`) follow D10: one key or a list of 1 to 4, read at load, and every key across all four shortcut settings is different, ignoring case. On a config error, the four defaults are registered. `/talk command` and `/talk skill` are the equivalent commands. `input.commandAliases` is an optional object of at most 50 entries, mapping a spoken phrase (1 to 40 characters after trimming) to a target: one line of 2 to 200 characters that starts with `/`. A target that starts with `/skill:` is a skill alias; any other target is a command alias. A target need not exist in Pi's list, so an alias can reach Pi's interactive commands, such as `/model`.
 
-**Modes.** D11 gains two stop modes, *command* and *skill*. A press that only starts a recording carries no decision, and a held recording is delivered in the mode of the control that releases it. A recording started with the command or skill key never streams, even with `input.stopOnPhrase` on. It is uploaded once at the stop, exactly as a transcribe-only recording, so it is also allowed while Deepgram is selected. A streamed recording stopped by the command or skill key is matched against its committed text.
+**Modes.** D11 gains two stop modes, *command* and *skill*. A press that only starts a recording carries no decision about the delivery mode, though starting with the command or skill key turns off streaming; a held recording is delivered in the mode of the control that releases it. A recording started with the command or skill key never streams, even with `input.stopOnPhrase` on. It is uploaded once at the stop, exactly as a transcribe-only recording, so it is also allowed while Deepgram is selected. A streamed recording stopped by the command or skill key is matched against its committed text.
 
 **Matching**, done at the stop in a pure function in a new module:
 
-- The candidates are read from `pi.getCommands()` at the stop. In command mode, they are the entries with source `extension` or `prompt`, plus the command aliases. In skill mode, they are the entries with source `skill`, matched without the `skill:` prefix, plus the skill aliases.
-- Words are compared in a collapsed form: lowercased (NFKC), keeping only letters and digits. For example, "Op SX apply-loop" and `opsx-apply-loop` both become `opsxapplyloop`.
-- The longest run of leading words (at most 8) whose collapsed form equals a candidate's collapsed name wins. At equal length, an alias beats a name. Two different names with the same collapsed form are ambiguous.
-- The words after the match are the arguments. Punctuation between the name and the arguments, and a final period, are dropped.
+- **Candidates** are read from `pi.getCommands()` at the stop:
+  - In command mode, the entries with source `extension` or `prompt`, under the names Pi lists, including suffixed duplicates such as `name:2`, plus the command aliases.
+  - In skill mode, the entries with source `skill`, without the `skill:` prefix, plus the skill aliases.
+- **Collapsed form.** A *token* is a run of non-whitespace characters. The *collapsed form* of a text is its NFKC form, lowercased, keeping only `\p{L}` and `\p{N}` characters. NFKC keeps Vietnamese letters precomposed; any leftover combining marks are dropped. For example, "Op SX apply-loop" and `opsx-apply-loop` both become `opsxapplyloop`.
+- **Winning match.** Take the longest run of leading tokens, from 1 to 8, whose collapsed form equals a candidate's collapsed form.
+  - An alias whose phrase has that collapsed form wins.
+  - Otherwise, exactly one name with that form wins.
+  - Two or more different names with that form are ambiguous.
+- **Arguments.** The tokens after the run are the arguments, joined by single spaces. Leading and trailing whitespace and Unicode punctuation (`\p{P}`) are removed from the whole argument text.
+- **Alias errors.** An alias phrase whose collapsed form is empty, that has more than 8 tokens, or that collapses to the same form as another alias phrase is a configuration error.
 
-**Delivery.** On a match, the editor text becomes `/<name>`, then the arguments, then the previous draft, joined by single spaces, with empty parts left out. Nothing is sent and no command runs; the user presses Enter. With no match or an ambiguous match, the transcript is appended as in transcribe-only mode, and a warning names the words, or the competing names. An empty transcript changes nothing. D4's rules for late transcripts and session changes apply unchanged.
+**Delivery.** Nothing is sent and no command runs; the user presses Enter.
 
-**Display.** The recording and held status lines, and help, name the command and skill keys. Help says that the result goes into the editor and that Pi's interactive commands need an alias.
+- **Listed target.** The match is a listed target when it is:
+  - a name from Pi's list;
+  - a skill;
+  - an alias whose target's first token, without its `/`, is a listed command or template name, or `skill:` plus a listed skill.
+
+  For a listed target, the editor text becomes the target, then the arguments, then the previous draft, joined by single spaces, with empty parts left out. The target is `/<name>` for a command or template, `/skill:<name>` for a skill, or the alias target. The previous draft therefore becomes part of the command's arguments, and help and the README say so.
+- **Unlisted target.** Any other alias target is an unlisted target, such as Pi's interactive `/model` or `/new`. Pi matches those on the whole editor text, so the target is placed alone, and only when the editor is empty and no words follow it. Otherwise the transcript is appended as in transcribe-only mode, and a warning says that the command needs an empty editor and nothing after it.
+- **No match, or an ambiguous one.** The transcript is appended as in transcribe-only mode. A warning says that no command, or no skill, matched, or it names the competing names. Warnings never repeat the transcript.
+- **Unchanged rules.** An empty transcript changes nothing. D4's rules for late transcripts and session changes apply unchanged.
+
+**Display.** The recording and held status lines, and help, name the command and skill keys. Help says three things:
+- the result goes into the editor;
+- the draft becomes the command's arguments;
+- Pi's interactive commands need an alias and an empty editor.
 
 - **Alternative: run the match at once.** Rejected by the user; a misheard name would run.
 - **Alternative: fuzzy (edit-distance) matching.** Not chosen; it can pick a wrong command silently. Aliases cover names that transcription mishears.
 
 ### D17. Hold Space to talk (Wave 8, ADR-0008)
 
-**Setting.** `input.holdSpace` (boolean, default `false`), read on use like the other input settings. When it is on, one `ctx.ui.onTerminalInput` listener watches for Space. While the setting is off, the listener passes every input through unchanged.
+**Setting.** `input.holdSpace` (boolean, default `false`) is read at load together with the shortcuts, and a change takes effect after `/reload`. The terminal input handler must answer synchronously, so it cannot read the file on use. A configuration error at load counts as off, and Space then types normally.
 
-**Recognizing a hold.** Only input that is exactly one or more spaces counts; bracketed paste and every other key never do. The first Space always passes to the editor. A Space that arrives within 120 ms of the previous one is a repeat. After two repeats in a row (three Spaces), the hold is recognized, if no recording, held recording or transcription exists. The extension then starts a recording through the same path as the send key, and removes from the end of the editor text the Spaces typed since the hold began, only if the text still ends with them. Without that condition, Space behaves normally.
+**Listener lifecycle.** Pi drops extension input listeners whenever a session is replaced or reloaded. So on each `session_start` in interactive mode, the extension subscribes one listener through `ctx.ui.onTerminalInput`. `session_shutdown`, `session_before_switch`, `session_before_fork` and `session_tree` clear the hold state and its timers, next to `talk.resetSession()`, so no timer reaches a stale context. The detector is its own module, with an injectable clock and timers. It reaches the controller only through the two entry points below.
 
-**During the hold.** Repeats are consumed, and each repeat restarts a 300 ms timer. When it fires, or when the terminal reports a Space release (`isKeyRelease`), the hold ends. Ending stops the recording in send mode through the same path as the send key, so D11, D12 and D15 apply unchanged: an empty transcript sends nothing, `input.sendWhenBusy` chooses the delivery, a recording held at the cap is sent, and on a streamed recording a final commit is requested. If the recording is still starting, ending cancels it, as a second press does. A recording shorter than 0.5 s is discarded as before. Other keys pass through; Escape discards. A recording started by a hold can also be stopped with any push-to-talk key, which then decides the mode; after that, the remaining repeats are consumed until the 300 ms timer fires.
+**Recognition.** Only input made entirely of spaces counts; a chunk of *n* spaces counts as *n* Spaces. Bracketed paste and every other input never count.
+- **Repeat:** a Space that arrives within 120 ms of the previous Space.
+- **Recognized:** the second repeat in a row recognizes a hold. In the probed terminal that is the fourth Space: the press, the first auto-repeat after about 0.5 s, then two repeats 30 ms apart.
+- **Before recognition:** every Space reaches the editor. The detector keeps the count of Spaces it passed to the editor since the last input that was not a Space.
 
-**Display.** The recording status line of a hold-started recording says "release Space to send". Help names Space when the setting is on.
+**Starting.** On recognition the detector calls `controller.startHold()`.
+- **Only from fully idle:** the controller starts a recording, as the send key would, only when it has no starting attempt, recording, held recording or transcription. It then returns a handle; otherwise it returns nothing and changes nothing.
+- **Refused start:** a missing key, a config error, Deepgram with the stop phrase on, or no recording tool reports its message once.
+- **Removing the hold's Spaces:** when a handle is returned, the counted run of Spaces is removed from the end of the editor text, but only if the text still ends with that many Spaces.
+
+**During a recognized hold.** Whatever happened at recognition, every further Space is consumed until the hold ends. A second hold is never recognized within the same physical hold.
+
+**Ending.** The hold ends in one of two ways:
+- **A reported release:** the terminal reports a Space release (`isKeyRelease`).
+- **A quiet gap:** no Space has arrived for 300 ms. When the timer fires, the decision waits for `setImmediate`, after pending input has been read. If a Space arrived in the meantime, judged by arrival times rather than by when the timer ran, the hold continues. An event-loop stall therefore cannot end a hold while Spaces are still queued.
+
+On ending, the detector calls `controller.releaseHold(handle)`:
+- **Still starting:** the recording is cancelled.
+- **Recording or held:** it stops in send mode exactly as the send key would, so D11, D12 and D15 apply.
+- **Already ended in another way:** after Escape, the stop phrase, another control or an error, nothing happens.
+- **No handle:** ending does nothing.
+
+**Other input during a hold.**
+- **Escape and push-to-talk keys** work as usual: Escape discards, and a key stops in its own mode.
+- **Any other input** reaches the editor as usual and stops the hold's recording in transcribe-only mode, and nothing is sent. Pressing another key stops Space's key repeat, so a release could no longer be told apart.
+
+**Display.** The status line of a hold-started recording says "release Space to send". When the setting is on, help names Space and says that typing another key ends the recording without sending.
 
 **Timing.** The 120 ms and 300 ms values are constants. The probe measured a 0.5 s repeat delay and a 30 ms repeat interval.
 
-- **Alternative: wait for the first repeat before letting a Space through.** It delays every typed space by the repeat delay.
+**Limits**, stated in ADR-0008 and the README:
+- Key repeat must be on and faster than 120 ms.
+- Losing window focus while holding Space stops the repeats and counts as letting go, which sends.
+- Holding Space while a selector or dialog is open can start a recording.
+- Three Spaces typed within 120 ms of each other count as a hold. That removes them, stops `/speak` playback, and starts a recording. Letting go within 0.5 s discards it without any upload.
+
+- **Alternative: wait for the first repeat before letting a Space through.** It delays every typed space by the repeat delay, and the extension cannot insert at the cursor afterwards.
 
 ## Verified Provider Facts
 
@@ -227,7 +276,8 @@ Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
 - **Key conflicts:** `alt+t` may be taken by the terminal or by Pi, and Escape is shared with the editor. → The shortcut is configurable and checked in 1.2. Escape is consumed only while a recording is starting, in progress, or held.
 - **`PULSE_SERVER` can point at a remote audio server.** → It is kept, because local audio needs it. The README says audio routing is the operator's setting.
 - **Breaking config change.** → It affects only the user's own local file. The loader names the new location for every old key, and task 4.2 migrates the file with the user's approval.
-- **Holding Space in a selector or dialog starts a recording** (ADR-0008), because the input listener runs before every component. → It is off by default, and the status line and Escape make it visible and free to discard.
+- **A wrong "release" could send a partial dictation** (ADR-0008). → A quiet gap ends a hold only after pending input is read, another key ends it without sending, and the release acts only on the recording that hold started. Losing window focus while holding still counts as letting go; this is a documented limit.
+- **Holding Space in a selector or dialog starts a recording** (ADR-0008), because the input listener runs before every component. → It is off by default. The status line shows the recording, and Escape discards it before the release.
 - **A misheard command name** (ADR-0007). → The result goes into the editor and runs only on Enter. Matching never guesses between equal names, and aliases fix names that are hard to transcribe.
 - **Cost:** Deepgram and ElevenLabs bill per audio second. → The time cap (120 s by default, at most 300) bounds a recording's length, and a recording held at the cap is never sent without a press.
 
