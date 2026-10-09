@@ -243,10 +243,11 @@ Verification commands:
     - given the registered push-to-talk keys at load;
     - subscribed on each interactive `session_start`, with its timers cleared on shutdown and session changes;
     - a module-level spent state that survives those resets.
-  - **Input classes:** Space press, Space release, ignored, passed through, and other input.
+  - **Input classes:** Space press, Space release, ignored (not decodable by `parseKey` and not printable), passed through, and other input.
   - **Controller entry points:**
     - `startHold()` (fully idle only) returns a handle that survives the change from starting to recording to held;
-    - `endHold(handle, "send" | "hold")` follows the D17 table.
+    - `endHold(handle, "send" | "discard")` follows the D17 table;
+    - the handle reports when the recorder is running, for the removal of Spaces.
   - **Spaces:**
     - in an engaged hold, consume them until the end, and remove the counted run once the recorder runs, only at the end of the text;
     - in a busy hold, pass them through;
@@ -258,7 +259,7 @@ Verification commands:
   - every scenario of the requirement, stating the exact editor text;
   - the release of an arrow key and of Escape;
   - the send key as CSI-u during a hold;
-  - other input while starting, while recording, and while held;
+  - other input while starting, while recording (streamed and not), and while held at the cap, each followed by the quiet gap: nothing is sent;
   - a stall where the timer and queued Spaces are due together, using the injected deferral;
   - bracketed paste;
   - a Space release from `isKeyRelease`;
@@ -276,7 +277,7 @@ Verification commands:
     - the cursor in the middle of the text;
     - a merge within 300 ms;
     - streaming with the stop phrase on;
-  - that another key keeps the recording unsent.
+  - that another key discards the recording.
 - [ ] 8.6 [Orchestrator] After 8.2–8.5, and with the user's approval, set `input.holdSpace: true` in the user's config, with a backup first. Verify it with `parseConfig`.
 - [ ] 8.7 [User] Live checks:
   - `alt+m`, then "opsx apply loop" with arguments;
@@ -288,7 +289,7 @@ Verification commands:
   - holding Space to dictate and letting go;
   - letting go quickly, right after the recording starts;
   - Escape while Space is still held;
-  - another key while holding Space (the recording is held unsent);
+  - another key while holding Space (the recording is discarded);
   - holding Space in a selector or dialog;
   - holding Space during an `alt+shift+t` recording.
 

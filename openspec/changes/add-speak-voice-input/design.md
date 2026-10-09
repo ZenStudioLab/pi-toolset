@@ -214,36 +214,36 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 The detector is its own module, with an injectable clock, timers and deferral (`setImmediate` in production). It receives the registered push-to-talk keys at load, and reaches the controller only through the two entry points below.
 
 **Reading input.** The detector classifies each input it sees:
-- **Space press or repeat:** input made entirely of spaces. A chunk of *n* spaces counts as *n* Spaces.
+- **Space press or repeat:** an input that is a single space.
 - **Space release:** a key-release event whose key is Space (`isKeyRelease` together with a Space match).
-- **Ignored:** release events of other keys, and terminal replies, which are not key events. These are never counted, and never end or stop anything.
+- **Ignored:** release events of other keys, and input that pi-tui's `parseKey` cannot decode and that is not printable text, such as terminal replies. These are never counted, and never end or stop anything.
 - **Passed through:** Escape and the registered push-to-talk keys (`matchesKey` against the load-time list). They pass unchanged, so their own handlers act.
-- **Other input:** any other key press or repeat, and any bracketed paste.
+- **Other input:** any other key press or repeat that `parseKey` decodes, any printable text, and any bracketed paste.
 
-**Recognition.** A Space press within 120 ms of the previous Space is a repeat, and the second repeat in a row recognizes a hold. In the probed terminal that is the fourth Space: the press, the first auto-repeat after about 0.5 s, then two repeats 30 ms apart. Every Space before recognition reaches the editor, and the detector counts the Spaces it passed since the last input that was not a Space.
+**Recognition.** A Space press within 120 ms of the previous Space is a repeat, and the second repeat in a row recognizes a hold. In the probed terminal that is the fourth Space: the press, the first auto-repeat after about 0.5 s, then two repeats 30 ms apart. Every Space before recognition reaches the editor. The *counted run* is the number of Spaces this listener passed to the editor since the last input that was not a Space.
 
 On recognition the detector calls `controller.startHold()`, and the hold becomes **spent** whatever the outcome. A spent hold is never recognized again until it ends (see Ending).
 - **Engaged hold:** the controller is fully idle (no starting attempt, recording, held recording or transcription). It begins a recording as the send key would, and returns a handle that stays valid from starting through recording and held, until that recording ends. From recognition until the hold ends, every Space is consumed.
 - **Busy hold:** otherwise `startHold()` returns nothing and changes nothing, with no message. Spaces keep reaching the editor, as during any key-started recording (D5).
 
-**Removing the hold's Spaces.** In an engaged hold, the counted run of Spaces is removed from the end of the editor text when the recorder is actually running. The removal happens only if the text still ends with that many Spaces. Otherwise, for example when the cursor was in the middle of the text, they stay, and will be sent with the draft. If the start is refused (a missing key, a config error, Deepgram with the stop phrase on, or no recording tool) or cancelled, the Spaces stay and the refusal is reported once.
+**Removing the hold's Spaces.** In an engaged hold, the counted run is removed from the end of the editor text when the controller reports, through the handle, that the recorder is running. The removal happens only if the text still ends with that many Spaces. Otherwise, for example when the cursor was in the middle of the text, they stay, and will be sent with the draft. If the start is refused (a missing key, a config error, Deepgram with the stop phrase on, or no recording tool) or cancelled, the Spaces stay and the refusal is reported once.
 
 **Ending.** A spent hold ends on a Space release, or on a quiet gap: no Space for 300 ms. When the timer fires, the decision is deferred until pending input has been read. If a Space arrived meanwhile, judged by arrival times rather than by when the timer ran, the hold continues. An event-loop stall therefore cannot end a hold while Spaces are still queued.
 
-On ending, an engaged hold calls `controller.endHold(handle, "send")`. A Space pressed again within 300 ms of letting go continues the same hold.
+On ending, an engaged hold calls `controller.endHold(handle, "send")`. On a terminal that reports no Space release, a Space pressed again within 300 ms of letting go arrives before the quiet gap and so continues the same hold.
 
-**Other input during an engaged hold.** It reaches the editor as usual, ends the hold, and calls `controller.endHold(handle, "hold")`. Pressing another key stops Space's key repeat, so a later release could not be told apart. The recording is therefore kept unsent, exactly like one held at the time cap. The user then sends it with the send key, adds it with the transcribe-only key, or discards it with Escape.
+**Other input during an engaged hold.** It reaches the editor as usual and calls `controller.endHold(handle, "discard")`. The hold stays spent and keeps consuming Spaces until it ends, and its ending then does nothing, because the handle's recording has ended. Pressing another key stops Space's key repeat, so a later release could not be told apart from the typing. The recording is therefore discarded, exactly as Escape discards it: a streamed recording closes its connection, and nothing is sent.
 
 **`endHold(handle, mode)`** acts only on that handle's recording:
 
-| Recording state | `send` | `hold` |
+| Recording state | `send` | `discard` |
 | --- | --- | --- |
 | starting | cancel | cancel |
-| recording | stop in send mode, as the send key does (D11, D12, D15) | stop and hold unsent (D1) |
-| held | send it, as the send key does | leave it held |
-| ended any other way: Escape, the stop phrase, another control, an error, a session reset | nothing | nothing |
+| recording | stop in send mode, as the send key does (D11, D12, D15) | discard, as Escape does (D1, D15) |
+| held at the time cap | send it, as the send key does | discard, as Escape does |
+| ended any other way: Escape, the stop phrase, another control, an error, a session reset, an earlier `discard` | nothing | nothing |
 
-**Display.** The status line of a hold-started recording says "release Space to send". When the setting is on, help names Space, and says that typing another key during a hold keeps the recording unsent until a key is pressed.
+**Display.** The status line of a hold-started recording says "release Space to send". When the setting is on, help names Space, and says that typing another key during a hold discards the recording.
 
 **Timing.** The 120 ms and 300 ms values are constants. The probe measured a 0.5 s repeat delay and a 30 ms repeat interval.
 
@@ -251,7 +251,7 @@ On ending, an engaged hold calls `controller.endHold(handle, "send")`. A Space p
 - **Key repeat:** it must be on and faster than 120 ms. Terminals that encode Space repeats differently, and text committed by an input method together with a Space, do not count as a hold.
 - **Focus:** losing window focus while holding Space stops the repeats and counts as letting go, which sends. Pi enables no focus reporting.
 - **Dialogs:** holding Space while a selector or dialog is open can start a recording.
-- **Accidental holds:** three Spaces typed within 120 ms of each other count as a hold. That removes them, stops `/speak` playback, and starts a recording. Letting go within 0.5 s sends nothing. With the stop phrase off, nothing is uploaded either. With it on, the audio captured before the release may already have streamed to ElevenLabs.
+- **Accidental holds:** three Spaces typed within 120 ms of each other count as a hold, and so do Spaces typed during a pause in Pi, which arrive together. That removes them, stops `/speak` playback, and starts a recording. Letting go within 0.5 s sends nothing. With the stop phrase off, nothing is uploaded either. With it on, the audio captured before the release may already have streamed to ElevenLabs.
 
 - **Alternative: wait for the first repeat before letting a Space through.** It delays every typed space by the repeat delay, and the extension cannot insert at the cursor afterwards.
 
@@ -282,7 +282,7 @@ Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
 - **Key conflicts:** `alt+t` may be taken by the terminal or by Pi, and Escape is shared with the editor. → The shortcut is configurable and checked in 1.2. Escape is consumed only while a recording is starting, in progress, or held.
 - **`PULSE_SERVER` can point at a remote audio server.** → It is kept, because local audio needs it. The README says audio routing is the operator's setting.
 - **Breaking config change.** → It affects only the user's own local file. The loader names the new location for every old key, and task 4.2 migrates the file with the user's approval.
-- **A wrong "release" could send a partial dictation** (ADR-0008). → A quiet gap ends a hold only after pending input is read, another key holds the recording unsent, release events of other keys are ignored, and the release acts only on the recording that hold started. Losing window focus while holding still counts as letting go; this is a documented limit.
+- **A wrong "release" could send a partial dictation** (ADR-0008). → A quiet gap ends a hold only after pending input is read, another key discards the recording, release events of other keys are ignored, and the release acts only on the recording that hold started. Losing window focus while holding still counts as letting go; this is a documented limit.
 - **Holding Space in a selector or dialog starts a recording** (ADR-0008), because the input listener runs before every component. → It is off by default. The status line shows the recording, and Escape discards it before the release.
 - **A misheard command name** (ADR-0007). → The result goes into the editor and runs only on Enter. Matching never guesses between equal names, and aliases fix names that are hard to transcribe.
 - **Cost:** Deepgram and ElevenLabs bill per audio second. → The time cap (120 s by default, at most 300) bounds a recording's length, and a recording held at the cap is never sent without a press.

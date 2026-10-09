@@ -57,7 +57,7 @@ The extension SHALL record only in an interactive terminal session. In any other
 
 ### Requirement: Push-to-talk recording lifecycle
 
-The first press of any push-to-talk shortcut, or `/talk`, `/talk send`, `/talk command` or `/talk skill`, SHALL start recording; a recognized Space hold also starts one. The next press or command SHALL stop recording and transcribe it, in the mode of that stopping control: send for the send shortcut and `/talk send`, transcribe only for the transcribe-only shortcut and `/talk`, and command or skill for those keys and commands. Letting go of a Space hold SHALL stop the recording it started in send mode. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. When the spoken stop phrase is off, audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, sending a recording held at the time cap, or letting go of a Space hold. Typing another key during a Space hold SHALL keep the recording unsent. When it is on, audio streams while recording, as the "Spoken stop phrase" requirement states. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is starting (waiting for this extension's playback to stop), in progress, or held. Escape or a second press while a recording is starting SHALL cancel it: no recorder keeps running, nothing is recorded, and nothing is sent. When a recording reaches `input.maxSeconds` (default 120, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or command SHALL transcribe it in that control's mode, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
+The first press of any push-to-talk shortcut, or `/talk`, `/talk send`, `/talk command` or `/talk skill`, SHALL start recording; a recognized Space hold also starts one. The next press or command SHALL stop recording and transcribe it, in the mode of that stopping control: send for the send shortcut and `/talk send`, transcribe only for the transcribe-only shortcut and `/talk`, and command or skill for those keys and commands. Letting go of a Space hold SHALL stop the recording it started in send mode. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. When the spoken stop phrase is off, audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, sending a recording held at the time cap, or letting go of a Space hold. Typing another key during a Space hold SHALL discard the hold's recording without sending it. When it is on, audio streams while recording, as the "Spoken stop phrase" requirement states. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is starting (waiting for this extension's playback to stop), in progress, or held. Escape or a second press while a recording is starting SHALL cancel it: no recorder keeps running, nothing is recorded, and nothing is sent. When a recording reaches `input.maxSeconds` (default 120, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or command SHALL transcribe it in that control's mode, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
 
 #### Scenario: Record and transcribe
 
@@ -346,29 +346,26 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 **Listener.** When it is on, the extension SHALL subscribe one raw terminal input listener on each interactive session start.
 
 **Recognizing a hold.**
-- Input made entirely of spaces SHALL count as Space presses.
+- A single-space input SHALL count as a Space press.
 - A Space within 120 ms of the previous one SHALL be a repeat, and the second repeat in a row SHALL recognize a hold.
 - Spaces before recognition SHALL reach the editor.
 - After recognition the hold SHALL NOT be recognized again until it ends.
 
 **Engaged hold.** If, at recognition, no recording attempt, recording, held recording or transcription exists, a recording SHALL start as the send key starts one. While it does:
 - every Space SHALL be consumed until the hold ends;
-- once the recorder is running, the run of Spaces passed to the editor since the last other input SHALL be removed from the end of the editor text, if the text still ends with them.
+- once the recorder is running, the Spaces this listener passed to the editor since the last input that was not a Space SHALL be removed from the end of the editor text, if the text still ends with them.
 
 **Busy hold.** If, at recognition, any recording attempt, recording, held recording or transcription exists, nothing SHALL change and Spaces SHALL keep reaching the editor.
 
 **Ending.**
 - The hold SHALL end on a key-release event for Space, or when no Space has arrived for 300 ms. The quiet gap SHALL be confirmed only after pending input has been read.
-- Release events of other keys and terminal replies SHALL be ignored.
+- Release events of other keys, and input that is neither a decodable key nor printable text, SHALL be ignored.
 - Ending an engaged hold SHALL act only on the recording that hold started:
   - **starting:** cancel it;
   - **recording or held:** send it, exactly as the send key does;
   - **otherwise:** nothing.
 
-**Other input during an engaged hold.** Escape and the registered push-to-talk keys SHALL behave as usual. Any other key press or paste SHALL reach the editor and end the hold:
-- **starting:** cancel the recording;
-- **recording:** stop it and hold it unsent, as at the time cap;
-- **held:** leave it held.
+**Other input during an engaged hold.** Escape and the registered push-to-talk keys, including the command and skill keys, SHALL behave as usual. Any other key press, printable text or paste SHALL reach the editor and discard the hold's recording, exactly as Escape does. The hold SHALL stay spent and consume Spaces until it ends, and its ending SHALL then do nothing.
 
 Session replacement and shutdown SHALL discard the hold's recording and clear its timers, and the hold SHALL stay unrecognizable until it ends.
 
@@ -426,8 +423,8 @@ Session replacement and shutdown SHALL discard the hold's recording and clear it
 
 #### Scenario: Other key during a hold
 
-- **WHEN** the user types another key while holding Space during a hold-started recording
-- **THEN** that key reaches the editor, the recording stops and is held unsent with the held status line, the remaining Spaces are consumed until the release, and nothing is uploaded until the user presses a key
+- **WHEN** the user types another key while holding Space during a hold-started recording, then lets go
+- **THEN** that key reaches the editor, the recording is discarded, the remaining Spaces are consumed, nothing is uploaded or sent, and the release does nothing
 
 #### Scenario: Session replaced during a hold
 

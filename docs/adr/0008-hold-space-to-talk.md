@@ -24,7 +24,7 @@ A probe in the user's terminal (Ghostty on Linux, `TERM_PROGRAM=ghostty`) on 202
 - **still starting:** it is cancelled;
 - **already ended in any other way:** nothing happens.
 
-**Typing during a hold keeps the recording unsent.** Another key stops Space's key repeat, so a release could no longer be told apart. That key reaches the editor, and the recording stops and is held unsent, as at the time cap, until the user presses the send key, the transcribe-only key or Escape. Escape and the push-to-talk keys behave as usual. This adds no new way for audio to leave the machine.
+**Typing during a hold discards the recording.** Another key stops Space's key repeat, so a release could no longer be told apart from the typing. That key reaches the editor, and the hold's recording is discarded exactly as Escape discards it; nothing is uploaded or sent. The hold then just consumes Spaces until it ends. Escape and the push-to-talk keys, including the command and skill keys, behave as usual. This adds no new way for audio to leave the machine and no new held state.
 
 **Lifecycle.** The setting is read at load and applies after `/reload`. The listener is subscribed on every session start, because Pi drops it when a session is replaced. A session change discards the hold's recording and clears its timers, and the spent hold stays unrecognizable until Space is released.
 

@@ -319,3 +319,331 @@ PATCH_BASELINE_REVISION=sha256:cab7f412480579e133f093a19ea3ae134e5b044bf2404b394
   - whether the spent and engaged/busy model, plus the `endHold` table, are consistent across every artifact and testable;
   - whether the new held-unsent path fits D1 and D12 (time-cap hold);
   - a bounded whole-bundle regression sweep.
+
+---
+
+## Round 2 - Oracle Review
+
+### Baseline and mode
+
+**Mode: PATCH; Round 2 of at most 4 in this sequence.** I recomputed the SHA-256 over UTF-8 relative path + NUL + file bytes, in the inclusion predicate's seven-file order:
+
+    sha256:cab7f412480579e133f093a19ea3ae134e5b044bf2404b3943f845eb09b4846f
+
+It equals the caller's recorded `PATCH_BASELINE_REVISION`. The target, source, inclusion predicate and exclusions are unchanged, and I did not widen them.
+
+**Coverage:**
+- Read all seven baseline files in full where hold, held state, egress, the indicator or help are involved.
+- Pi 1.1.0 `pi-tui`:
+  - `stdin-buffer.js:163–222` (plain text is split into one-character sequences) and `:311–315` (all of them are emitted synchronously in one data callback);
+  - `terminal.js:150–178` (paste is re-wrapped and passed to the same input handler);
+  - `tui.js:678–747` (listener loop, cell-size reply consumed after the listeners) and `:806–809`;
+  - `keys.js` exports `isKeyRelease`, `isKeyRepeat`, `matchesKey` and `parseKey`.
+- Speak extension, read-only: `talk.ts:64–67, 84–109, 120–330, 455–468` and `talk-state.ts`.
+
+No network was used, the config file was not read, and no tests were run. The only file changed is this log.
+
+### Round 1 corrections: verification
+
+| Round 1 item | Where it is now | Status |
+| --- | --- | --- |
+| R1-M1 (spent model; engaged versus busy; refusal timing; reset) | D17 `design.md:212, 225–229`; spec `:354–358, 373`; scenarios "Refused start", "Busy hold" and "Session replaced during a hold" (`spec.md:401–410, 432–435`); `ADR-0008:18–20, 29` | **Fixed** for every case Round 1 named. Busy Spaces are typed with no message in every artifact; the refusal text is exact; the spent state survives resets. The caller's new "hold" path reopens the same root in one place (R2-H1). |
+| R1-M2 (input classes; one entry point; egress; tests) | D17 `design.md:214–221, 237–244`; spec `:60, 361–371`; scenarios "Release of another key" and "Send key during a hold" (`spec.md:417–425`); task 8.5 `tasks.md:246–262` | **Fixed.** A release now has to be a Space release, other releases and replies are ignored, and push-to-talk keys pass through on the load-time list. |
+| R1-M3 (claim qualified; cursor; 300 ms merge) | `design.md:229, 233, 254`; `ADR-0008:37–39`; scenario "Cursor in the middle of the text"; README items in task 8.5 | **Fixed.** One leftover on the merge wording (R2-L2). |
+| R1-L1 (delivery scope; help) | `spec.md:142`; `manual-speech/spec.md:45` | **Fixed.** The help wording is ambiguous (R2-M1). |
+| R1-L2 (diacritics; first token; empty) | task 8.3 `tasks.md:225`; `spec.md:293–294`; `design.md:193, 196` | **Fixed.** |
+| R1-L3 (task 8.5 seams) | `tasks.md:241–256` | **Fixed.** One seam is still missing (R2-L1). |
+
+### The caller's design change: typing during a hold keeps the recording unsent
+
+I judge the change **sound in direction, and safer than transcribing**. The reason is about which mistakes are safe:
+- Under the new rule, wrongly treating some input as "other input" only holds the recording. That is the safe direction, so an imperfect "terminal reply" check can no longer cause a send.
+- The only input that can send is now a Space release, which is pinned to Space.
+- No new path for audio to leave the machine is added. `ADR-0008:27` is accurate on that point.
+
+It fits **D1, D5 and D12** in substance: the time-cap held state already exists, keeps Escape intercepted, and is never sent without a press. It is also feasible against the current controller:
+- Stopping a recorder while its phase is "recording" already ends in the held state, for both an uploaded recording and a streamed one (`talk.ts:278–289`).
+- A press on a held recording already transcribes it in that press's mode (`talk.ts:92–99`).
+
+The change does, however, create four gaps, described below:
+- **R2-H1:** the detector's state after "hold" is contradictory, with a send at the end of one reading.
+- **R2-M1:** "held" is still defined as cap-only across the bundle, including the indicator, egress and help text.
+- **R2-M2:** the 0.5 s rule and accidental holds.
+- **R2-M3:** the streamed-recording meaning of "hold unsent".
+
+### Findings
+
+#### R2-H1 — High: after typing during a hold, the detector's next step is contradictory, and one reading sends the held recording
+
+- **Family / root:** `hold-space / detector-controller-identity`. This recurs from Round 4 H1 and R1-M1: what the hold's ending acts on, and for how long. The recurrence was introduced by the new "hold" mode, not by a flaw in the handle and spent model. I judge it **not structural**, because one missing transition fixes it. If the caller instead counts it as a structural repeat after one accepted revision, the contract calls for `REBUILD`.
+- **In scope:** Yes.
+- **Evidence:**
+  - **The prose ends the hold:** D17 says other input "ends the hold, and calls `controller.endHold(handle, "hold")`" (`design.md:235`). The spec says it reaches the editor "and end[s] the hold" (`spec.md:368`).
+  - **The scenario keeps it going:** "Other key during a hold" (`spec.md:428–430`) expects "the remaining Spaces are consumed until the release". A hold that consumes Spaces until the release is a hold that is still running.
+  - **Reading 1 sends:** suppose an implementation follows the scenario and keeps the hold, with its handle, until the release.
+    - The release, usually the 300 ms quiet gap after the typed key stopped the repeat, calls `endHold(handle, "send")`, as "On ending, an engaged hold calls…" requires (`design.md:233`).
+    - The table row `held | send it` (`design.md:243`; `spec.md:365`, "recording or held: send it") then **sends the recording about 300 ms after the user typed**. That is exactly what the "hold" mode exists to prevent.
+    - The handle is still valid, because it "stays valid from starting through recording and held, until that recording ends" (`design.md:226`).
+  - **Reading 2 can record again:** suppose the implementation follows the prose and ends the hold.
+    - The spent state clears ("never recognized again until it ends", `design.md:225`).
+    - If the terminal resumes Space's repeat after the other key is released, the repeats are counted from zero and recognized again. The controller is now "held", so this is a busy hold and the Spaces are typed. That contradicts the scenario.
+    - Whether the repeat resumes depends on the platform and has not been probed.
+  - **Tests and checks miss it:**
+    - Task 8.5 tests "other input … while recording" (`tasks.md:261`) but does not test that the later quiet gap sends nothing.
+    - Live check 8.7 (`tasks.md:291`) does not ask the user to wait past the gap.
+- **SUGGESTED_CORRECTION:**
+  1. **Add one transition.** After `endHold(handle, "hold")`, the detector **drops the handle**. The hold stays spent and keeps consuming Spaces until a Space release or quiet gap. That ending then calls nothing.
+  2. **Use "detaches", not "ends".** In `design.md:235`, `spec.md:368` and `ADR-0008:27`, say "detaches the recording from the hold" instead of "ends the hold".
+  3. **Add a detector state table to D17,** so the detector's states are no longer spread across prose in four files. The states are:
+     - counting;
+     - spent with a handle;
+     - spent and detached;
+     - spent and busy.
+
+     For each state, give what Spaces do and what the ending calls. This is the second round in which this family's blocker came from a transition that was implied but never stated.
+  4. **Add tests and checks:**
+     - task 8.5: "another key during a hold, then no Space for 300 ms or more: nothing is sent and the recording stays held";
+     - a control test: "time cap reached while Space is still held, then release: it is sent";
+     - live check 8.7: "…held unsent; wait a second; nothing is sent".
+
+#### R2-M1 — Medium: "held" is still defined as cap-only across the bundle
+
+- **Family / root:** `wave8-propagation / entry-points-modes-and-privacy`. This recurs from Round 4 M2 and R1-L1: the "hold" path was added in D17 and the hold requirement, but not carried into the general requirements.
+- **In scope:** Yes.
+- **Evidence:**
+  - **Indicator:** the "Recording indicator" requirement SHALL "state that the limit was reached" for a held recording (`spec.md:114`).
+    - The current held line reads "Recording limit reached (N s), not sent" (`talk.ts:461–462`).
+    - The scenario asks for "the held status line" after typing (`spec.md:430`).
+    - Followed literally, typing a key during a hold shows a false "limit reached".
+  - **Egress and talk contract:** the egress list allows "sending a recording held at the time cap" (`spec.md:60`), and the `/talk` forms say "a recording held at the time cap" (`spec.md:25`).
+    - Read literally, neither permits sending a recording held because the user typed.
+    - The only link is "as at the time cap" in `spec.md:370`.
+  - **Design and privacy text:** these name only the cap:
+    - D1 (`design.md:33`), D5 (`:73`) and D11 (`:125`);
+    - the risk lines (`:277, 288`);
+    - the privacy requirement (`spec.md:449`, "one held at the time cap and not sent").
+  - **Help wording:**
+    - "keeps the recording unsent until a key is pressed" (`manual-speech/spec.md:45`, `design.md:246`) is self-contradictory, because typing another key is itself a key press.
+    - `ADR-0008:27` lists the send key, the transcribe-only key and Escape, and leaves out the command and skill keys, which also release a held recording (`spec.md:280`).
+  - **No release hint at the cap:** a recording that reaches the cap while Space is still held shows the held line, which has no "release Space to send" hint, yet letting go sends it (`ADR-0008:23`).
+- **SUGGESTED_CORRECTION:**
+  1. **Define "held" once,** in the lifecycle requirement and D1: "held unsent, at the time cap or after typing during a Space hold". Use that term in `spec.md:25, 60, 114, 449` and `design.md:33, 73, 125, 277, 288`.
+  2. **Give the indicator two held lines:**
+     - "limit reached" for the cap;
+     - "kept unsent" after typing.
+
+     Both name the send, transcribe-only, command, skill and discard keys. The cap line during a hold that is still going also says "release Space to send".
+  3. **Fix the help wording** to "…keeps the recording unsent until the send, transcribe-only, command or skill key, or Escape, is pressed". Add the command and skill keys to `ADR-0008:27`.
+
+#### R2-M2 — Medium: a "hold" can keep a recording shorter than 0.5 s, and accidental holds now usually end held
+
+- **Family / root:** `hold-space / recognition-precision`. This recurs from Round 4 M5 and R1-M3.
+- **In scope:** Yes.
+- **Evidence:**
+  - **The 0.5 s rule does not cover the new path:**
+    - The lifecycle rule discards "a recording shorter than 0.5 seconds" (`spec.md:60`).
+    - In the controller, that check runs only when a press stops a recording (`talk.ts:100–105`). A press on a held recording uploads it whatever its length (`talk.ts:92–99`).
+    - The D17 `hold` column says only "stop and hold unsent" (`design.md:242`).
+  - **The most likely accidental hold ends this way:**
+    - The ADR accepts that three Spaces typed quickly count as a hold (`design.md:254`; `ADR-0008:39`).
+    - The most likely next event after such a hold is the user typing the next letter, which is "other input". The accidental recording then becomes **held**.
+  - **A held accidental recording keeps blocking things:**
+    - Escape is consumed, so the user's next Escape discards the held clip instead of reaching Pi.
+    - `/speak` is refused (`talk.ts:64–67`).
+    - The user's next push-to-talk press uploads the fragment and, if it transcribes to any words, **sends the composer** (`talk.ts:92–99`, then `deliver`). The user meant that press to start a new recording.
+    - A false "limit reached" line (R2-M1) tells the user nothing useful about why.
+  - **Accidental holds are more likely than the ADR says:**
+    - Pi splits plain text into one-character sequences and emits all of them in the same data callback (`stdin-buffer.js:216–219, 311–315`).
+    - So Spaces typed by hand during an event-loop stall arrive with the same arrival time, and count as repeats regardless of how fast they were typed.
+    - The limit text, "typed within 120 ms" (`design.md:254`), understates this.
+- **SUGGESTED_CORRECTION:**
+  1. **Apply the 0.5 s rule to the hold path.** In the `hold` column, a recording younger than 0.5 s is discarded, not held, with the accidental-tap message, and its Spaces stay. Add a scenario and a task 8.5 case.
+  2. **Extend the limit text** in `design.md:254` and `ADR-0008:39` with: "…or Spaces typed while Pi was briefly unresponsive".
+
+#### R2-M3 — Medium: for a streamed recording, "hold unsent" must freeze the stop phrase at once, and "nothing is uploaded" is false
+
+- **Family / root:** `stop-phrase / streamed-hold` (new). It covers how the D17 "hold" mode maps onto D15.
+- **In scope:** Yes.
+- **Evidence:**
+  - **The table points to the wrong rule:** the `hold` cell cites D1 only (`design.md:242`). D1 describes an uploaded recording.
+  - **D15's cap rule has to be reused exactly:**
+    - For a streamed recording, D15's time-cap rule (`design.md:160`) applies: request the final commit and hold the text.
+    - The controller marks the recording held *before* the recorder exits, so that "a late phrase cannot send it" (`talk.ts:207–212`).
+    - A committed segment is acted on only while the phase is "recording" (`talk.ts:313–324`).
+  - **A naive `hold` sends:** an implementation of `hold` as "stop the recorder; it becomes held when it exits" keeps the phase at "recording" during the stop window. A stop phrase committed in that window then **sends**, after the user typed. Only the spec's phrase "as at the time cap" (`spec.md:370`) covers this, and the design table does not repeat it.
+  - **The scenario overstates privacy:** "nothing is uploaded until the user presses a key" (`spec.md:430`) is false with the stop phrase on.
+    - The audio has already streamed.
+    - The hold itself sends the final-commit message.
+  - **Failure path unstated:** if that final commit fails while the recording is held, D15 appends the committed text to the composer (`design.md:162`). D17 does not say this happens to a recording held by typing.
+- **SUGGESTED_CORRECTION:**
+  1. Change the `hold` cell to "stop and hold unsent, exactly as at the time cap (D1; D15 for a streamed recording: held at once, final commit requested, text held)".
+  2. Change the scenario to "…and nothing is sent until the user presses a key; with the stop phrase on, audio already streamed is not recalled".
+  3. Add a task 8.5 case to `talk-stream.test.ts`: other input during a streamed hold, then a committed segment ending in a stop phrase. Expected result: nothing is sent, and the recording is held.
+
+#### R2-L1 — Low: task 8.5 still lacks one seam and one predicate
+
+- **Family / root:** `task-structure / wave8-controller-seams`. This recurs from R1-L3.
+- **In scope:** Yes.
+- **Evidence:**
+  - **Removal needs a reverse signal:**
+    - The Spaces are removed "when the recorder is actually running" (`design.md:229`; `spec.md:356`).
+    - Only the controller knows when that happens.
+    - Yet the detector reaches the controller "only through the two entry points" (`design.md:214`), and neither entry point reports back.
+    - Neither D17 nor task 8.5 says who performs the removal, or how the detector learns that the recorder is running.
+  - **"Terminal replies" has no test:** D17 ignores terminal replies (`design.md:220`), but gives no test that tells one from a key. `parseKey(data) === undefined` is available in Pi 1.1.0 (`keys.js:999`). This matters less now, because a misclassified reply only holds the recording.
+  - **Two definitions of the counted run disagree:**
+    - `design.md:223` says Spaces "since the last input that was not a Space", which counts an ignored release.
+    - `spec.md:356` says "since the last other input", which does not.
+- **SUGGESTED_CORRECTION:**
+  1. **Pick the removal seam:** either a "recorder running" callback on the handle, or the controller removes a count supplied by `startHold(count)`. Name the choice in task 8.5.
+  2. **Name the reply predicate.**
+  3. **Align `design.md:223` with the spec:** only "other input" resets the count.
+
+#### R2-L2 — Low: two statements are unreachable or only partly true
+
+- **Family / root:** `hold-space / release-inference`, minor.
+- **In scope:** Yes.
+- **Evidence:**
+  - **The 300 ms merge:** "A Space pressed again within 300 ms of letting go continues the same hold" (`design.md:233`; `ADR-0008:38`) holds only for a hold that ends by the quiet gap. After a reported Space release, the hold has already ended and sent.
+  - **The chunk rule:** "A chunk of *n* spaces counts as *n* Spaces" (`design.md:217`) is never exercised in Pi 1.1.0, because `StdinBuffer` emits plain text one character at a time (`stdin-buffer.js:216–219`).
+- **SUGGESTED_CORRECTION:**
+  1. Qualify the merge with "when the release was inferred from the quiet gap".
+  2. Keep the chunk rule as a defensive rule, but note that Pi currently delivers single characters.
+
+### Regression sweep: checked and found sound
+
+- **Engaged and busy holds are consistent everywhere:**
+  - D17 `design.md:225–227`;
+  - spec `:354–358`;
+  - `ADR-0008:19–20`;
+  - the "Busy hold" scenario;
+  - live check 8.7, "holding Space during an `alt+shift+t` recording".
+- **The `endHold` `send` column matches ADR-0008:22–25 and spec `:361–366`.** "Ended any other way" covers transcription that another control started.
+- **Escape and the push-to-talk keys during a hold:**
+  - Pi calls the listeners in order (`tui.js:685–699`), and the detector passes these keys on.
+  - The controller's own Escape listener (`talk.ts:130–134, 252–256`) and Pi's shortcut dispatch therefore still act on them.
+  - "Escape while Space is held" and "Send key during a hold" are consistent with the table.
+- **Space removal timing:**
+  - Removal happens only after the recorder runs.
+  - The streaming connection opens before the recorder (`talk.ts:160–176`), so a refused or cancelled start, including a failed connection, leaves the Spaces.
+  - That matches "Refused start" and "Release while starting".
+  - Recognition happens on the fourth Space and three Spaces are typed, consistent with the `"Draft   "` text.
+- **ADR-0008, D17 and the spec agree** on inputs, ending, lifecycle, limits and the alternatives, apart from the items above.
+- **The proposal and ADR-0007 are unaffected** by the Round 1 edits.
+
+### Recommendation
+
+Every Round 1 correction is in place, and the caller's "hold" design is the safer choice. R2-H1 is the one blocker:
+- The scenario and the prose disagree on whether the hold survives typing.
+- Under the scenario's reading, the existing `held → send` row sends the recording about 300 ms after the user typed.
+
+The fix is one transition (drop the handle and stay spent) plus one test. A small detector state table would stop this family from recurring a third time. R2-M1 to R2-M3 are local propagation and wording fixes, and R2-M2 and R2-M3 each add one row or one cell.
+
+No implementation handoff is warranted from this review.
+
+### Residual risks
+
+- **Repeat after another key:** whether a terminal resumes Space's repeat after the other key is released is unprobed. R2-H1's correction makes this harmless either way.
+- **Unmeasured inputs:** the frequency of stalls while the agent streams, and how input methods commit text, remain unmeasured, as in Round 1.
+- **Escape semantics:** a held recording intercepts Escape. With "hold" now a common outcome, users who press Escape to interrupt the agent will discard the held clip first. This is documented behaviour for the cap, not a new defect, but it is now reached more often.
+
+PROPOSED_REVIEW_ACTION=PATCH
+
+---
+
+## Caller Assessment — Round 2
+
+### Review Mode
+- `change_bundle`
+
+### Convergence Mode
+- `PATCH` (Round 2). The candidate `sha256:cab7f412…846f` was verified by the Oracle.
+
+### Review Subject
+- `add-speak-voice-input`, Wave 8. Oracle run `75854bbd`.
+
+### Per-Issue Evaluation
+
+#### R2-H1 — A hold that goes on after typing sends 300 ms later
+- **Oracle Severity:** High
+- **Family:** `hold-space / detector-controller-identity`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:**
+  - The explicit-action egress rule (`specs/voice-input/spec.md:60`).
+  - The user's requirement that only letting go of Space sends.
+- **Decision:** `ACCEPT_BLOCKING`
+- **Structural judgment:** this family was revised in Round 4 of the first log (H1) and again in Round 1 here (R1-M1), and it recurs. Its root is the caller's own Round 1 choice to keep a recording "held unsent" after other input. That added a third hold outcome, and its safeguards spread across D1, D5, D11, D12, D15, the indicator, help and egress (R2-M1, R2-M2, R2-M3). This is a structural recurrence, so the caller rebuilds instead of patching. The global kernel also requires narrowing the owning specification when safeguards grow more complex than the feature they protect.
+- **CORRECTION:** see the rebuild batch below.
+
+#### R2-M1 — "Held" described as cap-only in many places
+- **Family:** `wave8-propagation / entry-points-modes-and-privacy`
+- **Decision:** `ACCEPT_NONBLOCKING`. The rebuild makes it moot: no held state is created by other input, so the cap-only texts stay correct. The help sentence and the ADR-0008 wording for push-to-talk keys are corrected in the batch.
+
+#### R2-M2 — The 0.5 s minimum on the "hold" path, and freeze-queued Spaces
+- **Family:** `hold-space / recognition-precision`
+- **Decision:** `ACCEPT_NONBLOCKING`. The rebuild makes the held clip moot. Freeze-queued Spaces counting as a hold is documented as a limit: a release within 0.5 s sends nothing.
+
+#### R2-M3 — "Hold" for a streamed recording
+- **Family:** `hold-space / release-inference`
+- **Decision:** `ACCEPT_NONBLOCKING`. Moot after the rebuild: discarding a streamed recording follows the existing Escape path (D15), which closes the connection and sends nothing.
+
+#### R2-L1 — Recorder-start signal, terminal replies, and the counted-run definition
+- **Family:** `task-structure / file-size` (with `verification-coverage`)
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** in the batch:
+  - the handle reports when the recorder runs;
+  - "ignored" means input that pi-tui's `parseKey` cannot decode and that is not printable text;
+  - one definition of the counted run, used in D17 and the spec.
+
+#### R2-L2 — The 300 ms merge, and the n-space chunk
+- **Family:** `hold-space / recognition-precision`
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** in the batch: the merge is stated only for terminals that report no release, and a Space is a single-space input.
+
+### Rebuild
+
+The prior incremental worklist is invalidated. The baseline is re-derived from the same authoritative sources. Target, source, inclusion predicate and exclusions are unchanged from the Frozen Baseline above. The prior baseline is invalid because the design choice "other input holds the recording unsent" is withdrawn. That changes the hold model the previous revisions assumed.
+
+BASELINE_TARGET=openspec change add-speak-voice-input (apply-ready bundle, Wave 8 amendment after the Round 4 correction batch)
+BASELINE_TARGET_REVISION=sha256:cab7f412480579e133f093a19ea3ae134e5b044bf2404b3943f845eb09b4846f (pre-rebuild; the rebuilt candidate is recorded below)
+BASELINE_SOURCE=unchanged
+BASELINE_INCLUSION_PREDICATE=unchanged
+BASELINE_EXCLUSIONS=unchanged
+
+**Complete correction batch** (accepted blocking: R2-H1; nonblocking items folded in):
+
+1. **Other input discards.**
+   - Any key press, printable text or paste, other than Space, Escape and the registered push-to-talk keys, during an engaged hold reaches the editor and calls `endHold(handle, "discard")`.
+   - The recording is discarded exactly as Escape discards it (D1, D15): a streamed recording closes its connection, and nothing is sent.
+   - The hold stays spent and consumes Spaces until it ends, and its ending then does nothing.
+   - The `endHold` table becomes `send` / `discard`. The `hold` mode is removed.
+2. **Propagation:**
+   - the egress sentence (`spec.md`, lifecycle);
+   - the help requirement;
+   - the ADR-0008 decision, naming the command and skill keys among the push-to-talk keys;
+   - the D17 Display section;
+   - the risk line;
+   - the "Other key during a hold" scenario;
+   - tasks 8.5 and 8.7.
+3. **Input classes** (R2-L1):
+   - "ignored" is input that pi-tui's `parseKey` cannot decode and that is not printable text;
+   - "other input" is a decodable press or repeat, printable text, or a paste;
+   - a Space press is a single-space input (R2-L2).
+4. **Counted run and recorder signal** (R2-L1): one counted-run definition in D17 and the spec, and the handle reports when the recorder runs (task 8.5).
+5. **The 300 ms merge** is stated only for terminals that report no Space release (R2-L2).
+6. **Freeze-queued Spaces** count as a hold; this is added to the accidental-hold limit (R2-M2).
+
+BASELINE_REBUILD_COMPLETE=YES
+
+### Caller Result
+
+REVIEW_ACTION=REBUILD
+CONSENSUS_STATUS=NEEDS_REVISION
+
+This is the single permitted rebuild. If the `hold-space / detector-controller-identity` family recurs after it, the caller emits `HUMAN_DECISION`. The next review is Round 3, in `FULL` mode.
+
+### Rebuilt Candidate
+
+The correction batch above was applied by the caller. `openspec validate add-speak-voice-input --strict` passes.
+
+BASELINE_TARGET_REVISION=sha256:647cbcc98d7b599c8d1f0acdac53a7147109abc05b5b934d79b1cadc584669f0 (rebuilt candidate for Round 3, in `FULL` mode)
