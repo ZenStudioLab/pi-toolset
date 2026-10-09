@@ -1582,3 +1582,20 @@ REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
 
 Wave 6 code is complete. Tasks 6.2–6.5 and 6.7 are marked done. Task 6.6, and task 5.7 carried into it, stay unchecked until the user runs them. The post-live-check patch for W6-F5, the W6-F4 omission and any live-check fixes gets its own short Oracle check before archive.
+
+## Wave 7 Review Sequence (extra shortcut keys; Wave 6 carry-overs)
+
+The user asked for `alt+y` (send) and `alt+shift+y` (transcribe only) in addition to the T keys, and chose option (a): shortcut lists in the config, set in their own config. The defaults are unchanged.
+
+Host fact, checked in Pi 1.1.0:
+- `alt+y` is the editor action `tui.editor.yankPop` (`pi-tui/dist/keybindings.d.ts:147-148`).
+- It is not in `RESERVED_KEYBINDINGS_FOR_EXTENSION_CONFLICTS` (`core/extensions/runner.js:9-28`), so an extension shortcut wins, with a startup conflict notice (`runner.js:468`).
+- `alt+shift+y` has no built-in binding.
+
+Task 7.1 (orchestrator): D10, the talk contract (with an "Extra keys per mode" scenario), the indicator requirement (the W6-F5 wording) and the help requirement are amended, and Wave 7 is added to `tasks.md`. `openspec validate --strict` passes.
+
+| Assignment | Tasks | Owner | Files and topics |
+| --- | --- | --- | --- |
+| W7-A | 7.2, 7.3 | worker (`claude-bridge/claude-sonnet-5-5`, thinking high, background) | `extensions/speak/config.ts`, `index.ts`, `help.ts`, `talk.ts`, `README.md`; `test/speak/config.test.ts`, `silence.test.ts`, `talk.test.ts`, `talk-stream.test.ts`, `command.test.ts` |
+| W7-B | 7.4 | orchestrator | user config, with approval and a backup |
+| W7-C | 7.5 | user | live checks for Waves 5–7 |

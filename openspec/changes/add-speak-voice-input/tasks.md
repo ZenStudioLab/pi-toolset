@@ -167,3 +167,21 @@ Verification commands:
 
   Record what happened and any error shown. Tick 5.7 and 6.6 only for checks the user actually ran, and report the rest as unverified.
 - [x] 6.7 [Oracle gate: `oracle`] Review gate for Wave 6, run once after 6.2–6.5 are complete and 6.6 is complete or explicitly reported as unverified. The same rules apply as for 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation, a caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, and terminal baseline validation. `PATCH` or `REBUILD` returns to this wave.
+
+## 7. Wave 7: extra shortcut keys and the Wave 6 carry-overs (amendment of 2026-10-09)
+
+- [x] 7.1 [Orchestrator] Amend design D10, the "Talk command contract" and "Recording indicator" requirements in `specs/voice-input/spec.md`, and the manual-speech help requirement. They now cover shortcut lists, so the user can add `alt+y` and `alt+shift+y` next to the T keys, and a held status line shown from the moment the cap is reached (W6-F5). Verify with `openspec validate add-speak-voice-input --strict`.
+- [ ] 7.2 [worker] Allow lists of shortcut keys, per D10:
+  - In `config.ts`, `input.shortcut` and `input.transcribeShortcut` each accept one key or a list of 1 to 4 keys. A key repeated anywhere across both settings, ignoring case, is a configuration error.
+  - In `index.ts`, register every key, and fall back to the two defaults on a config error.
+  - Help and the recording status lines name every registered key of each mode.
+
+  Verify with table cases in `test/speak/config.test.ts`, the registration cases in `test/speak/silence.test.ts`, and a `test/speak/talk.test.ts` case for the "Extra keys per mode" scenario.
+- [ ] 7.3 [worker] Fix the Wave 6 carry-overs:
+  - **W6-F5:** in `onCapped`, redraw the status line after marking the recording held. Add status assertions to the cap-window tests in `test/speak/talk.test.ts` and `test/speak/talk-stream.test.ts`.
+  - **W6-F4:** add "a recorder that fails while recording" to the failure list in the README.
+
+  Also update the README for shortcut lists. Give the `alt+y` example, and note that it replaces Pi's yank-pop and that Pi shows a conflict notice at startup.
+- [ ] 7.4 [Orchestrator] After 7.2 and 7.3, and with the user's approval, set the user's config to `"shortcut": ["alt+t", "alt+y"]` and `"transcribeShortcut": ["alt+shift+t", "alt+shift+y"]`, with a backup first. Verify it with `parseConfig`.
+- [ ] 7.5 [User] Live checks: run task 6.6 (which carries 5.7), plus `alt+y` sends, `alt+shift+y` only transcribes, and the conflict notice at startup names only `alt+y`. Record what happened, and report anything not run as unverified.
+- [ ] 7.6 [Oracle gate: `oracle`] Review gate for Wave 7, run once after 7.2–7.4 are complete and 7.5 is complete or explicitly reported as unverified. The same rules apply as for 1.7.

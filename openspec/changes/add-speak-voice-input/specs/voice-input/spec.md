@@ -24,7 +24,7 @@ The extension SHALL open the microphone only when the user presses a push-to-tal
 
 The extension SHALL register a `/talk` command with these forms: no argument (start recording; or stop and transcribe only; or transcribe only a recording held at the time cap), `send` (start recording; or stop, transcribe, and send; or transcribe and send a held recording), `help` or `?` (show the combined help), `provider` (report the effective input provider and whether it is a session override), `provider <name>` (select `deepgram` or `elevenlabs` for this session), and `provider reset` (return to the configured provider). An unknown argument or provider name SHALL display the combined help, change nothing, and make no request.
 
-The extension SHALL register two push-to-talk shortcuts when it loads: the send shortcut from `input.shortcut` (default `alt+t`), equivalent to `/talk send`, and the transcribe-only shortcut from `input.transcribeShortcut` (default `alt+shift+t`), equivalent to `/talk`. The two values SHALL differ; equal values SHALL be a configuration error. A changed shortcut takes effect after a reload. If the configuration cannot be read at load, both defaults SHALL be registered and the error reported on first use.
+The extension SHALL register push-to-talk shortcuts when it loads: the send shortcuts from `input.shortcut` (default `alt+t`), each equivalent to `/talk send`, and the transcribe-only shortcuts from `input.transcribeShortcut` (default `alt+shift+t`), each equivalent to `/talk`. Each setting SHALL accept one key or a list of 1 to 4 keys. Every key across both settings SHALL be different, ignoring case; a repeated key SHALL be a configuration error. A changed shortcut takes effect after a reload. If the configuration cannot be read at load, or has such an error, only the two defaults SHALL be registered and the error reported on first use.
 
 #### Scenario: Unknown provider name
 
@@ -38,8 +38,13 @@ The extension SHALL register two push-to-talk shortcuts when it loads: the send 
 
 #### Scenario: Equal shortcuts
 
-- **WHEN** `input.shortcut` and `input.transcribeShortcut` are the same key and the user presses a shortcut
+- **WHEN** `input.shortcut` and `input.transcribeShortcut` are the same key, or one key appears twice across them, and the user presses a shortcut
 - **THEN** the configuration error is reported and no recording starts
+
+#### Scenario: Extra keys per mode
+
+- **WHEN** `input.shortcut` is `["alt+t", "alt+y"]` and `input.transcribeShortcut` is `["alt+shift+t", "alt+shift+y"]`, and the user starts a recording with `alt+shift+y` and stops it with `alt+y`
+- **THEN** all four keys are registered, the transcript is sent, and help lists both keys of each mode
 
 ### Requirement: Supported run mode for voice input
 
@@ -106,7 +111,7 @@ The first press of either shortcut, `/talk`, or `/talk send` SHALL start recordi
 
 ### Requirement: Recording indicator
 
-While recording, the extension SHALL show a status line stating that the microphone is recording, the elapsed time, a coarse input level, and the stop and discard keys. While a recording stopped at the time cap is held, it SHALL state that the limit was reached and show the send, transcribe-only, and discard keys. The recording line SHALL name both stop keys and which one sends. While transcribing, it SHALL state that transcription is in progress. The indicator SHALL be cleared when the transcript is delivered or sent, the recording is discarded, or an error is reported.
+While recording, the extension SHALL show a status line stating that the microphone is recording, the elapsed time, a coarse input level, and the stop and discard keys. From the moment a recording reaches the time cap, including before the recorder has exited, and while it is held, it SHALL state that the limit was reached and show the send, transcribe-only, and discard keys. The recording line SHALL name both stop keys and which one sends. While transcribing, it SHALL state that transcription is in progress. The indicator SHALL be cleared when the transcript is delivered or sent, the recording is discarded, or an error is reported.
 
 #### Scenario: Indicator follows the recording
 
