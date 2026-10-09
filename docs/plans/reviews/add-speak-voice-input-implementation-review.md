@@ -1283,3 +1283,15 @@ REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
 
 Wave 5 is complete. Tasks 5.2–5.6 and 5.8 are marked done. Task 5.7 stays unchecked, because the user has not run it; its live checks are carried into Wave 6 and will be ticked there.
+
+## Wave 6 Review Sequence (spoken stop phrase)
+
+Task 6.1 (orchestrator) covers these artifact amendments:
+
+- **ADRs:** ADR-0006 is added, and the status lines of ADR-0004 and ADR-0005 now name the parts it supersedes.
+- **`proposal.md`:** a Wave 6 amendment, and a narrower out-of-scope list.
+- **`design.md`:** Non-Goals, D2, the D6 example and Risks are updated; D15 is added, along with the realtime and Node `WebSocket` facts.
+- **`specs/voice-input/spec.md`:** a "Spoken stop phrase" requirement with 8 scenarios is added, and the lifecycle and privacy requirements are adjusted.
+- **`tasks.md`:** Wave 6, tasks 6.1–6.7. Task 6.6 carries the 5.7 checks.
+
+`openspec validate --strict` passes. Base commit: the amendment commit after `780db19`.

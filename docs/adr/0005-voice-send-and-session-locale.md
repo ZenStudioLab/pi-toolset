@@ -1,6 +1,6 @@
 # ADR-0005: Sending Dictation by Key, and a Session Speech Locale
 
-**Status:** Accepted for implementation; runtime qualification pending.
+**Status:** Accepted; its statement that sending happens only on a key press is superseded by [ADR-0006](0006-spoken-stop-phrase.md) when the stop phrase is turned on.
 **Owner:** Orchestrator.
 **Change:** [add-speak-voice-input](../../openspec/changes/add-speak-voice-input/design.md) (amendment of 2026-10-09).
 **Supersedes:** [ADR-0004](0004-voice-input-and-provider-choice.md) only in its delivery rule that the extension never submits a prompt or interrupts the agent. Every other decision in ADR-0004, and in ADR-0002 and ADR-0003, remains in force.

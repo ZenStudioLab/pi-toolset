@@ -22,7 +22,13 @@ After the live checks, the user asked for these additions (ADR-0005):
 - **Session speech locale.** `/speak locale <tag|reset>` sets the speech locale for the session, and `/speak in <tag>` uses one for a single command. The config file is still never written.
 - **Help.** `/speak help` and `/talk help` show one combined list of every command form, the registered shortcuts, what Escape does, and the configured locale.
 
-Out of scope: speaking answers automatically, dictation modes that send without a key press, "send it" or "interrupt" voice triggers, spoken slash commands, silence-based auto-stop, real-time streaming transcription, any provider other than Deepgram and ElevenLabs, and keys stored in files.
+### Amendment (2026-10-09, Wave 6)
+
+The user asked to end a dictation by voice (ADR-0006):
+
+- **A spoken stop phrase, off by default.** With `input.stopOnPhrase` on, every recording streams to ElevenLabs live transcription while the user speaks. When a stretch of speech settles after a pause and ends with a phrase from `input.stopPhrases` (default `["let's go"]`), the recording stops, the phrase is removed, and the rest is sent as with the send key. Keys and Escape still work. Deepgram live streaming is not included.
+
+Out of scope: speaking answers automatically, dictation modes that send without a key press or the configured stop phrase, other voice triggers such as "interrupt", spoken slash commands, silence-based auto-stop without the phrase, streaming transcription to Deepgram, any provider other than Deepgram and ElevenLabs, and keys stored in files.
 
 ## Capabilities
 

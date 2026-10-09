@@ -21,7 +21,7 @@ The host extension API already offers everything push-to-talk needs: `registerSh
 
 **Non-Goals:**
 
-- Detecting speech, streaming partial transcripts, or hold-to-talk with key-release detection.
+- Detecting speech on the machine, showing partial transcripts, or hold-to-talk with key-release detection. (Wave 6 streams to ElevenLabs only to find the stop phrase; see D15.)
 - A provider registry, plugin interface, or any third provider.
 - Writing to the config file, or storing keys anywhere.
 - Windows recording support (the recorder table is Linux/macOS).
@@ -37,7 +37,7 @@ The same key (or `/talk`) starts and stops recording. Escape discards. A time ca
 
 ### D2. Record, then upload once; no streaming
 
-Audio collects in memory and goes up in one HTTPS request after the stop. Both providers accept that shape, it reuses the bounded `fetch` pattern speak already has, and nothing leaves the machine until the user stops.
+Audio collects in memory and goes up in one HTTPS request after the stop. Both providers accept that shape, it reuses the bounded `fetch` pattern speak already has, and nothing leaves the machine until the user stops. This stays the behaviour whenever the stop phrase (D15) is off, which is the default.
 
 - **Alternative: Deepgram's WebSocket streaming.** It gives live partial text, but only for Deepgram, and needs a socket client plus cancellation on several more paths. Most of voicekit's 12k lines are this kind of machinery.
 
@@ -81,7 +81,7 @@ Only the first two lines below are new top-level keys:
 ```json
 {
   "provider": "elevenlabs",
-  "input": { "provider": "deepgram", "language": "vi", "maxSeconds": 120, "shortcut": "alt+t", "transcribeShortcut": "alt+shift+t", "sendWhenBusy": "interrupt" },
+  "input": { "provider": "deepgram", "language": "vi", "maxSeconds": 120, "shortcut": "alt+t", "transcribeShortcut": "alt+shift+t", "sendWhenBusy": "interrupt", "stopOnPhrase": false, "stopPhrases": ["let's go"] },
   "providers": {
     "elevenlabs": { "voiceId": "…", "modelId": "eleven_flash_v2_5", "outputFormat": "mp3_44100_128", "voiceRevision": 1, "sttModel": "scribe_v2" },
     "deepgram": { "voice": "aura-2-thalia-en", "sttModel": "nova-3" }
@@ -143,6 +143,29 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 
 `/speak help` and `/talk help`, and their short forms `/speak ?` and `/talk ?`, print the same text: every `/speak` and `/talk` form, the two shortcuts registered at load with their modes, what Escape does while starting, recording, and held, and the effective speech locale (config value, or the session override when set). Help reads the config file on demand (a local read, no network) for the locale only; the shortcuts it names, like those in the recording status lines, are the ones registered at load, so an edited but not yet reloaded shortcut is never shown. If the file can't be read, help still names the registered shortcuts and says the configuration has an error. Unknown arguments still print this help. Help works in every run mode and makes no request.
 
+### D15. Spoken stop phrase over ElevenLabs live transcription
+
+**Settings.** `input.stopOnPhrase` (boolean, default `false`) turns the feature on. `input.stopPhrases` is a list of 1 to 10 phrases, each 1 to 40 characters after trimming, default `["let's go"]`. A phrase list is valid even when the feature is off, so the default costs nothing. The pause that ends a stretch of speech is fixed at 1 second; it is not a setting.
+
+**Which provider.** Only ElevenLabs streams. With the feature on and the input provider fixed at recording start being Deepgram, pressing a shortcut reports that the stop phrase needs ElevenLabs and records nothing. It never switches provider silently.
+
+**Connection.** When a recording starts with the feature on, the extension opens Node's built-in `WebSocket` to the fixed URL `wss://api.elevenlabs.io/v1/speech-to-text/realtime` with query `model_id=scribe_v2_realtime`, `audio_format=pcm_16000`, `commit_strategy=vad`, `vad_silence_threshold_secs=1`, and `language_code` set to the primary language subtag of `input.language` when it is set (the realtime API takes ISO 639 codes). The key goes only in the `xi-api-key` header, never in the URL. The connection must open within `requestTimeoutMs`; otherwise the recording ends with a sanitized error and nothing is sent. The recorder starts only after the connection opens, so no audio is lost or buffered beyond the connection wait.
+
+**Streaming.** Each recorder chunk is sent as `{"message_type":"input_audio_chunk","audio_base_64":…,"commit":false,"sample_rate":16000}`. The audio is also kept in memory as today, so the time cap and the level bar work unchanged; it is never uploaded a second time. Incoming messages are capped at 64 KiB each and the accumulated text at 1 MiB; a larger message ends the recording as a provider failure.
+
+**Detecting the phrase.** `committed_transcript` texts are joined with single spaces into the recording's text. `partial_transcript` messages are ignored. After each committed segment, the extension compares the end of the joined text with each stop phrase, both normalized the same way: lower-cased, Unicode NFC, curly apostrophes made straight, and every run of whitespace and punctuation treated as one separator. A phrase matches only as whole words at the very end. On a match, the recorder stops, the socket is closed, the matched words and any punctuation after the remaining text are removed, and the remaining text is delivered in send mode (D11), following `input.sendWhenBusy` and the pre-send refusals. If nothing remains after removing the phrase, nothing is sent and the composer is unchanged.
+
+**Keys during a streamed recording.** The send key, the transcribe-only key, `/talk`, and `/talk send` stop the recorder, send one final chunk with `commit: true`, and wait up to `requestTimeoutMs` for the last `committed_transcript`. The text is then delivered in that control's mode, without removing any phrase. Escape closes the socket at once, discards the text, and sends no message.
+
+**Time cap.** At `input.maxSeconds` the recorder stops and the final commit is requested as above. The resulting text is held, not delivered, until the next press or command decides the mode; Escape, session replacement, and shutdown discard it. This keeps the existing rule that reaching the cap never sends a message.
+
+**Failures.** An `auth_error`, `resource_exhausted`, `chunk_size_exceeded`, session time limit, other `error` message, or an unexpected close ends the recording with a sanitized message naming the class. Text already committed is appended to the composer in transcribe-only mode, so speech is not lost, and nothing is sent. There is no retry, no reconnect, and no fallback to the one-shot upload.
+
+**Lifecycle.** Session replacement and shutdown close the socket and stop the recorder; late messages are ignored, as late transcripts are today (D4).
+
+- **Alternative: local keyword spotting.** Rejected in ADR-0006 (native dependency, weak Vietnamese recognition of short phrases).
+- **Alternative: run the realtime API with `turn_prediction`.** It commits earlier, but only for models that predict turns, and the fixed 1-second pause is easier to reason about.
+
 ## Verified Provider Facts
 
 Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
@@ -156,11 +179,15 @@ Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
 | `alt+t` free in Pi | Confirmed by the user | Review log `docs/plans/reviews/add-speak-voice-input-review.md` |
 | Deepgram pre-recorded limits (checked 2026-10-09) | Maximum file size 2 GB; requests over 10 minutes of processing (Nova) return HTTP 504 | https://developers.deepgram.com/docs/pre-recorded-audio ("Limits") |
 | ElevenLabs transcription limits (checked 2026-10-09) | Maximum file size 3 GB; maximum duration 10 hours (standard mode) | https://elevenlabs.io/docs/capabilities/speech-to-text ("Key facts") |
+| ElevenLabs realtime transcription (checked 2026-10-09) | `wss://api.elevenlabs.io/v1/speech-to-text/realtime`; model `scribe_v2_realtime`; `xi-api-key` header or single-use `token` query; query parameters include `audio_format` (enum includes `pcm_16000`, the default), `language_code` (ISO 639-1 or 639-3), `commit_strategy` (`manual`, `vad`, `turn_prediction`) and `vad_silence_threshold_secs`; client sends `input_audio_chunk` with `audio_base_64`, `commit`, `sample_rate`; server sends `partial_transcript` and `committed_transcript`, and errors including `auth_error`, `resource_exhausted`, `chunk_size_exceeded` and a session time limit. "90+ languages"; Vietnamese is not named | https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime.md, https://elevenlabs.io/docs/overview/models.md |
+| Node `WebSocket` sends custom headers (checked 2026-10-09) | Node v22.19.0's built-in `WebSocket` accepts `{ headers }` and sent `xi-api-key` to a local test server | Local test, no network |
 
 ## Risks / Trade-offs
 
 - **Wrong or muted input device.** A recording can capture silence that is still uploaded and billed. → The level bar shows a flat line before the user stops, and Escape discards for free.
 - **Audio can't be recalled once sent.** → Nothing is sent without an explicit send (stopping a recording, or sending a held one), and a discard is always free.
+- **Streaming sends audio before the user decides** (ADR-0006). With the stop phrase on, Escape cannot recall audio already sent. → Off by default; help, status and the README say so whenever it is on.
+- **A natural "let's go" can end a dictation early.** → It must be the last words before a 1-second pause; the user can pick rarer phrases.
 - **A misheard send reaches the agent unreviewed** (ADR-0005), and with `"interrupt"` can redirect a running turn. → The transcribe-only key, `/talk`, and `"wait"` remain; help and the README say which key sends; slash commands in a sent message are never run.
 - **Provider facts can change after verification** (the speech character limit, language detection, model ids). → They were checked against current documentation on 2026-10-08 (Verified Provider Facts). Provider errors are surfaced sanitized rather than assumed away, and task 4.3's live check exercises them.
 - **Key conflicts:** `alt+t` may be taken by the terminal or by Pi, and Escape is shared with the editor. → The shortcut is configurable and checked in 1.2. Escape is consumed only while a recording is starting, in progress, or held.

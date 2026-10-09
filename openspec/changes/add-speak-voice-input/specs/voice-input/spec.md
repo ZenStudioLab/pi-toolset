@@ -52,7 +52,7 @@ The extension SHALL record only in an interactive terminal session. In any other
 
 ### Requirement: Push-to-talk recording lifecycle
 
-The first press of either shortcut, `/talk`, or `/talk send` SHALL start recording. The next press or command SHALL stop recording and transcribe it, in the mode of that stopping control: send for the send shortcut and `/talk send`, transcribe only for the transcribe-only shortcut and `/talk`. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. Audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, or sending a recording held at the time cap. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is starting (waiting for this extension's playback to stop), in progress, or held. Escape or a second press while a recording is starting SHALL cancel it: no recorder keeps running, nothing is recorded, and nothing is sent. When a recording reaches `input.maxSeconds` (default 120, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or command SHALL transcribe it in that control's mode, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
+The first press of either shortcut, `/talk`, or `/talk send` SHALL start recording. The next press or command SHALL stop recording and transcribe it, in the mode of that stopping control: send for the send shortcut and `/talk send`, transcribe only for the transcribe-only shortcut and `/talk`. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. When the spoken stop phrase is off, audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, or sending a recording held at the time cap. When it is on, audio streams while recording, as the "Spoken stop phrase" requirement states. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is starting (waiting for this extension's playback to stop), in progress, or held. Escape or a second press while a recording is starting SHALL cancel it: no recorder keeps running, nothing is recorded, and nothing is sent. When a recording reaches `input.maxSeconds` (default 120, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or command SHALL transcribe it in that control's mode, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
 
 #### Scenario: Record and transcribe
 
@@ -219,9 +219,55 @@ Redirects SHALL be rejected. The request SHALL be bounded by the configured requ
 - **WHEN** the provider times out, redirects, or returns an error
 - **THEN** a sanitized error is shown, the audio is released, and no retry or other-provider request is made
 
+### Requirement: Spoken stop phrase
+
+The configuration SHALL accept `input.stopOnPhrase` (boolean, default `false`) and `input.stopPhrases` (1 to 10 phrases, each 1 to 40 characters after trimming, default `["let's go"]`). An invalid value SHALL be a configuration error reported on use. When `input.stopOnPhrase` is on and the input provider fixed at recording start is ElevenLabs, the recording SHALL stream to `wss://api.elevenlabs.io/v1/speech-to-text/realtime` with model `scribe_v2_realtime`, 16 kHz PCM, pause-based commits after 1 second of silence, the key only in the `xi-api-key` header, and `language_code` set to the primary subtag of `input.language` when it is set. The recorder SHALL start only after the connection opens within the request deadline. When it is on and the input provider is Deepgram, a press SHALL report that the stop phrase needs ElevenLabs and SHALL record nothing.
+
+After each committed segment, when the recording's committed text ends, as whole words and ignoring case, punctuation, and apostrophe style, with a configured stop phrase, the extension SHALL stop the recording, remove that phrase from the end, and deliver the remaining text in send mode. If nothing remains, nothing SHALL be sent. A key or command that stops a streamed recording SHALL request a final commit, wait up to the request deadline for it, and deliver the text in that control's mode without removing any phrase. Escape SHALL end the stream and send no message. At the time cap the text SHALL be held until the next press or command, as for an unstreamed recording. A provider error or an unexpected close SHALL end the recording with a sanitized message, append the text already committed to the composer without sending it, and SHALL NOT retry, reconnect, or fall back to the one-shot upload. Streamed audio SHALL NOT be uploaded a second time.
+
+#### Scenario: Stop phrase sends the dictation
+
+- **WHEN** the stop phrase is on, the composer contains `Refactor the loader`, and the user says "and add a test, let's go" and pauses
+- **THEN** the recording stops and one user message `Refactor the loader and add a test` is sent
+
+#### Scenario: Phrase in the middle does not stop
+
+- **WHEN** the user says "let's go through the loader" and keeps speaking
+- **THEN** the recording continues, because the phrase is not at the end of a committed segment
+
+#### Scenario: Off by default
+
+- **WHEN** `input.stopOnPhrase` is not set and the user records and stops with a key
+- **THEN** no streaming connection is opened and the recording is uploaded once after the stop
+
+#### Scenario: Deepgram selected
+
+- **WHEN** the stop phrase is on, the input provider is Deepgram, and the user presses a shortcut
+- **THEN** the extension says the stop phrase needs ElevenLabs, records nothing, and makes no request
+
+#### Scenario: Key stop while streaming
+
+- **WHEN** the stop phrase is on and the user stops a recording with the transcribe-only key
+- **THEN** the final text is appended to the composer, nothing is sent, and no phrase is removed
+
+#### Scenario: Escape while streaming
+
+- **WHEN** the stop phrase is on and the user presses Escape while recording
+- **THEN** the stream ends, the composer is unchanged, and no message is sent
+
+#### Scenario: Connection lost mid-recording
+
+- **WHEN** the streaming connection closes unexpectedly after some text was committed
+- **THEN** the recording ends with a sanitized error, the committed text is appended to the composer, and nothing is sent or retried
+
+#### Scenario: Only the phrase was said
+
+- **WHEN** the user says only "let's go" and pauses
+- **THEN** the recording stops, nothing is sent, and the composer is unchanged
+
 ### Requirement: Voice input secret and privacy handling
 
-The extension SHALL read `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` only from the environment and SHALL NOT write them to configuration, cache, logs, notifications, process arguments, or the recorder's environment. The extension SHALL NOT log or persist audio or transcripts; a transcript exists only in the composer or in the user message the user chose to send. Documentation SHALL state that each recording the user sends goes to the selected provider, that this is not a zero-retention guarantee, and that a discarded recording, or one held at the time cap and not sent, never leaves the machine.
+The extension SHALL read `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` only from the environment and SHALL NOT write them to configuration, cache, logs, notifications, process arguments, or the recorder's environment. The extension SHALL NOT log or persist audio or transcripts; a transcript exists only in the composer or in the user message the user chose to send. Documentation SHALL state that each recording the user sends goes to the selected provider, that this is not a zero-retention guarantee, and that a discarded recording, or one held at the time cap and not sent, never leaves the machine while the stop phrase is off. It SHALL state that while the stop phrase is on, audio streams to ElevenLabs as the user speaks, and that discarding a recording stops the message but cannot recall audio already sent. Help and `/speak status` SHALL show whether the stop phrase is on and which phrases count.
 
 #### Scenario: Error output redaction
 

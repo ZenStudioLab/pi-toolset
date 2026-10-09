@@ -111,3 +111,58 @@ Verification commands:
 
   Status (2026-10-09): not run. The user asked to continue to Wave 6, so gate 5.8 ran with this task reported as unverified. These checks are carried into the Wave 6 live checks and are ticked there.
 - [x] 5.8 [Oracle gate: `oracle`] Review gate for Wave 5, run once after 5.2–5.6 are complete and 5.7 is complete or explicitly reported as unverified, under the same rules as 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.
+
+## 6. Wave 6: spoken stop phrase (amendment of 2026-10-09)
+
+- [x] 6.1 [Orchestrator] Amend the change for the spoken stop phrase. Write ADR-0006 (`docs/adr/0006-spoken-stop-phrase.md`), and mark the superseded parts in the status lines of ADR-0004 and ADR-0005. Update `proposal.md`, design Non-Goals, D2, D6, Risks and Verified Provider Facts, and add D15. Add the "Spoken stop phrase" requirement to `specs/voice-input/spec.md`, and adjust its lifecycle and privacy requirements. Verify with `openspec validate add-speak-voice-input --strict`.
+- [ ] 6.2 [worker] Change `config.ts`: add `input.stopOnPhrase` (default `false`) and `input.stopPhrases` (1 to 10 phrases, each 1 to 40 characters after trimming, default `["let's go"]`), each with errors on invalid values. Show both in `/speak status` and in help. Verify with table cases in `test/speak/config.test.ts`, and the status and help cases in `test/speak/command.test.ts`.
+- [ ] 6.3 [worker] Add the ElevenLabs live transcription client in a new `extensions/speak/realtime.ts`, per design D15:
+  - the fixed URL and query, with the key only in the `xi-api-key` header, and an open deadline of `requestTimeoutMs`;
+  - `input_audio_chunk` sending, and a final commit;
+  - parsing `committed_transcript`, while ignoring `partial_transcript`;
+  - the 64 KiB per-message and 1 MiB total caps;
+  - mapping every error message type and an unexpected close to sanitized classes, with the key redacted;
+  - no retry and no reconnect.
+
+  Also add a pure stop-phrase matcher (normalization, whole words at the end, and removal of the phrase). Verify with a fake `WebSocket` in a new `test/speak/realtime.test.ts`: URL, query and header; open timeout; chunk shape; final commit and its wait deadline; each error class; the size caps; and table cases for the matcher, including curly apostrophes, punctuation, case, the phrase only, the phrase in the middle, and Vietnamese diacritics.
+- [ ] 6.4 [worker] Integrate streaming into `talk.ts` per D15:
+  - with the feature on and ElevenLabs fixed at start, open the connection before starting the recorder;
+  - stream each chunk and keep the in-memory audio, so the cap and the level bar still work;
+  - when a stop phrase is detected, stop and send through the existing D11 path, including its pre-send refusals and `sendWhenBusy`;
+  - a key or command stop requests the final commit and delivers in that control's mode;
+  - Escape closes the stream and sends nothing;
+  - at the time cap, hold the text until the next press or command;
+  - on a failure, append the committed text without sending;
+  - with Deepgram selected, refuse with no recording;
+  - close the stream on session replacement and shutdown, and drop late messages;
+  - never upload the streamed audio a second time.
+
+  Verify with cases in `test/speak/talk.test.ts` for every scenario of "Spoken stop phrase" in `specs/voice-input/spec.md`. Extend `test/speak/silence.test.ts` so loading with the feature on still opens no connection.
+- [ ] 6.5 [worker] Update `extensions/speak/README.md` and the help text:
+  - how to turn the stop phrase on, with `input.stopOnPhrase` and `input.stopPhrases`;
+  - how detection works (the phrase must be the last words before a pause of about 1 second);
+  - that it uses ElevenLabs only;
+  - the privacy statement: while it is on, audio streams as you speak, and Escape cannot recall audio already sent;
+  - how keys and Escape behave during a streamed recording.
+
+  Verify that the config example parses once its placeholders are replaced.
+- [ ] 6.6 [User] Live checks, covering Waves 5 and 6:
+  - **Carried from 5.7:**
+    - `alt+t` with the agent idle sends the draft and the transcript;
+    - `alt+t` while the agent is working reaches the running turn;
+    - `alt+shift+t` adds the text without sending, which also confirms the terminal delivers the key;
+    - `/speak locale en`, then `/speak`; then `/speak in ja`;
+    - `/speak help`, then `/talk ?`.
+  - **Deepgram, not run in Wave 4:**
+    - `/speak provider deepgram`, then `/speak text Hello there`;
+    - `/talk provider deepgram`, then one recording.
+  - **Escape:** one discard during a normal recording.
+  - **Stop phrase:** set `"stopOnPhrase": true`, then:
+    - dictate a sentence ending in "let's go" and pause: it is sent without the phrase;
+    - say "let's go" in the middle of a sentence: the recording continues;
+    - stop a streamed recording with `alt+shift+t`: the text is added, not sent;
+    - press Escape during a streamed recording: nothing is sent;
+    - one Vietnamese dictation, which checks Vietnamese support in the live model.
+
+  Record what happened and any error shown. Tick 5.7 and 6.6 only for checks the user actually ran, and report the rest as unverified.
+- [ ] 6.7 [Oracle gate: `oracle`] Review gate for Wave 6, run once after 6.2–6.5 are complete and 6.6 is complete or explicitly reported as unverified. The same rules apply as for 1.7: one wave-level review, advisory Oracle output, complete caller reconciliation, a caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, and terminal baseline validation. `PATCH` or `REBUILD` returns to this wave.
