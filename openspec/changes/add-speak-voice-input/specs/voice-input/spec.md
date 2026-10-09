@@ -287,6 +287,7 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 - A token SHALL be a run of non-whitespace characters.
 - Texts SHALL be compared in collapsed form: NFKC, lowercased, keeping only `\p{L}` and `\p{N}` characters.
 - The longest run of leading tokens, from 1 to 8, whose collapsed form equals a candidate's collapsed form SHALL match. An alias with that form SHALL win over names.
+- Only when no run matches in order, the longest run of leading tokens, from 1 to 8, whose collapsed tokens equal a candidate's words in any order SHALL match, where a candidate's words are its NFKC, lowercased form split on characters other than `\p{L}` and `\p{N}`. An alias SHALL again win over names, and two or more names with the same words SHALL be ambiguous.
 - The remaining tokens, joined by single spaces with leading and trailing whitespace and punctuation removed, SHALL be the arguments.
 
 **Delivery.**
@@ -323,6 +324,16 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 
 - **WHEN** the user records "order a pizza" and stops with the command key
 - **THEN** the words are appended as with the transcribe-only key, a warning says no command matched without repeating the words, and nothing runs
+
+#### Scenario: Words in another order
+
+- **WHEN** the listed skill is `online-llm-interactive`, and the user records "LLM online interactive check the spec" and stops with the skill key
+- **THEN** the editor holds `/skill:online-llm-interactive check the spec`
+
+#### Scenario: Order kept when it matches
+
+- **WHEN** a name matches the leading words in order and another name matches a longer run only in another order
+- **THEN** the name that matches in order wins
 
 #### Scenario: Ambiguous names
 
@@ -365,9 +376,11 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
   - **recording or held:** send it, exactly as the send key does;
   - **otherwise:** nothing.
 
+**Keys Pi handles first.** Keys and events that Pi consumes before extension listeners, such as PageUp in Pi's fullscreen mode, are not seen by the hold. They end it through the quiet gap, which sends; this SHALL be documented as a limit.
+
 **Other input during an engaged hold.** Escape and the registered push-to-talk keys, including the command and skill keys, SHALL behave as usual. Any other input, including text in any script and bracketed paste, SHALL reach the editor and discard the hold's recording, exactly as Escape does. The hold SHALL stay spent and consume Spaces until it ends, and its ending SHALL then do nothing.
 
-Session replacement and shutdown SHALL discard the hold's recording and clear its timers, and the hold SHALL stay unrecognizable until it ends. A hold whose timer was cleared SHALL end at the first input arriving more than 300 ms after its last Space, and that input SHALL be handled normally.
+Session replacement and shutdown SHALL discard the hold's recording and clear its timers, and the hold SHALL stay unrecognizable until it ends, even when Pi loads the extension again for the new session. A hold whose timer was cleared SHALL end at the first input arriving more than 300 ms after its last Space, and that input SHALL be handled normally.
 
 **Status line.** The recording status line of a hold-started recording, and its held line at the time cap, SHALL say that releasing Space sends.
 

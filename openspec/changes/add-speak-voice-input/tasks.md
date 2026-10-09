@@ -226,7 +226,11 @@ Verification commands:
   - punctuation in the arguments (`.`, `?`, `…`, `,`);
   - a `name:2` entry;
   - skill output `/skill:<name>`;
-  - an empty transcript.
+  - an empty transcript;
+  - words in another order, with arguments;
+  - an in-order match beating a longer match in another order;
+  - two names with the same words in another order (ambiguous);
+  - a split word ("op sx") matching only in order.
 
   Also add `test/speak/talk.test.ts` cases for every scenario of "Voice command and skill keys", and one streaming case to `test/speak/talk-stream.test.ts`.
 - [x] 8.4 [worker] Update `extensions/speak/README.md`. Cover:
@@ -276,6 +280,7 @@ Verification commands:
   - its limits:
     - key repeat must be on and faster than 120 ms;
     - focus loss counts as letting go;
+    - keys Pi's fullscreen mode takes first (PageUp, PageDown, mouse) end a hold and send;
     - dialogs;
     - the cursor in the middle of the text;
     - a merge within 300 ms;
@@ -295,7 +300,9 @@ Verification commands:
   - Escape while Space is still held;
   - another key while holding Space (the recording is discarded);
   - holding Space in a selector or dialog;
-  - holding Space during an `alt+shift+t` recording.
+  - holding Space during an `alt+shift+t` recording;
+  - PageUp while holding Space (expected: the recording is sent, a documented limit);
+  - `alt+i`, then "LLM online interactive" (words in another order).
 
   Record what happened, and report anything not run as unverified.
 - [ ] 8.8 [Oracle gate: `oracle`] Review gate for Wave 8, run once after 8.2–8.6 are complete and 8.7 is complete or explicitly reported as unverified. The same rules apply as for 1.7.

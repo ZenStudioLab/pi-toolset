@@ -1910,3 +1910,189 @@ The worker run `ac80de27` is terminal and completed.
   - `stopOnPhrase: true`, language `vi`;
   - no keys or voice IDs were printed.
 - **Tasks:** 8.2–8.6 are ticked. 8.7 (the user's live checks) and the 8.8 gate remain.
+
+## Round 1 - Oracle Review
+
+Gate task 8.8, mode FULL, first round of the Wave 8 sequence. Loaded `code-review-expert` and `review-convergence`.
+
+**Frozen baseline:**
+- `BASELINE_TARGET`: Wave 8 implementation (tasks 8.2–8.6) of `add-speak-voice-input`.
+- `BASELINE_TARGET_REVISION`: HEAD `2452591`; candidate `sha256:d6012bfbe90f9b7337f1844dd672cca2560a6004617fd63f4ba27814c5571150`, verified before and after the review.
+- `BASELINE_SOURCE`: `git diff fc2fae0 -- extensions test openspec` at `2452591`.
+- `BASELINE_INCLUSION_PREDICATE`: the Wave 8 changes under `extensions/speak/`, `test/speak/` and `openspec/changes/add-speak-voice-input/tasks.md`, judged against D10, D11, D15, D16 and D17, the voice-input and manual-speech deltas, and ADR-0007 and ADR-0008.
+- `BASELINE_EXCLUSIONS`: `.pi/settings.json` (foreign work) and `extensions/pi-voicekit` (existing tsc errors). The user config was not read.
+
+**Checks:**
+- `node --experimental-strip-types --test test/speak/*.test.ts`: 666 pass, 0 fail.
+- The filtered tsc check prints nothing, `git diff --check` is clean, and `openspec validate add-speak-voice-input --strict` passes.
+- Every source file in scope is under 500 lines (`talk.ts` 469, `config.ts` 462). `speech-job.ts` has 659 lines, which is the existing deferred finding W3-F5.
+- I ran 30 mutations in a throwaway copy under `/tmp`, since deleted. 27 were caught. Three survived:
+  - removing the session guard on Space removal (`hold-space.ts:150`) is equivalent, because a reset cancels the claim before `onRecorderRunning` can fire;
+  - changing `endHold`'s identity check to "any active recording" is equivalent, because every later step acts on `hold.target` and not on `this.active`;
+  - letting command mode also match skills shows a real test gap, recorded under W8-F4.
+- A probe that modelled Pi re-running the extension factory showed that a second `HoldSpace` recognizes a hold the first one had spent (W8-F1).
+
+**Confirmed sound:**
+- **Consent and egress.**
+  - Command and skill starts never stream (`talk.ts:206`), and the stream test proves it.
+  - Command and skill delivery never calls `sendMessage` (`talk-delivery.ts:103-147`).
+  - Other input calls `endHold(handle, "discard")` only (`hold-space.ts:115-118`).
+  - The ignored list is the closed list the spec gives: releases of keys other than Space, and `CELL_SIZE_REPLY` (`hold-space.ts:122-128`).
+  - A paste is detected first, and anything misclassified ends in a discard.
+- **`endHold`** acts only when `this.active === hold.target`, and does nothing while transcribing (`talk.ts:135-142`). That matches the D17 table, including the 0.5 s minimum on a send.
+- **Detector.** All of these match D17:
+  - recognition on the second repeat in a row, within 120 ms, inclusive;
+  - an engaged hold is fully idle only, and a refused start still returns a handle, so Spaces stay consumed and the refusal is reported once;
+  - the counted run is removed only at the end of the text, once the recorder runs;
+  - the hold ends on a Space release or on the 300 ms quiet gap, decided after a deferral;
+  - the spent hold ends only after the arrival-time quiet gap, measured after a reset;
+  - shutdown leaves no context access (the Proxy test).
+- **Matcher** (`voice-command.ts`):
+  - it compares collapsed forms (NFKC, lowercased, letters and digits only);
+  - it takes the longest leading run of up to 8 tokens, and an alias beats a name;
+  - two different names are ambiguous, after removing duplicates;
+  - listed and unlisted delivery follow D16, and warnings never repeat the transcript.
+- **Config** (`input-settings.ts`):
+  - every key is unique across all four shortcut settings, ignoring case;
+  - the alias rules hold: at most 50, 1 to 40 characters, at most 8 tokens, a non-empty form that no other phrase shares, and a one-line target of 2 to 200 characters starting with `/`;
+  - `holdSpace` is a boolean read at load, and a config error registers the four defaults with `holdSpace` off (`index.ts:14-20,227-236`).
+- **Pi 1.1.0 feasibility:**
+  - `onTerminalInput`: `interactive-mode.js:2017-2023,2059`;
+  - `getEditorText` and `setEditorText`: `interactive-mode.js:2076-2077`;
+  - `getCommands` sources `extension`, `prompt` and `skill:<name>`: `agent-session.js:2681-2700`;
+  - `isKeyRelease`: `keys.js:363`; `matchesKey("space")` covers Kitty release events: `keys.js:655-670`;
+  - `StdinBuffer` splits queued Spaces into single `" "` events: `stdin-buffer.js:212-216`;
+  - the loader aliases `pi-tui`: `loader.js:63`;
+  - the context reads `model` and `isIdle` at call time: `runner.js:613-660`.
+- **Worker deviations:**
+  - 2 (Escape release ignored), 3 (file splits), 4 (`Shortcuts` extended), 5 (the 120 ms bound is inclusive; `session_tree` keeps the listener) and 6 (defaults) are sound.
+  - Deviation 1 is not sound; see W8-F1.
+
+### Findings — highest priority first
+
+**W8-F1 — P1 — `hold-lifecycle/spent-state-scope` — in scope.**
+- **Evidence:**
+  - The spent hold is an instance field (`hold-space.ts:66`). `new HoldSpace(...)` runs inside the extension factory (`index.ts:240`).
+  - Pi 1.1.0 builds a new runtime for `/new`, `/resume` and `/fork`: `agent-session-runtime.js:102-112,147-166` with `createRuntime`, then `main.js:587-599` and `resource-loader.js:507`.
+  - `initializeExtension` calls the factory again for each runtime (`loader.js:509-516`). The module stays cached on the same cwd (`loader.js:461-466`), but the instance is new.
+  - Repeats that keep arriving after a session replacement therefore reach a fresh detector. It recognizes them as a new hold on the third repeat 30 ms apart, starts a recording in the new session, removes the typed Spaces, and sends on release.
+  - The probe confirmed this: the second instance started one recording, consumed 3 Spaces, and cleared the editor.
+  - This violates "Session replaced during a hold": the scenario says "no recording starts on the later repeats", and the requirement says the hold "SHALL stay unrecognizable until it ends".
+  - It also contradicts D17 (`design.md:212`, "lives at module level") and task 8.5 (`tasks.md:245`).
+  - The test `hold-space.test.ts:402` passes only because the harness reuses one factory instance across the replacement. The caller accepted deviation 1 on the premise "created once per load", which does not hold for session replacement in Pi 1.1.0.
+  - Likelihood is low, because replacement needs a non-keyboard trigger while Space is held. The consequence is an unrequested recording and send.
+- **SUGGESTED_CORRECTION:**
+  - Keep the spent hold in a module-level holder in `hold-space.ts`, as D17 states.
+  - Let the constructor take an optional state object that defaults to the module holder, so tests stay isolated.
+  - The ending already does nothing for a handle that belongs to an earlier controller (`talk.ts:137`).
+  - Add a test that builds two `HoldSpace` instances on one shared holder. The first recognizes a hold and resets, the second attaches, and repeats 30 ms apart start nothing and stay consumed. Then the first input more than 300 ms later types.
+  - Show that the test fails with an instance-level field.
+
+**W8-F2 — P2 — `runtime-premise/fullscreen-input-precedence` — in scope (contract and docs).**
+- **Evidence:**
+  - Pi 1.1.0 runs in fullscreen by default (`settings-manager.js:974-975`; `--tui-mode` "fullscreen (default)", `cli/args.js:333`; `tui-renderer.js:8-10`). The user's settings do not set `tuiMode`.
+  - `TuiAltScreen` turns on mouse reporting, including all motion, and focus reporting (`tui-alt-screen.js:16-17,194`).
+  - Its viewport listener is added in the constructor, ahead of every extension listener (`tui-alt-screen.js:105`, `tui.js:572-576,686-692`). It consumes these keys: PageUp, PageDown, `ctrl+shift+up` and `ctrl+shift+down`, `ctrl+shift+f`, `ctrl+home` and `ctrl+end` (`tui-alt-screen.js:528-600`, `keybindings.js:91-140`).
+  - It also consumes focus events and mouse events (`tui-alt-screen.js:475-526`). A right-click paste goes to the editor directly.
+  - The detector never sees any of these. A navigation key pressed during a hold stops Space's key repeat, so the quiet gap **sends** the recording instead of discarding it.
+  - This contradicts "Typing another key during a Space hold SHALL discard". It is the very partial-send hole that ADR-0008's "another key discards" was meant to close.
+  - The inherited premise "Pi enables no focus reporting or mouse reporting" (`design.md:252`; proposal review `wave8-review.md:196`, citing `terminal.js:128`) holds only for `--tui-mode regular`.
+  - The extension cannot run before Pi's viewport listener, so a code fix is not available.
+- **SUGGESTED_CORRECTION:**
+  - Amend the "Hold Space to talk" requirement or D17 with a limit: in fullscreen mode, keys Pi's viewport takes first, and right-click paste, are not seen and count as letting go.
+  - Correct `design.md:252` to say that focus events are consumed by Pi in fullscreen mode, which leaves the conclusion that focus loss sends unchanged.
+  - Add the limit to the README "Limits" list (`README.md:206-213`) and to the ADR-0008 consequences.
+  - Add "PageUp while holding Space" to the 8.7 live checks.
+
+**W8-F3 — P3 — `delivery/spacing` — in scope.**
+- **Evidence:** `talk-delivery.ts:138` joins the untrimmed draft. A draft with leading or trailing whitespace produces doubled or trailing spaces, but D16 says the parts are "joined by single spaces".
+- **SUGGESTED_CORRECTION:** use `draft.trim()` in `parts`, and add one table case.
+
+**W8-F4 — P3 — `test-coverage/removal` — in scope.**
+- **Evidence:**
+  - No test checks that command mode excludes skills. The mutation that added `source === "skill"` to the command candidates (`talk-delivery.ts:122`) survived.
+  - `HoldHandle.recorderRunning` is written (`talk.ts:292`) but never read (`talk-state.ts:28`).
+- **SUGGESTED_CORRECTION:**
+  - Add a talk case where the command key and a spoken skill name give no match.
+  - Remove the dead field.
+
+**W3-F5 — P3 — deferred.**
+- **DEFERRED_REASON:** `speech-job.ts` is 659 lines and was not touched by Wave 8. The earlier deferral stands.
+
+### Residual risks and live-check notes for 8.7 (outside this gate)
+
+- The user runs Pi in fullscreen mode, so PageUp and the other viewport keys during a hold send the recording (W8-F2). Focus loss also sends.
+- In the user's config, `stopOnPhrase` is on. Every hold, including an accidental one, streams to ElevenLabs from the fourth Space. If the input provider is Deepgram, every hold is refused with a message.
+- Between Pi clearing the listeners and the new `session_start`, Space repeats reach the editor directly. This is a Pi lifecycle gap, and the spent-state fix does not close it.
+- `/reload` re-imports the module (`moduleCache: false`, `loader.js:478`), so a hold that spans a reload loses its spent state. That is practically unreachable.
+- A hold in a dialog removes trailing Spaces from the main editor if its text ends with that many Spaces. This sits under the documented dialog limit.
+- These remain unverified until 8.7: Ghostty without release events, the 300 ms latency of letting go, a terminal hiccup longer than 300 ms (which would end the hold early and start a busy follow-up hold), and how Vietnamese command names transcribe.
+
+PROPOSED_REVIEW_ACTION=PATCH
+
+---
+
+## Caller Assessment — Wave 8 Round 1
+
+### Review Mode
+- `implementation`, convergence mode `FULL`. The candidate `sha256:d6012bfb…5571150` at `2452591` was verified by the Oracle (run `57f0af3d`).
+
+### Per-Issue Evaluation
+
+#### W8-F1 — The spent hold does not survive the extension being loaded again
+- **Severity:** P1
+- **Family:** `hold-space / detector-controller-identity`. This is the code-level counterpart of the proposal family, recurring as an implementation deviation, not a design gap: D17 already said "module level".
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:**
+  - D17 "Listener lifecycle": the spent state lives at module level.
+  - The spec, "Hold Space to talk": the hold stays unrecognizable after a session replacement.
+  - The caller confirmed the factory reruns per runtime (`loader.js:509-516`).
+- **Decision:** `ACCEPT_BLOCKING`. Accepting worker deviation 1 was a caller error.
+- **CORRECTION:** the routing is as follows.
+  - Keep the spent state at module level, with a test seam to reset it.
+  - Add a test with two detector instances, one before and one after replacement.
+  - D17 and the spec now name the reload of the factory explicitly.
+
+#### W8-F2 — Keys Pi's fullscreen mode takes before extensions end a hold through the quiet gap and send
+- **Severity:** P2
+- **Family:** `hold-space / release-inference`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE for blocking:** none.
+  - The extension cannot run before Pi's handler.
+  - The harm matches the documented focus-loss limit: an early send of a dictation the user started.
+  - The caller confirmed that fullscreen is the default (`settings-manager.js:975`, `cli/args.js:333`).
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:**
+  - Documented as a limit in D17, the spec ("Keys Pi handles first"), ADR-0008, the README list in task 8.5, and a live check in task 8.7.
+  - The incorrect claim "Pi enables no focus reporting" is removed.
+
+#### W8-F3 — Double or trailing spaces when the draft has edge whitespace
+- **Severity:** P3
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** routed to the worker: trim the draft edges before joining, with a test.
+
+#### W8-F4 — Command mode ignoring skills is untested, and `HoldHandle.recorderRunning` is unused
+- **Severity:** P3
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** routed to the worker: add the test case, and remove the unused field or make it read.
+
+#### W3-F5 — `speech-job.ts` is 659 lines
+- **Decision:** `DEFER_OUT_OF_SCOPE`. It is recorded for the archive note, together with W5-F4.
+
+### User-directed scope change (not an Oracle finding)
+
+During the 8.7 live check, "LLM online interactive" did not match `online-llm-interactive`. The user chose to have word order not matter (option b). The change is made as follows:
+- **Artifacts:**
+  - D16 "Words in another order", a fallback pass only, so every existing ordered match is unchanged;
+  - the spec "Comparison", with the scenarios "Words in another order" and "Order kept when it matches";
+  - ADR-0007;
+  - the task 8.3 test list and the task 8.7 live check.
+- **Code:** routed to the worker in the same patch.
+- **User config:** `input.language` was set to `en` at the user's request. Backup: `config.json.bak-20261009-142351`.
+
+### Caller Result
+
+REVIEW_ACTION=PATCH
+CONSENSUS_STATUS=NEEDS_REVISION
+
+The next round is Round 2, with one PATCH assignment to `worker`: W8-F1, F3, F4, the word-order pass, and the README for F2 and word order.

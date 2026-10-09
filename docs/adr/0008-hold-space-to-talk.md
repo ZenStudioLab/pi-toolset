@@ -34,6 +34,7 @@ A probe in the user's terminal (Ghostty on Linux, `TERM_PROGRAM=ghostty`) on 202
 - About 0.6 s passes between pressing Space and the start of recording, and letting go is noticed about 0.3 s late.
 - If key repeat is turned off, or slower than 120 ms, in the desktop settings, a hold is never recognized.
 - Losing window focus while holding Space stops the repeats and counts as letting go, which sends.
+- In Pi's default fullscreen mode, keys Pi handles before extensions, such as PageUp, PageDown and mouse events, are not seen by the hold; pressing one ends it through the quiet gap, which sends.
 - If the cursor is inside the text, the typed Spaces stay there.
 - On a terminal that reports no Space release, pressing Space again within 300 ms of letting go continues the same hold.
 - Three Spaces typed by hand within 120 ms of each other, or Spaces typed during a pause in Pi (they arrive together), count as a hold: they are removed, `/speak` playback stops, and a recording starts. Letting go within 0.5 s sends nothing; with the stop phrase off nothing is uploaded either, but with it on the audio before the release may already have streamed to ElevenLabs.

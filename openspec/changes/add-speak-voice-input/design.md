@@ -178,10 +178,15 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
   - In command mode, the entries with source `extension` or `prompt`, under the names Pi lists, including suffixed duplicates such as `name:2`, plus the command aliases.
   - In skill mode, the entries with source `skill`, without the `skill:` prefix, plus the skill aliases.
 - **Collapsed form.** A *token* is a run of non-whitespace characters. The *collapsed form* of a text is its NFKC form, lowercased, keeping only `\p{L}` and `\p{N}` characters. NFKC keeps Vietnamese letters precomposed; any leftover combining marks are dropped. For example, "Op SX apply-loop" and `opsx-apply-loop` both become `opsxapplyloop`.
-- **Winning match.** Take the longest run of leading tokens, from 1 to 8, whose collapsed form equals a candidate's collapsed form.
+- **Winning match, in order.** Take the longest run of leading tokens, from 1 to 8, whose collapsed form equals a candidate's collapsed form.
   - An alias whose phrase has that collapsed form wins.
   - Otherwise, exactly one name with that form wins.
   - Two or more different names with that form are ambiguous.
+- **Words in another order.** Only if the ordered pass finds nothing, a second pass ignores word order, as the user chose after the first live checks.
+  - A candidate's *words* are its NFKC, lowercased form split on runs of characters other than `\p{L}` and `\p{N}`, so `online-llm-interactive` has the words `online`, `llm` and `interactive`.
+  - For each run of leading tokens, longest first from 8 down to 1, the collapsed forms of those tokens, with empty ones dropped, are compared with each candidate's words as a multiset, regardless of order.
+  - The same precedence applies: an alias wins, otherwise exactly one name wins, and two or more names with the same words are ambiguous.
+  - A word spoken in parts, such as "op sx" for `opsx`, matches only in order, through the first pass.
 - **Arguments.** The tokens after the run are the arguments, joined by single spaces. Leading and trailing whitespace and Unicode punctuation (`\p{P}`) are removed from the whole argument text.
 - **Alias errors.** An alias phrase whose collapsed form is empty, that has more than 8 tokens, or that collapses to the same form as another alias phrase is a configuration error.
 
@@ -209,7 +214,7 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 
 **Setting.** `input.holdSpace` (boolean, default `false`) is read at load together with the shortcuts, and a change takes effect after `/reload`. The terminal input handler must answer synchronously, so it cannot read the file on use. A configuration error at load counts as off, and Space then types normally.
 
-**Listener lifecycle.** Pi drops extension input listeners whenever a session is replaced or reloaded. On each `session_start` in interactive mode, the extension subscribes one listener through `ctx.ui.onTerminalInput`. `session_shutdown`, `session_before_switch`, `session_before_fork` and `session_tree` end the hold's recording, as they end every recording, and clear the hold's timers, next to `talk.resetSession()`, so no timer reaches a stale context. The detector's *spent* state (below) lives at module level and survives these resets.
+**Listener lifecycle.** Pi drops extension input listeners whenever a session is replaced or reloaded. On each `session_start` in interactive mode, the extension subscribes one listener through `ctx.ui.onTerminalInput`. `session_shutdown`, `session_before_switch`, `session_before_fork` and `session_tree` end the hold's recording, as they end every recording, and clear the hold's timers, next to `talk.resetSession()`, so no timer reaches a stale context. The detector's *spent* state (below) lives at module level and survives these resets, including Pi running the extension factory again for a new runtime on `/new`, `/resume` or `/fork` (`core/extensions/loader.js:509-516`).
 
 The detector is its own module, with an injectable clock, timers and deferral (`setImmediate` in production). It receives the registered push-to-talk keys at load, and reaches the controller only through the two entry points below.
 
@@ -249,7 +254,8 @@ On ending, an engaged hold calls `controller.endHold(handle, "send")`. On a term
 
 **Limits**, stated in ADR-0008 and the README:
 - **Key repeat:** it must be on and faster than 120 ms. Terminals that encode Space repeats differently, and text committed by an input method together with a Space, do not count as a hold.
-- **Focus:** losing window focus while holding Space stops the repeats and counts as letting go, which sends. Pi enables no focus reporting.
+- **Focus:** losing window focus while holding Space stops the repeats and counts as letting go, which sends.
+- **Keys Pi's fullscreen mode takes first:** in Pi's default fullscreen mode, Pi's own screen handler runs before extension listeners and takes PageUp, PageDown, `ctrl+shift+up`/`down`, `ctrl+shift+f`, `ctrl+home`/`end`, focus and mouse events, and right-click paste. The detector never sees them. Pressing one during a hold stops Space's repeats, so the quiet gap ends the hold and the recording is sent rather than discarded. The extension cannot run before that handler; `--tui-mode regular` avoids it.
 - **Dialogs:** holding Space while a selector or dialog is open can start a recording.
 - **Accidental holds:** three Spaces typed within 120 ms of each other count as a hold, and so do Spaces typed during a pause in Pi, which arrive together. That removes them, stops `/speak` playback, and starts a recording. Letting go within 0.5 s sends nothing. With the stop phrase off, nothing is uploaded either. With it on, the audio captured before the release may already have streamed to ElevenLabs.
 
