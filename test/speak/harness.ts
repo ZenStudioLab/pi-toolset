@@ -16,7 +16,8 @@ import {
   type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import type { SpawnFn } from "../../extensions/speak/audio.ts";
-import type { Shortcuts } from "../../extensions/speak/config.ts";
+import { pushToTalkKeys, type Shortcuts } from "../../extensions/speak/config.ts";
+import { HoldSpace, type HoldClock } from "../../extensions/speak/hold-space.ts";
 import { registerSpeak } from "../../extensions/speak/index.ts";
 import type { RealtimeSocket } from "../../extensions/speak/realtime.ts";
 import { SpeechController } from "../../extensions/speak/speech-job.ts";
@@ -144,8 +145,14 @@ export async function createHarness(
     sendFailure?: string;
     /** Makes the fake `pi.sendUserMessage` throw this message synchronously. */
     sendThrows?: string;
-    /** The keys registered at load; the default is the built-in pair. */
-    shortcuts?: Shortcuts;
+    /** The keys registered at load; each mode not given has its built-in default. */
+    shortcuts?: Partial<Shortcuts>;
+    /** The commands, prompt templates and skills `pi.getCommands()` lists. */
+    commands?: { name: string; source: string }[];
+    /** Makes `pi.getCommands()` throw. */
+    commandListFailure?: boolean;
+    /** Subscribes a Space-hold detector with this clock on each `session_start`, as `input.holdSpace` does. */
+    holdClock?: HoldClock;
     /** Leaves each live transcription socket unopened until the test calls `open`. */
     holdSockets?: boolean;
   } = {},
@@ -218,7 +225,14 @@ export async function createHarness(
     now: Date.now,
     readFile: options.readFile ?? ((path: string) => readFile(path, "utf8")),
   };
-  const registered = options.shortcuts ?? { send: ["alt+t"], transcribe: ["alt+shift+t"] };
+  const registered: Shortcuts = {
+    send: ["alt+t"],
+    transcribe: ["alt+shift+t"],
+    command: ["alt+m"],
+    skill: ["alt+i"],
+    holdSpace: options.holdClock !== undefined,
+    ...options.shortcuts,
+  };
   const controller = new SpeechController(deps, registered);
   // A manual clock keeps the 0.5 s minimum and the elapsed time exact.
   let clock = 1_000_000;
@@ -227,6 +241,8 @@ export async function createHarness(
   const sent: { text: string; options: unknown; composerAtCall: string }[] = [];
   /** Failures the host reports after `pi.sendUserMessage` has already returned (`runner.emitError`). */
   const hostErrors: string[] = [];
+  /** What `pi.getCommands()` lists. */
+  const listed: { name: string; source: string }[] = [...(options.commands ?? [])];
   const talk = new TalkController(
     { ...deps, now: () => clock },
     controller,
@@ -237,10 +253,14 @@ export async function createHarness(
       if (options.sendFailure) hostErrors.push(options.sendFailure);
     },
     registered,
+    () => {
+      if (options.commandListFailure) throw new Error("command list unavailable");
+      return listed;
+    },
   );
   const commands = new Map<string, Handler>();
   const shortcuts = new Map<string, (ctx: ExtensionCommandContext) => Promise<void>>();
-  const events = new Map<string, () => void>();
+  const events = new Map<string, (event?: unknown, ctx?: unknown) => void>();
   const entries: { customType: string; data: TranslationFailureRecord }[] = [];
   // SAFETY: registerSpeak uses registerCommand/on and appendEntry only after a live failure.
   const api = {
@@ -262,13 +282,14 @@ export async function createHarness(
     sendMessage: () => {
       submitted++;
     },
-    on: (event: string, handler: () => void) => {
+    on: (event: string, handler: (event?: unknown, ctx?: unknown) => void) => {
       events.set(event, handler);
       return () => undefined;
     },
   } as unknown as ExtensionAPI;
   let submitted = 0;
-  registerSpeak(api, controller, talk, registered);
+  const hold = options.holdClock && new HoldSpace(talk, pushToTalkKeys(registered), options.holdClock);
+  registerSpeak(api, controller, talk, registered, hold);
 
   const notices: { message: string; level?: string }[] = [];
   const statuses: (string | undefined)[] = [];
@@ -352,6 +373,16 @@ export async function createHarness(
     await shortcuts.get(registered.transcribe[0]!)!(talkContext(ctxOptions));
   }
 
+  /** Presses the first registered command key (`alt+m` unless `shortcuts` was given). */
+  async function pressCommandShortcut(ctxOptions: CtxOptions = {}) {
+    await shortcuts.get(registered.command[0]!)!(talkContext(ctxOptions));
+  }
+
+  /** Presses the first registered skill key (`alt+i` unless `shortcuts` was given). */
+  async function pressSkillShortcut(ctxOptions: CtxOptions = {}) {
+    await shortcuts.get(registered.skill[0]!)!(talkContext(ctxOptions));
+  }
+
   /** Presses one registered key by name, whichever mode it belongs to. */
   async function pressKey(key: string, ctxOptions: CtxOptions = {}) {
     await shortcuts.get(key)!(talkContext(ctxOptions));
@@ -368,6 +399,9 @@ export async function createHarness(
   return {
     dir,
     env,
+    talkContext,
+    /** Fires `session_start` for a new context, which subscribes the Space-hold listener. */
+    sessionStart: (ctxOptions: CtxOptions = {}) => events.get("session_start")!(undefined, talkContext(ctxOptions)),
     controller,
     fetchCalls,
     sockets,
@@ -382,6 +416,8 @@ export async function createHarness(
     runTalk,
     pressShortcut,
     pressTranscribeShortcut,
+    pressCommandShortcut,
+    pressSkillShortcut,
     pressKey,
     sendKey,
     sent,

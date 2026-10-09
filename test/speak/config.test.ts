@@ -207,6 +207,9 @@ test("the API key comes only from the environment and is trimmed", () => {
   assert.equal(readApiKey({}), undefined);
 });
 
+const aliasesOf = (count: number): Record<string, string> =>
+  Object.fromEntries(Array.from({ length: count }, (_, i) => [`phrase ${i}`, `/target${i}`]));
+
 test("provider blocks and input settings are parsed independently", () => {
   const result = parseConfig({
     provider: "deepgram",
@@ -276,11 +279,33 @@ for (const [name, input] of [
   ["a blank stop phrase", { ...valid, input: { stopPhrases: ["ok", "   "] } }],
   ["a stop phrase over 40 characters", { ...valid, input: { stopPhrases: ["x".repeat(41)] } }],
   ["a non-string stop phrase", { ...valid, input: { stopPhrases: [5] } }],
+  ["a non-boolean holdSpace", { ...valid, input: { holdSpace: "yes" } }],
+  ["a numeric holdSpace", { ...valid, input: { holdSpace: 1 } }],
+  ["a command key equal to a send key", { ...valid, input: { commandShortcut: "alt+t" } }],
+  ["a skill key equal to the command default", { ...valid, input: { skillShortcut: "alt+m" } }],
+  ["a send key equal to the skill default", { ...valid, input: { shortcut: "alt+i" } }],
+  ["command and skill keys equal, differing in case", { ...valid, input: { commandShortcut: "alt+x", skillShortcut: "ALT+X" } }],
+  ["a key repeated within the command list", { ...valid, input: { commandShortcut: ["alt+y", "alt+y"] } }],
+  ["five command keys", { ...valid, input: { commandShortcut: ["alt+a", "alt+b", "alt+c", "alt+d", "alt+e"] } }],
+  ["an empty skill list", { ...valid, input: { skillShortcut: [] } }],
+  ["commandAliases that is a list", { ...valid, input: { commandAliases: ["model"] } }],
+  ["more than 50 aliases", { ...valid, input: { commandAliases: aliasesOf(51) } }],
+  ["an empty alias phrase", { ...valid, input: { commandAliases: { "": "/model" } } }],
+  ["a blank alias phrase", { ...valid, input: { commandAliases: { "   ": "/model" } } }],
+  ["an alias phrase over 40 characters", { ...valid, input: { commandAliases: { ["a".repeat(41)]: "/model" } } }],
+  ["an alias phrase with no letter or digit", { ...valid, input: { commandAliases: { "?! -": "/model" } } }],
+  ["an alias phrase of nine words", { ...valid, input: { commandAliases: { "a b c d e f g h i": "/model" } } }],
+  ["two alias phrases with one collapsed form", { ...valid, input: { commandAliases: { "op sx": "/a", "Op-SX!": "/b" } } }],
+  ["an alias target without a slash", { ...valid, input: { commandAliases: { model: "model" } } }],
+  ["an alias target of one character", { ...valid, input: { commandAliases: { model: "/" } } }],
+  ["an alias target over 200 characters", { ...valid, input: { commandAliases: { model: `/${"a".repeat(200)}` } } }],
+  ["an alias target on two lines", { ...valid, input: { commandAliases: { model: "/model\nsecond" } } }],
+  ["a non-string alias target", { ...valid, input: { commandAliases: { model: 5 } } }],
 ] as const) {
   test(`rejects ${name} input setting`, () => {
     const result = parseConfig(input);
     assert.ok(!result.ok);
-    assert.match(result.problem, /input\.(maxSeconds|language|sendWhenBusy|transcribeShortcut|shortcut|stopOnPhrase|stopPhrases)/);
+    assert.match(result.problem, /input\.(maxSeconds|language|sendWhenBusy|transcribeShortcut|shortcut|stopOnPhrase|stopPhrases|commandShortcut|skillShortcut|commandAliases|holdSpace)/);
   });
 }
 
@@ -300,7 +325,42 @@ for (const [name, input, send, transcribe] of [
 test("a repeated shortcut key is a configuration error that names the key", () => {
   const result = parseConfig({ ...valid, input: { shortcut: ["alt+t", "alt+y"], transcribeShortcut: ["alt+shift+t", "ALT+Y"] } });
   assert.ok(!result.ok);
-  assert.match(result.problem, /input\.shortcut and input\.transcribeShortcut must be different keys; "ALT\+Y" is repeated/);
+  assert.match(result.problem, /input\.shortcut, input\.transcribeShortcut, input\.commandShortcut and input\.skillShortcut must be different keys; "ALT\+Y" is repeated/);
+});
+
+test("the command and skill keys, aliases and holdSpace default to alt+m, alt+i, none and off", () => {
+  const result = parseConfig(valid);
+  assert.ok(result.ok);
+  assert.deepEqual(result.config.input.commandShortcut, ["alt+m"]);
+  assert.deepEqual(result.config.input.skillShortcut, ["alt+i"]);
+  assert.deepEqual(result.config.input.commandAliases, []);
+  assert.equal(result.config.input.holdSpace, false);
+});
+
+test("the command and skill keys, aliases and holdSpace are read, with phrases trimmed and at the limits", () => {
+  const limit = { ["x".repeat(40)]: "/a", " a b c d e f g h ": `/${"y".repeat(199)}`, "Mô hình": "/model", ...aliasesOf(47) };
+  const result = parseConfig({
+    ...valid,
+    input: { commandShortcut: ["alt+j", "alt+k"], skillShortcut: "alt+l", holdSpace: true, commandAliases: limit },
+  });
+  assert.ok(result.ok);
+  assert.deepEqual(result.config.input.commandShortcut, ["alt+j", "alt+k"]);
+  assert.deepEqual(result.config.input.skillShortcut, ["alt+l"]);
+  assert.equal(result.config.input.holdSpace, true);
+  assert.equal(result.config.input.commandAliases.length, 50);
+  assert.deepEqual(result.config.input.commandAliases.slice(0, 4), [
+    { phrase: "x".repeat(40), target: "/a" },
+    { phrase: "a b c d e f g h", target: `/${"y".repeat(199)}` },
+    { phrase: "Mô hình", target: "/model" },
+    { phrase: "phrase 0", target: "/target0" },
+  ]);
+});
+
+test("an alias error names the setting and never echoes the phrase or the target", () => {
+  const result = parseConfig({ ...valid, input: { commandAliases: { "secret phrase": "no-slash-secret" } } });
+  assert.ok(!result.ok);
+  assert.match(result.problem, /input\.commandAliases/);
+  assert.doesNotMatch(result.problem, /secret/);
 });
 
 test("the stop phrase settings are read, with phrases trimmed and at most 10 of 1 to 40 characters", () => {

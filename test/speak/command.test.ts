@@ -161,10 +161,10 @@ test("an unknown subcommand and an empty text command show the combined help and
   quiet(h);
 });
 
-test("/speak help and /talk help, and their ? short form, show the same text with every form, both keys, Escape, and the locale", async () => {
+test("/speak help and /talk help, and their ? short form, show the same text with every form, every key, Escape, and the locale", async () => {
   const h = await harness({
     config: { ...VALID_CONFIG, locale: "ja" },
-    shortcuts: { send: ["alt+t", "alt+y"], transcribe: ["ctrl+alt+t", "ctrl+alt+y"] },
+    shortcuts: { send: ["alt+t", "alt+y"], transcribe: ["ctrl+alt+t", "ctrl+alt+y"], command: ["ctrl+alt+c"], skill: ["ctrl+alt+s", "ctrl+alt+k"] },
   });
   for (const word of ["help", "?"]) {
     await h.run(word);
@@ -176,16 +176,31 @@ test("/speak help and /talk help, and their ? short form, show the same text wit
   for (const form of [
     "/speak ", "/speak original", "/speak in <tag>", "/speak text <text>", "/speak stop",
     "/speak replay", "/speak status", "/speak quota", "/speak provider [elevenlabs|deepgram|reset]",
-    "/speak locale [<tag>|reset]", "/speak help | ?", "/talk ", "/talk send",
+    "/speak locale [<tag>|reset]", "/speak help | ?", "/talk ", "/talk send", "/talk command", "/talk skill",
     "/talk provider [deepgram|elevenlabs|reset]", "/talk help | ?",
   ])
     assert.ok(speakHelp!.includes(form), form);
   assert.match(speakHelp!, /alt\+t \/ alt\+y sends: .*same as \/talk send/);
   assert.match(speakHelp!, /ctrl\+alt\+t \/ ctrl\+alt\+y transcribes only: .*same as \/talk\)/);
+  assert.match(speakHelp!, /ctrl\+alt\+c command: .*same as \/talk command/);
+  assert.match(speakHelp!, /ctrl\+alt\+s \/ ctrl\+alt\+k skill: .*same as \/talk skill/);
+  assert.match(speakHelp!, /result goes into the editor and nothing runs until you press Enter/);
+  assert.match(speakHelp!, /your draft follows them as part of the arguments/);
+  assert.match(speakHelp!, /interactive commands, such as \/model, need an alias in input\.commandAliases and an empty editor/);
+  assert.doesNotMatch(speakHelp!, /input\.holdSpace/);
   assert.match(speakHelp!, /Escape: while a recording is starting it cancels .* recording or held .* discards/);
   assert.match(speakHelp!, /Speech locale: ja \(configured\)/);
   assert.doesNotMatch(speakHelp!, /default vi/);
   quiet(h);
+});
+
+test("help names Space and the discard rule only when hold Space is on at load", async () => {
+  const on = await harness({ shortcuts: { holdSpace: true } });
+  await on.run("help");
+  assert.match(on.notices.at(-1)!.message, /Space \(input\.holdSpace\): hold Space to record and let go to send.* Typing another key during a hold discards the recording/);
+  const off = await harness({ config: { ...VALID_CONFIG, input: { holdSpace: true } } });
+  await off.run("help");
+  assert.doesNotMatch(off.notices.at(-1)!.message, /holdSpace/, "the setting is read at load, so an edited file changes nothing");
 });
 
 test("help works in every run mode and shows the session locale over the configured one", async () => {

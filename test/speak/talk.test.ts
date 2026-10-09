@@ -15,6 +15,7 @@ import {
   stopWith,
   useTalkHarness,
   type Harness,
+  type PressKey,
   type Stop,
 } from "./talk-harness.ts";
 
@@ -105,7 +106,7 @@ test("the indicator follows the recording: recording with time and level, then t
   child.emitAudio(new Uint8Array(new Int16Array(1600).fill(30000).buffer));
   await stopAndSettle(h);
   const lines = h.talkStatuses.filter(Boolean) as string[];
-  assert.match(lines[0]!, /Recording 0:00 .* alt\+t stop and send · alt\+shift\+t stop, transcribe only · Esc discard/);
+  assert.match(lines[0]!, /Recording 0:00 .* alt\+t stop and send · alt\+shift\+t stop, transcribe only · alt\+m stop, command · alt\+i stop, skill · Esc discard/);
   assert.match(lines[1]!, /Recording 0:03 █ .* alt\+t stop and send/);
   assert.equal(lines.at(-1), "Transcribing…");
   assert.equal(h.talkStatuses.at(-1), undefined);
@@ -158,7 +159,7 @@ test("a recording stopped at the time cap is held unsent, and the next press tra
   audio(child, 40000);
   await h.until(() => mixed(h.talkStatuses).includes("limit reached"));
   assert.deepEqual(child.signals, ["SIGINT"]);
-  assert.match(h.talkStatuses.at(-1)!, /Recording limit reached \(1 s\), not sent — alt\+t send · alt\+shift\+t transcribe only · Esc discard/);
+  assert.match(h.talkStatuses.at(-1)!, /Recording limit reached \(1 s\), not sent — alt\+t send · alt\+shift\+t transcribe only · alt\+m command · alt\+i skill · Esc discard/);
   assert.equal(h.fetchCalls.length, 0);
   assert.equal(h.notices.length, 0, "a requested stop is not a failure");
   await h.pressTranscribeShortcut();
@@ -202,7 +203,7 @@ test("a recording started with a transcribe key and stopped with the second send
     shortcuts: keys,
     config: baseConfig({ shortcut: keys.send, transcribeShortcut: keys.transcribe }),
   });
-  assert.deepEqual([...h.shortcuts.keys()], [...keys.send, ...keys.transcribe]);
+  assert.deepEqual([...h.shortcuts.keys()], [...keys.send, ...keys.transcribe, "alt+m", "alt+i"]);
   h.editor.text = "Draft";
   await h.pressKey("alt+shift+y");
   await h.until(() => h.recorderChildren().length === 1);
@@ -628,7 +629,7 @@ test("if the configuration cannot be read at send time the transcript is added b
   await stopAndSettle(h, "pressShortcut");
   assert.equal(h.sent.length, 0);
   assert.equal(h.editor.text, "xin chào");
-  assert.match(h.notices.at(-1)!.message, /added to the composer but not sent: input\.shortcut and input\.transcribeShortcut must be different/);
+  assert.match(h.notices.at(-1)!.message, /added to the composer but not sent: input\.shortcut, input\.transcribeShortcut, input\.commandShortcut and input\.skillShortcut must be different/);
 });
 
 test("equal shortcuts are a configuration error: nothing records and the error names both settings", async () => {
@@ -636,6 +637,126 @@ test("equal shortcuts are a configuration error: nothing records and the error n
   await h.pressShortcut();
   await h.pressTranscribeShortcut();
   assert.equal(h.notices.length, 2);
-  assert.ok(h.notices.every((n) => /input\.shortcut and input\.transcribeShortcut must be different/.test(n.message)));
+  assert.ok(h.notices.every((n) => /input\.shortcut, input\.transcribeShortcut, input\.commandShortcut and input\.skillShortcut must be different/.test(n.message)));
   assert.equal(h.recorderChildren().length, 0);
 });
+
+// Voice command and skill keys: the transcript is matched at the stop, and only the editor changes.
+const LISTED = [
+  { name: "opsx-apply-loop", source: "extension" },
+  { name: "review", source: "prompt" },
+  { name: "foo-bar", source: "extension" },
+  { name: "foobar", source: "prompt" },
+  { name: "skill:review-convergence", source: "skill" },
+];
+const ALIASES = { model: "/model", "new session": "/new", "apply it": "/opsx-apply-loop now" };
+
+/** Records `transcript` and stops with `stop`; the recording starts with the same key unless `start` says otherwise. */
+async function dictate(h: Harness, transcript: string, stop: PressKey, start: PressKey = stop) {
+  respond(h, transcript);
+  audio(await startRecording(h, start));
+  await stopAndSettle(h, stop);
+}
+
+for (const [name, stop, editor, transcript, expected, warning] of [
+  ["a spoken command goes to the start of the editor, before the draft", "pressCommandShortcut", "fix the login bug", "op sx apply loop, add speak voice input.", "/opsx-apply-loop add speak voice input fix the login bug", undefined],
+  ["a prompt template is a command too", "pressCommandShortcut", "", "Review the diff", "/review the diff", undefined],
+  ["a command alone replaces a blank editor", "pressCommandShortcut", "  ", "opsx apply loop", "/opsx-apply-loop", undefined],
+  ["a spoken skill becomes /skill:<name>", "pressSkillShortcut", "", "Review convergence.", "/skill:review-convergence", undefined],
+  ["an alias reaches a command that Pi does not list, in an empty editor", "pressCommandShortcut", "", "Model.", "/model", undefined],
+  ["an alias to a listed command takes the alias target as written", "pressCommandShortcut", "my draft", "apply it", "/opsx-apply-loop now my draft", undefined],
+  ["an interactive alias with a draft is appended, with a warning", "pressCommandShortcut", "fix the login bug", "new session", "fix the login bug new session", /needs an empty editor/],
+  ["an interactive alias with words after it is appended, with a warning", "pressCommandShortcut", "", "model please", "model please", /needs an empty editor/],
+  ["words that match no command are appended, with a warning", "pressCommandShortcut", "Draft", "order a pizza", "Draft order a pizza", /No command matched/],
+  ["words that match no skill are appended, with a warning", "pressSkillShortcut", "", "order a pizza", "order a pizza", /No skill matched/],
+  ["a command name does not match in skill mode", "pressSkillShortcut", "", "review the diff", "review the diff", /No skill matched/],
+  ["two different names with one spelling are appended, with a warning naming both", "pressCommandShortcut", "", "foo bar", "foo bar", /\/foo-bar, \/foobar/],
+] as [string, PressKey, string, string, string, RegExp | undefined][])
+  test(`voice command: ${name}`, async () => {
+    const h = await harness({ config: baseConfig({ commandAliases: ALIASES }), commands: LISTED });
+    h.editor.text = editor;
+    await dictate(h, transcript, stop);
+    assert.equal(h.editor.text, expected);
+    assert.equal(h.submitted, 0, "nothing is sent and no command runs");
+    const warnings = h.notices.filter((notice) => notice.level === "warning");
+    if (warning) {
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0]!.message, warning);
+      assert.ok(!warnings[0]!.message.includes(transcript), "a warning never repeats the transcript");
+    } else assert.equal(h.notices.length, 0);
+  });
+
+test("the key that stops the recording decides the mode: a send-key start stopped with the skill key matches skills and sends nothing", async () => {
+  const h = await harness({ commands: LISTED });
+  await dictate(h, "review convergence", "pressSkillShortcut", "pressShortcut");
+  assert.equal(h.editor.text, "/skill:review-convergence");
+  assert.equal(h.submitted, 0);
+  await dictate(h, "review convergence", "pressTranscribeShortcut", "pressCommandShortcut");
+  assert.equal(h.editor.text, "/skill:review-convergence review convergence", "stopping with the transcribe-only key appends the words");
+});
+
+for (const word of ["command", "skill"] as const)
+  test(`/talk ${word} starts a recording and stops it in ${word} mode, like its key`, async () => {
+    const h = await harness({ commands: LISTED });
+    respond(h, word === "skill" ? "review convergence" : "opsx apply loop");
+    await h.runTalk(word);
+    await h.until(() => h.recorderChildren().length === 1);
+    audio(h.recorderChildren()[0]!);
+    h.advance(2000);
+    await h.runTalk(word);
+    await h.until(() => h.editor.text !== "");
+    assert.equal(h.editor.text, word === "skill" ? "/skill:review-convergence" : "/opsx-apply-loop");
+  });
+
+test("a recording held at the time cap is delivered in the mode of the command key that releases it", async () => {
+  const h = await harness({ config: baseConfig({ maxSeconds: 1 }), commands: LISTED });
+  respond(h, "opsx apply loop with tests");
+  audio(await startRecording(h), 40000);
+  await h.until(() => mixed(h.talkStatuses).includes("limit reached"));
+  await h.pressCommandShortcut();
+  await h.until(() => h.editor.text !== "");
+  assert.equal(h.editor.text, "/opsx-apply-loop with tests");
+  assert.equal(h.submitted, 0);
+});
+
+test("an empty transcript in command mode changes nothing", async () => {
+  const h = await harness({ commands: LISTED });
+  h.editor.text = "Draft";
+  await dictate(h, "", "pressCommandShortcut");
+  assert.equal(h.editor.text, "Draft");
+  assert.match(h.notices.at(-1)!.message, /Nothing was recognized/);
+});
+
+test("a command transcript that arrives after a session change is dropped", async () => {
+  const h = await harness({ commands: LISTED });
+  let release!: () => void;
+  h.setFetch(
+    () =>
+      new Promise((resolve) => {
+        release = () => resolve(json({ results: { channels: [{ alternatives: [{ transcript: "opsx apply loop" }] }] } }));
+      }),
+  );
+  audio(await startRecording(h, "pressCommandShortcut"));
+  h.advance(2000);
+  await h.pressCommandShortcut();
+  await h.until(() => h.fetchCalls.length === 1);
+  sessionEvent(h);
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(h.editor.text, "");
+});
+
+for (const [name, options, setup, warning] of [
+  ["the configuration cannot be read at the stop", {}, async (h: Harness) => h.writeConfig({ input: { shortcut: "alt+x", transcribeShortcut: "alt+x" } }), /no command was matched: input\.shortcut/],
+  ["Pi's command list cannot be read", { commandListFailure: true }, async () => undefined, /command list could not be read/],
+] as const)
+  test(`when ${name}, the words are appended with a warning and nothing runs`, async () => {
+    const h = await harness({ commands: LISTED, ...options });
+    respond(h, "opsx apply loop");
+    audio(await startRecording(h, "pressCommandShortcut"));
+    await setup(h);
+    await stopAndSettle(h, "pressCommandShortcut");
+    assert.equal(h.editor.text, "opsx apply loop");
+    assert.match(h.notices.at(-1)!.message, warning);
+    assert.equal(h.submitted, 0);
+  });

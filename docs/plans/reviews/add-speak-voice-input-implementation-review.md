@@ -1797,3 +1797,103 @@ CONSENSUS_STATUS=MOSTLY_GOOD
 The Wave 7 code review is closed. Before archive, two things remain:
 1. The user's answer on which 7.5 checks ran (Deepgram speech is confirmed).
 2. The ADR-0006 status change, once the checks are confirmed.
+
+## Wave 8 Review Sequence
+
+The `/opsx-apply-loop add-speak-voice-input` run is in focus mode, as the user requested. The proposal review passed in `docs/plans/reviews/add-speak-voice-input-wave8-review.md` (REVIEW_ACTION=PASS, `fc2fae0`).
+
+The wave adds the command and skill keys (ADR-0007, D16) and hold Space to talk (ADR-0008, D17). Task 8.1 (orchestrator) is complete through the amendment commits `8f537c2` … `fc2fae0`.
+
+## Round 1 - Implementation Assignments
+
+- **Wave and reserved gate:** Wave 8. Gate task 8.8 [Oracle gate: `oracle`] is reserved and excluded from implementation dispatch.
+- **Ordered assignments:**
+  - **W8-A:** tasks 8.2, 8.3, 8.4 and 8.5. Owner `worker` (`claude-bridge/claude-sonnet-5-5:high`, background). This is one focus group: settings and keys, then the matcher and delivery, then the README, then the hold-Space detector.
+    - **Files:** `extensions/speak/` (`config.ts` plus a new input-settings module, `index.ts`, `help.ts`, `talk.ts`, `talk-state.ts`, the new `voice-command.ts`, a new hold-Space module, `README.md`) and `test/speak/` (`config`, `silence`, `command`, `talk`, `talk-stream`, and the new `voice-command` and `hold-space` tests, with the harnesses).
+  - **W8-B:** task 8.6. Owner: orchestrator, after W8-A and with the user's approval.
+  - **W8-C:** task 8.7. Owner: the user.
+- **Base commit:** `fc2fae0`. `.pi/settings.json` holds foreign changes and is excluded.
+
+### W8-A (worker)
+
+**Status:** tasks 8.2, 8.3, 8.4 and 8.5 are implemented in that order. `tasks.md` is not ticked, nothing is committed, and nothing is staged.
+
+**Checks (final tree):**
+- `node --experimental-strip-types --test test/speak/*.test.ts`, three runs: 666 pass, 0 fail; 666 pass, 0 fail; 666 pass, 0 fail (538 before the wave).
+- `npx tsc --noEmit 2>&1 | grep -E 'extensions/speak|test/speak'` prints nothing; `git diff --check` is clean.
+- README: all five `json` blocks parse with `parseConfig` (the full example with its placeholder voice IDs replaced, the extra-keys fragment, the aliases fragment, and the two `holdSpace`/stop-phrase blocks wrapped in `input`). The one-off script was not committed.
+- Source line counts: `config.ts` 462 (was 579), `talk.ts` 469 (was 484), `index.ts` 242, `hold-space.ts` 201, `input-settings.ts` 161, `talk-delivery.ts` 148, `voice-command.ts` 73, `config-validation.ts` 44, `talk-status.ts` 21, `help.ts` 63, `talk-state.ts` 78; tests `hold-space.test.ts` 478, `hold-clock.ts` 46, `voice-command.test.ts` 57. `talk.test.ts` is 762 lines (641 before; already over 500).
+
+**Mutations** (throwaway copy under `/tmp`, deleted afterwards; each run on the test files named):
+1. Hold ending with no check that the hold's recording is still the active one: `hold-space.test.ts` fails 3 of 35 (Escape during a hold, refused start, nothing touches the context after shutdown).
+2. A release of any key treated as the Space release: fails 1 (release of an arrow key or Escape, cell-size reply).
+3. Other input sending instead of discarding: fails 8 (each other-input case, stop phrase on, held at the cap).
+4. A second hold recognized inside the spent hold, and its Spaces typed: fails 18.
+5. Matcher with a name beating an alias: `voice-command.test.ts` fails 2 (an alias beating a name, an alias settling an ambiguity).
+
+**Scenario → test.** "Voice command and skill keys" (`talk.test.ts` unless noted; every row also asserts nothing is sent or run):
+- Spoken command goes into the editor → `voice command: a spoken command goes to the start of the editor, before the draft`
+- Spoken skill → `voice command: a spoken skill becomes /skill:<name>`
+- Alias to an interactive command → `voice command: an alias reaches a command that Pi does not list, in an empty editor`
+- Interactive alias with a draft → `voice command: an interactive alias with a draft is appended, with a warning`
+- No match → `voice command: words that match no command are appended, with a warning` (and the skill variant)
+- Ambiguous names → `voice command: two different names with one spelling are appended, with a warning naming both`, plus the matcher case in `voice-command.test.ts`
+- Mode decided at the stop → `the key that stops the recording decides the mode: a send-key start stopped with the skill key matches skills and sends nothing`
+- Command key with the stop phrase on → `talk-stream.test.ts`: `a recording started with the command or skill key never streams, even with the stop phrase on and Deepgram, which cannot stream` (and the ElevenLabs variant)
+
+"Hold Space to talk" (`hold-space.test.ts`):
+- Tap types a space → `a tap types a space and starts nothing`
+- Hold records and release sends → `holding Space records from the fourth Space, removes the typed Spaces once the recorder runs, and letting go sends`
+- Release while starting → `letting go while the recording is still starting cancels it and the typed Spaces stay`
+- Escape while Space is held → `Escape during a hold discards the recording, later Spaces are consumed, and nothing starts or is sent`
+- Recording already ended → `a hold whose recording the stop phrase already sent does nothing more…` and `…a key already stopped and transcribed…`
+- Refused start → `a refused start is reported once, the Spaces stay, later Spaces are consumed, and no further attempt is made`
+- Busy hold → `a hold during recording begun with a key is busy…` and `…during a recording attempt that is still starting…`
+- Stalled event loop → `a stall where the release timer and queued Spaces are due together keeps the hold going`
+- Release of another key → `the release of an arrow key or of Escape, and the terminal's cell-size reply, are ignored during a hold`
+- Send key during a hold → `the send key as an escape sequence during a hold sends once, and letting go adds nothing`
+- Other key during a hold → `a letter during a hold reaches the editor and discards the recording…` (editor "Draftx"), plus the stop-phrase-on, starting, and held-at-the-cap variants
+- Text in another script → `a Vietnamese letter during a hold…` and `bracketed paste during a hold…`
+- Terminal reply during a hold → the ignored-input test above
+- Undecodable key → `a key that cannot be decoded during a hold…`
+- Session replaced → `a session change during a hold discards the recording and clears the timers; repeats stay consumed, and the first input after the quiet gap types`
+- Cursor in the middle → `with the cursor inside the text the typed Spaces stay and are sent with the draft`
+- Off by default → `with the setting off, no listener exists and every Space reaches the editor`, and the `silence.test.ts` cases
+
+**Deviations and decisions:**
+1. The spent-hold state lives on the `HoldSpace` instance that the extension factory creates once per load, not in a module-level variable. It survives session resets as required; a module-level singleton would leak between tests.
+2. `talk.ts` now ignores a reported Escape *release* in its two Escape listeners (`isEscapePress`). Without it, the release of Escape during a hold would discard the recording, which contradicts "Release of another key".
+3. Extra files, to keep every file under 500 lines and avoid an import cycle: `config-validation.ts` (shared checks), `talk-delivery.ts` (append, send and voice-command delivery moved out of `talk.ts`), `talk-status.ts` (status lines), and the test helper `hold-clock.ts`.
+4. `Shortcuts` gained `command`, `skill` and `holdSpace` (help reads `holdSpace` from the load-time value); the harness `shortcuts` option is now `Partial<Shortcuts>`. The duplicate-key error now names all four settings, and the three tests that matched the old text were updated.
+5. A repeat is a Space at most 120 ms after the previous one (inclusive). `reset()` keeps the listener (`session_tree` does not replace the session); only `session_shutdown` drops the context (`detach()`).
+6. Details the artifacts leave open: with an unreadable configuration at the stop, a command or skill recording is appended with a warning; a blank draft is dropped from a listed command; `/talk command` and `/talk skill` take no arguments; status lines read `… stop, command · … stop, skill`.
+
+**Not verified:** nothing was run against a live Pi, terminal or provider (task 8.7).
+
+### W8-A Reconciliation (orchestrator)
+
+The worker run `ac80de27` is terminal and completed.
+
+- **Write scope:** `extensions/speak/` and `test/speak/`, plus the worker's own subsection in this log. No other paths changed; `.pi/settings.json` holds foreign changes.
+- **New files:**
+  - source: `config-validation.ts`, `input-settings.ts`, `voice-command.ts`, `talk-delivery.ts`, `talk-status.ts`, `hold-space.ts`;
+  - tests: `test/speak/hold-clock.ts`, `hold-space.test.ts`, `voice-command.test.ts`.
+- **Caller verification:**
+  - 666 tests pass and 0 fail, in 2 runs (538 before).
+  - The filtered type check prints nothing, and `git diff --check` is clean.
+  - Every source file is under 500 lines. `talk.test.ts` has 762 lines, under the 800-line review trigger for test files.
+- **Runtime import check:** the new runtime import of `@earendil-works/pi-tui` in `hold-space.ts` matches the import `talk.ts` already had. Pi's extension loader aliases that package (`core/extensions/loader.js:55-72`).
+- **Accepted deviations:**
+  - The spent state lives on the `HoldSpace` instance created once per load. It survives resets and does not leak between tests.
+  - Escape listeners ignore reported Escape releases, which the "Release of another key" scenario requires.
+  - `session_shutdown` calls `detach()`.
+  - `Shortcuts` is extended.
+  - Defaults were chosen where the artifacts are silent:
+    - a repeat is a Space at most 120 ms after the previous one, inclusive;
+    - with an unreadable config at the stop, the transcript is appended with a warning;
+    - a blank draft is dropped;
+    - `/talk command` and `/talk skill` take no arguments.
+- **Remaining tasks:**
+  - 8.6 waits for the user's approval of the config change;
+  - 8.7 is unverified;
+  - gate 8.8 runs after 8.6.

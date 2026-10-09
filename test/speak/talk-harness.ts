@@ -44,10 +44,12 @@ export function respond(h: Harness, transcript: string) {
   );
 }
 
-/** Starts a recording with the shortcut and waits for the recorder process. */
-export async function startRecording(h: Harness): Promise<FakeChild> {
+export type PressKey = "pressShortcut" | "pressTranscribeShortcut" | "pressCommandShortcut" | "pressSkillShortcut";
+
+/** Starts a recording with a shortcut (the send key by default) and waits for the recorder process. */
+export async function startRecording(h: Harness, press: PressKey = "pressShortcut"): Promise<FakeChild> {
   const wanted = h.recorderChildren().length + 1;
-  await h.pressShortcut();
+  await h[press]();
   await h.until(() => h.recorderChildren().length === wanted);
   return h.recorderChildren()[wanted - 1]!;
 }
@@ -56,7 +58,7 @@ export async function startRecording(h: Harness): Promise<FakeChild> {
  * Stops a recording longer than the 0.5 s minimum and waits for the transcript outcome. The default
  * stops with the transcribe-only shortcut, so the composer is not sent.
  */
-export async function stopAndSettle(h: Harness, stop: "pressShortcut" | "pressTranscribeShortcut" = "pressTranscribeShortcut") {
+export async function stopAndSettle(h: Harness, stop: PressKey = "pressTranscribeShortcut") {
   h.advance(2000);
   await h[stop]();
   await h.until(() => h.talkStatuses.length > 0 && h.talkStatuses.at(-1) === undefined);
@@ -66,9 +68,10 @@ export const audio = (child: FakeChild, bytes = 3200) => child.emitAudio(new Uin
 export const sessionEvent = (h: Harness, name = "session_before_switch") => h.events.get(name)!();
 export const mixed = (statuses: (string | undefined)[]) => statuses.filter(Boolean).join("\n");
 
-export type Stop = "pressShortcut" | "pressTranscribeShortcut" | "send" | "talk";
+export type Stop = PressKey | "send" | "talk" | "command" | "skill";
 export const stopWith = async (h: Harness, stop: Stop) => {
   if (stop === "send") await h.runTalk("send");
   else if (stop === "talk") await h.runTalk("");
+  else if (stop === "command" || stop === "skill") await h.runTalk(stop);
   else await h[stop]();
 };

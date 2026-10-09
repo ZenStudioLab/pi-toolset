@@ -10,7 +10,7 @@ import speak from "../../extensions/speak/index.ts";
 async function load(config?: string) {
   const commands: string[] = [];
   const shortcuts: string[] = [];
-  const events = new Map<string, () => void>();
+  const events = new Map<string, (event?: unknown, ctx?: unknown) => void>();
   const used: string[] = [];
   const fetchFn = (async () => {
     used.push("fetch");
@@ -33,7 +33,7 @@ async function load(config?: string) {
   const api = {
     registerCommand: (name: string) => commands.push(name),
     registerShortcut: (key: string) => shortcuts.push(key),
-    on: (event: string, handler: () => void) => {
+    on: (event: string, handler: (event?: unknown, ctx?: unknown) => void) => {
       events.set(event, handler);
       return () => undefined;
     },
@@ -42,7 +42,7 @@ async function load(config?: string) {
   return { commands, shortcuts, events, used };
 }
 
-test("loading registers /speak, /talk, both shortcuts, four cancel-only lifecycle handlers, and three compaction-state handlers, starting no process or request", async () => {
+test("loading registers /speak, /talk, all four shortcuts, four cancel-only lifecycle handlers, and three compaction-state handlers, starting no process or request", async () => {
   const realFetch = globalThis.fetch;
   let globalFetches = 0;
   globalThis.fetch = (async () => {
@@ -52,7 +52,7 @@ test("loading registers /speak, /talk, both shortcuts, four cancel-only lifecycl
   try {
     const { commands, shortcuts, events, used } = await load();
     assert.deepEqual(commands, ["speak", "talk"]);
-    assert.deepEqual(shortcuts, ["alt+t", "alt+shift+t"]);
+    assert.deepEqual(shortcuts, ["alt+t", "alt+shift+t", "alt+m", "alt+i"]);
     assert.deepEqual([...events.keys()].sort(), [
       "session_before_compact",
       "session_before_fork",
@@ -69,17 +69,22 @@ test("loading registers /speak, /talk, both shortcuts, four cancel-only lifecycl
   assert.equal(globalFetches, 0);
 });
 
+const DEFAULT_KEYS = ["alt+t", "alt+shift+t", "alt+m", "alt+i"];
 for (const [name, input, expected] of [
-  ["both come from the configuration", { shortcut: "ctrl+alt+m", transcribeShortcut: "ctrl+alt+n" }, ["ctrl+alt+m", "ctrl+alt+n"]],
-  ["one set key keeps the other's default", { shortcut: "ctrl+alt+m" }, ["ctrl+alt+m", "alt+shift+t"]],
-  ["equal keys register both defaults", { shortcut: "alt+x", transcribeShortcut: "alt+x" }, ["alt+t", "alt+shift+t"]],
+  ["all four come from the configuration", { shortcut: "ctrl+alt+m", transcribeShortcut: "ctrl+alt+n", commandShortcut: "ctrl+alt+o", skillShortcut: "ctrl+alt+p" }, ["ctrl+alt+m", "ctrl+alt+n", "ctrl+alt+o", "ctrl+alt+p"]],
+  ["one set key keeps the others' defaults", { shortcut: "ctrl+alt+m" }, ["ctrl+alt+m", "alt+shift+t", "alt+m", "alt+i"]],
+  ["the command and skill keys alone", { commandShortcut: "ctrl+alt+o", skillShortcut: ["ctrl+alt+p", "ctrl+alt+q"] }, ["alt+t", "alt+shift+t", "ctrl+alt+o", "ctrl+alt+p", "ctrl+alt+q"]],
+  ["equal keys register the four defaults", { shortcut: "alt+x", transcribeShortcut: "alt+x" }, DEFAULT_KEYS],
   [
-    "every key of both lists is registered",
+    "every key of the first two lists is registered",
     { shortcut: ["alt+t", "alt+y"], transcribeShortcut: ["alt+shift+t", "alt+shift+y"] },
-    ["alt+t", "alt+y", "alt+shift+t", "alt+shift+y"],
+    ["alt+t", "alt+y", "alt+shift+t", "alt+shift+y", "alt+m", "alt+i"],
   ],
-  ["a key repeated across the lists registers both defaults", { shortcut: ["alt+t", "alt+y"], transcribeShortcut: ["alt+shift+t", "Alt+Y"] }, ["alt+t", "alt+shift+t"]],
-  ["a list with five keys registers both defaults", { shortcut: ["alt+a", "alt+b", "alt+c", "alt+d", "alt+e"] }, ["alt+t", "alt+shift+t"]],
+  ["a key repeated across the lists registers the four defaults", { shortcut: ["alt+t", "alt+y"], transcribeShortcut: ["alt+shift+t", "Alt+Y"] }, DEFAULT_KEYS],
+  ["a send key equal to the command default registers the four defaults", { shortcut: "alt+m" }, DEFAULT_KEYS],
+  ["a skill key equal to a send key registers the four defaults", { skillShortcut: "alt+t" }, DEFAULT_KEYS],
+  ["a list with five keys registers the four defaults", { shortcut: ["alt+a", "alt+b", "alt+c", "alt+d", "alt+e"] }, DEFAULT_KEYS],
+  ["a bad alias registers the four defaults", { shortcut: "ctrl+alt+m", commandAliases: { "": "/model" } }, DEFAULT_KEYS],
 ] as const)
   test(`the shortcuts at load: ${name}`, async () => {
     const { shortcuts, used } = await load(JSON.stringify({ input }));
@@ -87,9 +92,9 @@ for (const [name, input, expected] of [
     assert.deepEqual(used, ["readFile"]);
   });
 
-test("a configuration that cannot be read at load registers both default shortcuts", async () => {
+test("a configuration that cannot be read at load registers the four default shortcuts", async () => {
   const { shortcuts } = await load("{ not json");
-  assert.deepEqual(shortcuts, ["alt+t", "alt+shift+t"]);
+  assert.deepEqual(shortcuts, DEFAULT_KEYS);
 });
 
 test("the extension subscribes to no agent, turn, tool, or message event, so ordinary activity cannot reach it", async () => {
@@ -136,7 +141,7 @@ test("loading with the stop phrase on, then firing every lifecycle handler, open
     const { shortcuts, events, used } = await load(
       JSON.stringify({ input: { provider: "elevenlabs", stopOnPhrase: true, stopPhrases: ["send it"] } }),
     );
-    assert.deepEqual(shortcuts, ["alt+t", "alt+shift+t"]);
+    assert.deepEqual(shortcuts, DEFAULT_KEYS);
     for (const handler of events.values()) handler();
     assert.deepEqual(used, ["readFile"]);
   } finally {
@@ -144,3 +149,26 @@ test("loading with the stop phrase on, then firing every lifecycle handler, open
   }
   assert.equal(globalSockets, 0);
 });
+
+test("loading with input.holdSpace on subscribes to session_start only, and starts nothing until a hold is recognized", async () => {
+  const { events, used } = await load(JSON.stringify({ input: { holdSpace: true } }));
+  assert.ok(events.has("session_start"));
+  assert.deepEqual(used, ["readFile"]);
+  const listeners: unknown[] = [];
+  // SAFETY: The handler uses only the run mode and ui.onTerminalInput.
+  const ctx = { mode: "tui", ui: { onTerminalInput: (listener: unknown) => listeners.push(listener) } };
+  for (const [name, handler] of events) handler(undefined, name === "session_start" ? ctx : undefined);
+  assert.equal(listeners.length, 1);
+  assert.deepEqual(used, ["readFile"]);
+});
+
+for (const [name, config] of [
+  ["a configuration error", JSON.stringify({ input: { holdSpace: true, shortcut: "alt+m" } })],
+  ["an unreadable file", undefined],
+  ["a non-boolean holdSpace", JSON.stringify({ input: { holdSpace: "yes" } })],
+  ["holdSpace left out", JSON.stringify({ input: {} })],
+] as const)
+  test(`hold Space is off after ${name}: no session_start subscription`, async () => {
+    const { events } = await load(config);
+    assert.ok(!events.has("session_start"));
+  });

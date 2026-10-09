@@ -5,6 +5,7 @@ import {
   audio,
   baseConfig,
   mixed,
+  respond,
   sessionEvent,
   startRecording,
   stopAndSettle,
@@ -195,6 +196,32 @@ test("with the stop phrase on and Deepgram as the input provider, nothing is rec
   await h.runTalk("provider elevenlabs");
   await h.pressShortcut();
   assert.equal(h.sockets.length, 1, "the session override selects ElevenLabs, so it streams");
+});
+
+for (const [name, config, press] of [
+  ["Deepgram, which cannot stream", baseConfig({ stopOnPhrase: true }), "pressCommandShortcut"],
+  ["ElevenLabs, which could", liveConfig(), "pressSkillShortcut"],
+] as const)
+  test(`a recording started with the command or skill key never streams, even with the stop phrase on and ${name}`, async () => {
+    const h = await harness({ config, commands: [{ name: "skill:review-convergence", source: "skill" }, { name: "opsx-apply-loop", source: "extension" }] });
+    respond(h, press === "pressSkillShortcut" ? "review convergence" : "opsx apply loop");
+    audio(await startRecording(h, press));
+    assert.equal(h.sockets.length, 0);
+    await stopAndSettle(h, press);
+    assert.equal(h.fetchCalls.length, 1, "it is uploaded once at the stop");
+    assert.equal(h.editor.text, press === "pressSkillShortcut" ? "/skill:review-convergence" : "/opsx-apply-loop");
+    assert.equal(h.submitted, 0);
+  });
+
+test("a streamed recording stopped with the command key is matched against its committed text, and nothing is sent", async () => {
+  const h = await harness({ config: liveConfig(), commands: [{ name: "opsx-apply-loop", source: "extension" }] });
+  h.editor.text = "Draft";
+  const { child, socket } = await startLive(h);
+  audio(child);
+  await stopLive(h, socket, "pressCommandShortcut", "op sx apply loop, with tests.");
+  assert.equal(h.editor.text, "/opsx-apply-loop with tests Draft");
+  assert.equal(h.submitted, 0);
+  assert.equal(h.fetchCalls.length, 0, "the streamed audio is not uploaded a second time");
 });
 
 test("a streamed recording started on ElevenLabs keeps streaming when the provider override changes", async () => {
