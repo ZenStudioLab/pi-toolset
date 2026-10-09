@@ -15,16 +15,18 @@ A probe in the user's terminal (Ghostty on Linux, `TERM_PROGRAM=ghostty`) on 202
 
 **Off by default.** `input.holdSpace: true` turns it on.
 
-**A tap still types a space.** Every Space reaches the editor until a hold is recognized from the key repeat: the second Space in a row that arrives within 120 ms of the one before. In the probed terminal that is the fourth Space, about 0.56 s after the press. A recording then starts as the send key would start one, but only when nothing else is starting, recording, held or transcribing. The Spaces typed since the last other input are removed from the end of the editor text, if they are still there. From then until the hold ends, Spaces are consumed, and no second hold is recognized.
+**A tap still types a space.** Every Space reaches the editor until a hold is recognized from the key repeat: the second Space in a row within 120 ms of the one before. In the probed terminal that is the fourth Space, about 0.56 s after the press. The hold is then spent and is not recognized again until it ends.
+- **Engaged hold:** if nothing else is starting, recording, held or transcribing, a recording starts as the send key would start one. Spaces are consumed until the hold ends. Once the recorder runs, the Spaces typed since the last other input are removed from the end of the text, if they are still there.
+- **Busy hold:** otherwise nothing happens, and Spaces keep typing.
 
-**Letting go sends, and only the hold's own recording.** The hold ends when the terminal reports a Space release, or when no Space has arrived for 300 ms. A quiet gap is confirmed only after pending input has been read, so a busy moment in Pi cannot end a hold while Spaces are queued. Ending acts only on the recording that hold started:
-- **Still recording or held:** it stops in send mode exactly as the send key does, including the stop phrase rules, `input.sendWhenBusy` and the time-cap hold.
-- **Still starting:** it is cancelled.
-- **Already ended:** if Escape, the stop phrase, another control or an error ended it, nothing happens.
+**Letting go sends, and only the hold's own recording.** The hold ends on a reported Space release, or when no Space has arrived for 300 ms. A quiet gap is confirmed only after pending input has been read. Release events of other keys are ignored. Ending acts only on the recording that hold started:
+- **recording or held:** it is sent, exactly as with the send key, including the stop phrase rules, `input.sendWhenBusy` and the time-cap hold;
+- **still starting:** it is cancelled;
+- **already ended in any other way:** nothing happens.
 
-**Typing during a hold does not send.** Another key stops Space's key repeat, so a release could no longer be told apart. Any other input therefore reaches the editor and ends the recording in transcribe-only mode. Escape and the push-to-talk keys behave as usual.
+**Typing during a hold keeps the recording unsent.** Another key stops Space's key repeat, so a release could no longer be told apart. That key reaches the editor, and the recording stops and is held unsent, as at the time cap, until the user presses the send key, the transcribe-only key or Escape. Escape and the push-to-talk keys behave as usual. This adds no new way for audio to leave the machine.
 
-**Lifecycle.** The setting is read at load and applies after `/reload`. The listener is subscribed on every session start, because Pi drops it when a session is replaced, and its timers are cleared on shutdown and session changes.
+**Lifecycle.** The setting is read at load and applies after `/reload`. The listener is subscribed on every session start, because Pi drops it when a session is replaced. A session change discards the hold's recording and clears its timers, and the spent hold stays unrecognizable until Space is released.
 
 ## Consequences
 
@@ -32,7 +34,9 @@ A probe in the user's terminal (Ghostty on Linux, `TERM_PROGRAM=ghostty`) on 202
 - About 0.6 s passes between pressing Space and the start of recording, and letting go is noticed about 0.3 s late.
 - If key repeat is turned off, or slower than 120 ms, in the desktop settings, a hold is never recognized.
 - Losing window focus while holding Space stops the repeats and counts as letting go, which sends.
-- Three Spaces typed by hand within 120 ms of each other count as a hold: they are removed, `/speak` playback stops, and a recording starts. Letting go within 0.5 s discards it without any upload.
+- If the cursor is inside the text, the typed Spaces stay there.
+- Pressing Space again within 300 ms of letting go continues the same hold.
+- Three Spaces typed by hand within 120 ms of each other count as a hold: they are removed, `/speak` playback stops, and a recording starts. Letting go within 0.5 s sends nothing; with the stop phrase off nothing is uploaded either, but with it on the audio before the release may already have streamed to ElevenLabs.
 - The terminal input listener sees keys even while a selector or dialog is open. Holding Space there can start a recording. This is documented, and Escape discards it before the release.
 
 ## Alternatives Considered

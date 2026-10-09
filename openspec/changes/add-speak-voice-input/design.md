@@ -193,7 +193,7 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
   - an alias whose target's first token, without its `/`, is a listed command or template name, or `skill:` plus a listed skill.
 
   For a listed target, the editor text becomes the target, then the arguments, then the previous draft, joined by single spaces, with empty parts left out. The target is `/<name>` for a command or template, `/skill:<name>` for a skill, or the alias target. The previous draft therefore becomes part of the command's arguments, and help and the README say so.
-- **Unlisted target.** Any other alias target is an unlisted target, such as Pi's interactive `/model` or `/new`. Pi matches those on the whole editor text, so the target is placed alone, and only when the editor is empty and no words follow it. Otherwise the transcript is appended as in transcribe-only mode, and a warning says that the command needs an empty editor and nothing after it.
+- **Unlisted target.** Any other alias target is an unlisted target, such as Pi's interactive `/model` or `/new`. Pi matches those on the whole editor text, so the target is placed alone, and only when the editor is empty (empty after trimming whitespace) and no words follow it. Otherwise the transcript is appended as in transcribe-only mode, and a warning says that the command needs an empty editor and nothing after it.
 - **No match, or an ambiguous one.** The transcript is appended as in transcribe-only mode. A warning says that no command, or no skill, matched, or it names the competing names. Warnings never repeat the transcript.
 - **Unchanged rules.** An empty transcript changes nothing. D4's rules for late transcripts and session changes apply unchanged.
 
@@ -209,43 +209,49 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 
 **Setting.** `input.holdSpace` (boolean, default `false`) is read at load together with the shortcuts, and a change takes effect after `/reload`. The terminal input handler must answer synchronously, so it cannot read the file on use. A configuration error at load counts as off, and Space then types normally.
 
-**Listener lifecycle.** Pi drops extension input listeners whenever a session is replaced or reloaded. So on each `session_start` in interactive mode, the extension subscribes one listener through `ctx.ui.onTerminalInput`. `session_shutdown`, `session_before_switch`, `session_before_fork` and `session_tree` clear the hold state and its timers, next to `talk.resetSession()`, so no timer reaches a stale context. The detector is its own module, with an injectable clock and timers. It reaches the controller only through the two entry points below.
+**Listener lifecycle.** Pi drops extension input listeners whenever a session is replaced or reloaded. On each `session_start` in interactive mode, the extension subscribes one listener through `ctx.ui.onTerminalInput`. `session_shutdown`, `session_before_switch`, `session_before_fork` and `session_tree` end the hold's recording, as they end every recording, and clear the hold's timers, next to `talk.resetSession()`, so no timer reaches a stale context. The detector's *spent* state (below) lives at module level and survives these resets.
 
-**Recognition.** Only input made entirely of spaces counts; a chunk of *n* spaces counts as *n* Spaces. Bracketed paste and every other input never count.
-- **Repeat:** a Space that arrives within 120 ms of the previous Space.
-- **Recognized:** the second repeat in a row recognizes a hold. In the probed terminal that is the fourth Space: the press, the first auto-repeat after about 0.5 s, then two repeats 30 ms apart.
-- **Before recognition:** every Space reaches the editor. The detector keeps the count of Spaces it passed to the editor since the last input that was not a Space.
+The detector is its own module, with an injectable clock, timers and deferral (`setImmediate` in production). It receives the registered push-to-talk keys at load, and reaches the controller only through the two entry points below.
 
-**Starting.** On recognition the detector calls `controller.startHold()`.
-- **Only from fully idle:** the controller starts a recording, as the send key would, only when it has no starting attempt, recording, held recording or transcription. It then returns a handle; otherwise it returns nothing and changes nothing.
-- **Refused start:** a missing key, a config error, Deepgram with the stop phrase on, or no recording tool reports its message once.
-- **Removing the hold's Spaces:** when a handle is returned, the counted run of Spaces is removed from the end of the editor text, but only if the text still ends with that many Spaces.
+**Reading input.** The detector classifies each input it sees:
+- **Space press or repeat:** input made entirely of spaces. A chunk of *n* spaces counts as *n* Spaces.
+- **Space release:** a key-release event whose key is Space (`isKeyRelease` together with a Space match).
+- **Ignored:** release events of other keys, and terminal replies, which are not key events. These are never counted, and never end or stop anything.
+- **Passed through:** Escape and the registered push-to-talk keys (`matchesKey` against the load-time list). They pass unchanged, so their own handlers act.
+- **Other input:** any other key press or repeat, and any bracketed paste.
 
-**During a recognized hold.** Whatever happened at recognition, every further Space is consumed until the hold ends. A second hold is never recognized within the same physical hold.
+**Recognition.** A Space press within 120 ms of the previous Space is a repeat, and the second repeat in a row recognizes a hold. In the probed terminal that is the fourth Space: the press, the first auto-repeat after about 0.5 s, then two repeats 30 ms apart. Every Space before recognition reaches the editor, and the detector counts the Spaces it passed since the last input that was not a Space.
 
-**Ending.** The hold ends in one of two ways:
-- **A reported release:** the terminal reports a Space release (`isKeyRelease`).
-- **A quiet gap:** no Space has arrived for 300 ms. When the timer fires, the decision waits for `setImmediate`, after pending input has been read. If a Space arrived in the meantime, judged by arrival times rather than by when the timer ran, the hold continues. An event-loop stall therefore cannot end a hold while Spaces are still queued.
+On recognition the detector calls `controller.startHold()`, and the hold becomes **spent** whatever the outcome. A spent hold is never recognized again until it ends (see Ending).
+- **Engaged hold:** the controller is fully idle (no starting attempt, recording, held recording or transcription). It begins a recording as the send key would, and returns a handle that stays valid from starting through recording and held, until that recording ends. From recognition until the hold ends, every Space is consumed.
+- **Busy hold:** otherwise `startHold()` returns nothing and changes nothing, with no message. Spaces keep reaching the editor, as during any key-started recording (D5).
 
-On ending, the detector calls `controller.releaseHold(handle)`:
-- **Still starting:** the recording is cancelled.
-- **Recording or held:** it stops in send mode exactly as the send key would, so D11, D12 and D15 apply.
-- **Already ended in another way:** after Escape, the stop phrase, another control or an error, nothing happens.
-- **No handle:** ending does nothing.
+**Removing the hold's Spaces.** In an engaged hold, the counted run of Spaces is removed from the end of the editor text when the recorder is actually running. The removal happens only if the text still ends with that many Spaces. Otherwise, for example when the cursor was in the middle of the text, they stay, and will be sent with the draft. If the start is refused (a missing key, a config error, Deepgram with the stop phrase on, or no recording tool) or cancelled, the Spaces stay and the refusal is reported once.
 
-**Other input during a hold.**
-- **Escape and push-to-talk keys** work as usual: Escape discards, and a key stops in its own mode.
-- **Any other input** reaches the editor as usual and stops the hold's recording in transcribe-only mode, and nothing is sent. Pressing another key stops Space's key repeat, so a release could no longer be told apart.
+**Ending.** A spent hold ends on a Space release, or on a quiet gap: no Space for 300 ms. When the timer fires, the decision is deferred until pending input has been read. If a Space arrived meanwhile, judged by arrival times rather than by when the timer ran, the hold continues. An event-loop stall therefore cannot end a hold while Spaces are still queued.
 
-**Display.** The status line of a hold-started recording says "release Space to send". When the setting is on, help names Space and says that typing another key ends the recording without sending.
+On ending, an engaged hold calls `controller.endHold(handle, "send")`. A Space pressed again within 300 ms of letting go continues the same hold.
+
+**Other input during an engaged hold.** It reaches the editor as usual, ends the hold, and calls `controller.endHold(handle, "hold")`. Pressing another key stops Space's key repeat, so a later release could not be told apart. The recording is therefore kept unsent, exactly like one held at the time cap. The user then sends it with the send key, adds it with the transcribe-only key, or discards it with Escape.
+
+**`endHold(handle, mode)`** acts only on that handle's recording:
+
+| Recording state | `send` | `hold` |
+| --- | --- | --- |
+| starting | cancel | cancel |
+| recording | stop in send mode, as the send key does (D11, D12, D15) | stop and hold unsent (D1) |
+| held | send it, as the send key does | leave it held |
+| ended any other way: Escape, the stop phrase, another control, an error, a session reset | nothing | nothing |
+
+**Display.** The status line of a hold-started recording says "release Space to send". When the setting is on, help names Space, and says that typing another key during a hold keeps the recording unsent until a key is pressed.
 
 **Timing.** The 120 ms and 300 ms values are constants. The probe measured a 0.5 s repeat delay and a 30 ms repeat interval.
 
 **Limits**, stated in ADR-0008 and the README:
-- Key repeat must be on and faster than 120 ms.
-- Losing window focus while holding Space stops the repeats and counts as letting go, which sends.
-- Holding Space while a selector or dialog is open can start a recording.
-- Three Spaces typed within 120 ms of each other count as a hold. That removes them, stops `/speak` playback, and starts a recording. Letting go within 0.5 s discards it without any upload.
+- **Key repeat:** it must be on and faster than 120 ms. Terminals that encode Space repeats differently, and text committed by an input method together with a Space, do not count as a hold.
+- **Focus:** losing window focus while holding Space stops the repeats and counts as letting go, which sends. Pi enables no focus reporting.
+- **Dialogs:** holding Space while a selector or dialog is open can start a recording.
+- **Accidental holds:** three Spaces typed within 120 ms of each other count as a hold. That removes them, stops `/speak` playback, and starts a recording. Letting go within 0.5 s sends nothing. With the stop phrase off, nothing is uploaded either. With it on, the audio captured before the release may already have streamed to ElevenLabs.
 
 - **Alternative: wait for the first repeat before letting a Space through.** It delays every typed space by the repeat delay, and the extension cannot insert at the cursor afterwards.
 
@@ -276,7 +282,7 @@ Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
 - **Key conflicts:** `alt+t` may be taken by the terminal or by Pi, and Escape is shared with the editor. → The shortcut is configurable and checked in 1.2. Escape is consumed only while a recording is starting, in progress, or held.
 - **`PULSE_SERVER` can point at a remote audio server.** → It is kept, because local audio needs it. The README says audio routing is the operator's setting.
 - **Breaking config change.** → It affects only the user's own local file. The loader names the new location for every old key, and task 4.2 migrates the file with the user's approval.
-- **A wrong "release" could send a partial dictation** (ADR-0008). → A quiet gap ends a hold only after pending input is read, another key ends it without sending, and the release acts only on the recording that hold started. Losing window focus while holding still counts as letting go; this is a documented limit.
+- **A wrong "release" could send a partial dictation** (ADR-0008). → A quiet gap ends a hold only after pending input is read, another key holds the recording unsent, release events of other keys are ignored, and the release acts only on the recording that hold started. Losing window focus while holding still counts as letting go; this is a documented limit.
 - **Holding Space in a selector or dialog starts a recording** (ADR-0008), because the input listener runs before every component. → It is off by default. The status line shows the recording, and Escape discards it before the release.
 - **A misheard command name** (ADR-0007). → The result goes into the editor and runs only on Enter. Matching never guesses between equal names, and aliases fix names that are hard to transcribe.
 - **Cost:** Deepgram and ElevenLabs bill per audio second. → The time cap (120 s by default, at most 300) bounds a recording's length, and a recording held at the cap is never sent without a press.

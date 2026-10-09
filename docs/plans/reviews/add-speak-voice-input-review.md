@@ -899,3 +899,9 @@ CONSENSUS_STATUS=NEEDS_REVISION
 **Decision needed from the user**, recorded verbatim when given:
 - (a) Authorize a separate one-sequence review log, `add-speak-voice-input-wave8-review.md`, with a fresh baseline at the patched revision, before `/opsx-apply-loop`.
 - (b) Accept the patched bundle without another proposal review and proceed to `/opsx-apply-loop` in focus mode. The Wave 8 implementation gate (task 8.8) still reviews the code against these artifacts.
+
+### User Decision (2026-10-09)
+
+The user's reply, verbatim: "approve. (a)".
+
+They authorized a separate one-sequence review log, `docs/plans/reviews/add-speak-voice-input-wave8-review.md`, with a fresh baseline at `PATCH_BASELINE_REVISION=sha256:cb51ddca…ac79`, before `/opsx-apply-loop` in focus mode. This log's sequence ends here.

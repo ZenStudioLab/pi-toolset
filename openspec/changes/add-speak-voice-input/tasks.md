@@ -222,7 +222,7 @@ Verification commands:
   - an alias beating a name;
   - ambiguity;
   - the 8-token limit;
-  - Vietnamese diacritics;
+  - Vietnamese diacritics (an alias phrase "mô hình" matches both a precomposed and a decomposed "Mô hình.");
   - punctuation in the arguments (`.`, `?`, `…`, `,`);
   - a `name:2` entry;
   - skill output `/skill:<name>`;
@@ -238,14 +238,28 @@ Verification commands:
 
   Verify that the config examples parse.
 - [ ] 8.5 [worker] Add hold Space to talk, per D17 and the "Hold Space to talk" requirement:
-  - **Detector:** a new module with an injectable clock and timers, subscribed on each interactive `session_start` and cleared on shutdown and session changes.
-  - **Controller entry points:** `startHold()` (fully idle only; returns a handle) and `releaseHold(handle)`.
-  - **Spaces:** removal of the counted run; consuming Spaces until the hold ends; no second recognition.
-  - **Release:** the quiet gap is confirmed after pending input with `setImmediate`. Other input ends the recording without sending.
+  - **Detector:**
+    - a new module with an injectable clock, timers and deferral (`setImmediate` in production);
+    - given the registered push-to-talk keys at load;
+    - subscribed on each interactive `session_start`, with its timers cleared on shutdown and session changes;
+    - a module-level spent state that survives those resets.
+  - **Input classes:** Space press, Space release, ignored, passed through, and other input.
+  - **Controller entry points:**
+    - `startHold()` (fully idle only) returns a handle that survives the change from starting to recording to held;
+    - `endHold(handle, "send" | "hold")` follows the D17 table.
+  - **Spaces:**
+    - in an engaged hold, consume them until the end, and remove the counted run once the recorder runs, only at the end of the text;
+    - in a busy hold, pass them through;
+    - never recognize the same hold twice.
   - **Display:** the status line and help.
+  - **Size:** keep `talk.ts` under 500 lines.
 
   Verify with a fake clock in a new `test/speak/hold-space.test.ts`:
   - every scenario of the requirement, stating the exact editor text;
+  - the release of an arrow key and of Escape;
+  - the send key as CSI-u during a hold;
+  - other input while starting, while recording, and while held;
+  - a stall where the timer and queued Spaces are due together, using the injected deferral;
   - bracketed paste;
   - a Space release from `isKeyRelease`;
   - gaps of 100 ms (a repeat) and 150 ms (not a repeat);
@@ -255,8 +269,14 @@ Verification commands:
 
   Extend `test/speak/silence.test.ts` so loading with the setting on still starts nothing. Add to the README:
   - the setting;
-  - its limits: key repeat on and faster than 120 ms, focus loss counts as letting go, dialogs;
-  - that another key ends the recording without sending.
+  - its limits:
+    - key repeat must be on and faster than 120 ms;
+    - focus loss counts as letting go;
+    - dialogs;
+    - the cursor in the middle of the text;
+    - a merge within 300 ms;
+    - streaming with the stop phrase on;
+  - that another key keeps the recording unsent.
 - [ ] 8.6 [Orchestrator] After 8.2–8.5, and with the user's approval, set `input.holdSpace: true` in the user's config, with a backup first. Verify it with `parseConfig`.
 - [ ] 8.7 [User] Live checks:
   - `alt+m`, then "opsx apply loop" with arguments;
@@ -268,7 +288,7 @@ Verification commands:
   - holding Space to dictate and letting go;
   - letting go quickly, right after the recording starts;
   - Escape while Space is still held;
-  - another key while holding Space;
+  - another key while holding Space (the recording is held unsent);
   - holding Space in a selector or dialog;
   - holding Space during an `alt+shift+t` recording.
 

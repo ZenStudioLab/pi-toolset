@@ -57,7 +57,7 @@ The extension SHALL record only in an interactive terminal session. In any other
 
 ### Requirement: Push-to-talk recording lifecycle
 
-The first press of any push-to-talk shortcut, or `/talk`, `/talk send`, `/talk command` or `/talk skill`, SHALL start recording; a recognized Space hold also starts one. The next press or command SHALL stop recording and transcribe it, in the mode of that stopping control: send for the send shortcut and `/talk send`, transcribe only for the transcribe-only shortcut and `/talk`, and command or skill for those keys and commands. Letting go of a Space hold SHALL stop the recording it started in send mode. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. When the spoken stop phrase is off, audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, sending a recording held at the time cap, or letting go of a Space hold. When it is on, audio streams while recording, as the "Spoken stop phrase" requirement states. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is starting (waiting for this extension's playback to stop), in progress, or held. Escape or a second press while a recording is starting SHALL cancel it: no recorder keeps running, nothing is recorded, and nothing is sent. When a recording reaches `input.maxSeconds` (default 120, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or command SHALL transcribe it in that control's mode, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
+The first press of any push-to-talk shortcut, or `/talk`, `/talk send`, `/talk command` or `/talk skill`, SHALL start recording; a recognized Space hold also starts one. The next press or command SHALL stop recording and transcribe it, in the mode of that stopping control: send for the send shortcut and `/talk send`, transcribe only for the transcribe-only shortcut and `/talk`, and command or skill for those keys and commands. Letting go of a Space hold SHALL stop the recording it started in send mode. Escape during recording SHALL stop the recorder and discard the audio without sending anything, and the Escape key SHALL NOT reach the editor. When the spoken stop phrase is off, audio SHALL leave the machine only after an explicit user action that sends it: stopping a recording, sending a recording held at the time cap, or letting go of a Space hold. Typing another key during a Space hold SHALL keep the recording unsent. When it is on, audio streams while recording, as the "Spoken stop phrase" requirement states. Escape SHALL be intercepted, and SHALL NOT reach the editor, whenever a recording is starting (waiting for this extension's playback to stop), in progress, or held. Escape or a second press while a recording is starting SHALL cancel it: no recorder keeps running, nothing is recorded, and nothing is sent. When a recording reaches `input.maxSeconds` (default 120, at most 300), the recorder SHALL stop and the captured audio SHALL be held unsent: the next press or command SHALL transcribe it in that control's mode, and Escape, session replacement, or shutdown SHALL discard it without sending anything. A recording shorter than 0.5 seconds SHALL be discarded with a message and not sent. Only one recording or transcription SHALL be active at a time; a press while a transcription is in flight SHALL be refused with a message. Starting a recording SHALL first stop this extension's own speech job and playback, so the microphone does not capture them.
 
 #### Scenario: Record and transcribe
 
@@ -139,7 +139,7 @@ The extension SHALL capture 16 kHz mono 16-bit audio from the first available re
 
 ### Requirement: Transcript delivery
 
-A non-empty transcript SHALL be appended to the composer's current text, separated by one space when the existing text is non-empty and does not end with whitespace. In transcribe-only mode the extension SHALL NOT submit the composer. In send mode it SHALL then send the whole composer text as one user message, as if the user had pressed Enter, and clear the composer. The sent text SHALL be plain: slash commands, prompt templates, and skill commands in it SHALL NOT be run. When the extension can tell before sending that Pi would refuse the message (no model selected, or the conversation is being compacted), it SHALL NOT send, the composer SHALL keep the draft plus transcript, and a message SHALL say why. If the send call itself fails, the composer SHALL keep the draft plus transcript and the error SHALL be shown. A refusal Pi reports only after accepting the message is shown by Pi; the composer has then already been cleared. When the agent is working, `input.sendWhenBusy` SHALL decide the delivery: `interrupt` (default) delivers the message to the running turn at once, and `wait` queues it until the turn ends. The extension SHALL NOT replace the composer's text or send the transcript anywhere else. An empty transcript SHALL leave the composer unchanged, send nothing, and show a message. A transcript that arrives after its recording was cancelled, or after the session was replaced, SHALL be dropped without changing the composer or sending anything.
+In send and transcribe-only modes (command and skill delivery follow "Voice command and skill keys"), a non-empty transcript SHALL be appended to the composer's current text, separated by one space when the existing text is non-empty and does not end with whitespace. In transcribe-only mode the extension SHALL NOT submit the composer. In send mode it SHALL then send the whole composer text as one user message, as if the user had pressed Enter, and clear the composer. The sent text SHALL be plain: slash commands, prompt templates, and skill commands in it SHALL NOT be run. When the extension can tell before sending that Pi would refuse the message (no model selected, or the conversation is being compacted), it SHALL NOT send, the composer SHALL keep the draft plus transcript, and a message SHALL say why. If the send call itself fails, the composer SHALL keep the draft plus transcript and the error SHALL be shown. A refusal Pi reports only after accepting the message is shown by Pi; the composer has then already been cleared. When the agent is working, `input.sendWhenBusy` SHALL decide the delivery: `interrupt` (default) delivers the message to the running turn at once, and `wait` queues it until the turn ends. The extension SHALL NOT replace the composer's text or send the transcript anywhere else. An empty transcript SHALL leave the composer unchanged, send nothing, and show a message. A transcript that arrives after its recording was cancelled, or after the session was replaced, SHALL be dropped without changing the composer or sending anything.
 
 #### Scenario: Append to a half-written prompt
 
@@ -290,8 +290,8 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 - The remaining tokens, joined by single spaces with leading and trailing whitespace and punctuation removed, SHALL be the arguments.
 
 **Delivery.**
-- **Listed target:** the match is a command, template or skill in Pi's list, or an alias whose target names one. The editor text SHALL become the target (`/<name>`, `/skill:<name>`, or the alias target), then the arguments, then the previous draft, joined by single spaces.
-- **Unlisted alias target:** the target SHALL be placed alone, and only when the editor is empty and no tokens follow it.
+- **Listed target:** the match is a command, template or skill in Pi's list, or an alias whose target's first token, without its `/`, is a listed command or template name, or `skill:` plus a listed skill. The editor text SHALL become the target (`/<name>`, `/skill:<name>`, or the alias target), then the arguments, then the previous draft, joined by single spaces.
+- **Unlisted alias target:** the target SHALL be placed alone, and only when the editor is empty after trimming whitespace and no tokens follow it.
 - **In every other case**, including no match and two different names equally matched, the transcript SHALL be appended as in transcribe-only mode, with a warning that does not repeat the transcript.
 - Nothing SHALL be sent, and no command SHALL run, until the user presses Enter.
 
@@ -341,28 +341,36 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 
 ### Requirement: Hold Space to talk
 
-**Setting.** The configuration SHALL accept `input.holdSpace` (boolean, default `false`). The value SHALL be read at load with the shortcuts, and a configuration error SHALL count as off. When it is off, Space SHALL reach the editor unchanged.
+**Setting.** The configuration SHALL accept `input.holdSpace` (boolean, default `false`). It SHALL be read at load with the shortcuts, and a configuration error SHALL count as off. When it is off, Space SHALL reach the editor unchanged.
 
-**Listener.** When it is on, the extension SHALL subscribe one raw terminal input listener on each interactive session start. Session replacement and shutdown SHALL clear its state and timers.
+**Listener.** When it is on, the extension SHALL subscribe one raw terminal input listener on each interactive session start.
 
 **Recognizing a hold.**
-- Only input made entirely of spaces SHALL count.
-- A Space arriving within 120 ms of the previous one SHALL be a repeat, and the second repeat in a row SHALL recognize a hold.
+- Input made entirely of spaces SHALL count as Space presses.
+- A Space within 120 ms of the previous one SHALL be a repeat, and the second repeat in a row SHALL recognize a hold.
 - Spaces before recognition SHALL reach the editor.
+- After recognition the hold SHALL NOT be recognized again until it ends.
 
-**Starting.**
-- On recognition, a recording SHALL start as the send key starts one, only if no recording attempt, recording, held recording, or transcription exists.
-- When it starts, the run of Spaces passed to the editor since the last input other than a Space SHALL be removed from the end of the editor text, if the text still ends with them.
-- From recognition until the hold ends, every Space SHALL be consumed, whether or not a recording started, and no second hold SHALL be recognized.
+**Engaged hold.** If, at recognition, no recording attempt, recording, held recording or transcription exists, a recording SHALL start as the send key starts one. While it does:
+- every Space SHALL be consumed until the hold ends;
+- once the recorder is running, the run of Spaces passed to the editor since the last other input SHALL be removed from the end of the editor text, if the text still ends with them.
+
+**Busy hold.** If, at recognition, any recording attempt, recording, held recording or transcription exists, nothing SHALL change and Spaces SHALL keep reaching the editor.
 
 **Ending.**
-- The hold SHALL end when the terminal reports a Space release, or when no Space has arrived for 300 ms. A quiet gap SHALL be confirmed only after pending input has been read.
-- Ending SHALL act only on the recording that hold started:
-  - it SHALL cancel the recording if it is still starting;
-  - it SHALL stop it in send mode, exactly as the send key does, if it is recording or held;
-  - otherwise it SHALL do nothing.
+- The hold SHALL end on a key-release event for Space, or when no Space has arrived for 300 ms. The quiet gap SHALL be confirmed only after pending input has been read.
+- Release events of other keys and terminal replies SHALL be ignored.
+- Ending an engaged hold SHALL act only on the recording that hold started:
+  - **starting:** cancel it;
+  - **recording or held:** send it, exactly as the send key does;
+  - **otherwise:** nothing.
 
-**Other input during a hold.** Escape and push-to-talk keys SHALL behave as usual. Any other input SHALL reach the editor and stop the hold's recording in transcribe-only mode.
+**Other input during an engaged hold.** Escape and the registered push-to-talk keys SHALL behave as usual. Any other key press or paste SHALL reach the editor and end the hold:
+- **starting:** cancel the recording;
+- **recording:** stop it and hold it unsent, as at the time cap;
+- **held:** leave it held.
+
+Session replacement and shutdown SHALL discard the hold's recording and clear its timers, and the hold SHALL stay unrecognizable until it ends.
 
 **Status line.** The recording status line SHALL say that releasing Space sends.
 
@@ -374,12 +382,12 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 #### Scenario: Hold records and release sends
 
 - **WHEN** `input.holdSpace` is on, the editor holds "Draft", and the user holds Space (a press, an auto-repeat after 500 ms, then repeats every 30 ms), says "xin chào", and lets go
-- **THEN** the recording starts at the fourth Space, the editor holds "Draft" again, and after the release "Draft xin chào" is sent as with the send key
+- **THEN** the recording starts at the fourth Space, the editor holds "Draft" again once the recorder runs, and after the release "Draft xin chào" is sent as with the send key
 
 #### Scenario: Release while starting
 
 - **WHEN** the user lets go of Space while the recording is still starting
-- **THEN** the attempt is cancelled and nothing is recorded or sent
+- **THEN** the attempt is cancelled, nothing is recorded or sent, and the editor holds "Draft   " (the three Spaces stay)
 
 #### Scenario: Escape while Space is held
 
@@ -393,28 +401,43 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 
 #### Scenario: Refused start
 
-- **WHEN** a hold is recognized but the recording cannot start, for example because the key is missing
-- **THEN** the reason is reported once, later Spaces are consumed until the release, and no further attempt is made
+- **WHEN** the editor holds "Draft", a hold is recognized, and the recording cannot start because the key is missing
+- **THEN** the reason is reported once, the editor holds "Draft   ", later Spaces are consumed until the release, and no further attempt is made
 
-#### Scenario: Hold during another recording
+#### Scenario: Busy hold
 
 - **WHEN** a recording, or a recording attempt that is still starting, was begun with a key, and the user holds Space
-- **THEN** spaces are typed as usual and that recording is unaffected
+- **THEN** every Space is typed, that recording is unaffected, and no recording starts when it ends while Space is still held
 
 #### Scenario: Stalled event loop
 
 - **WHEN** Pi is busy for longer than 300 ms during a hold, so the release timer and queued Spaces are due together
 - **THEN** the queued Spaces keep the hold going, and nothing is sent
 
+#### Scenario: Release of another key
+
+- **WHEN** the terminal reports the release of an arrow key or Escape during an engaged hold
+- **THEN** the hold continues and nothing is sent
+
+#### Scenario: Send key during a hold
+
+- **WHEN** the user presses the send key, encoded as an escape sequence, during an engaged hold, then lets go of Space
+- **THEN** the recording is sent once, with no warning
+
 #### Scenario: Other key during a hold
 
 - **WHEN** the user types another key while holding Space during a hold-started recording
-- **THEN** that key reaches the editor, the transcript is appended without sending, and the remaining Spaces are consumed until the release
+- **THEN** that key reaches the editor, the recording stops and is held unsent with the held status line, the remaining Spaces are consumed until the release, and nothing is uploaded until the user presses a key
 
 #### Scenario: Session replaced during a hold
 
 - **WHEN** the session is replaced while Space is held
-- **THEN** the recording is discarded, the hold timers are cleared, and nothing is sent
+- **THEN** the recording is discarded, the hold timers are cleared, nothing is sent, and no recording starts on the later repeats
+
+#### Scenario: Cursor in the middle of the text
+
+- **WHEN** the cursor is inside the draft when the hold is recognized
+- **THEN** the typed Spaces stay in the draft and the recording proceeds
 
 #### Scenario: Off by default
 
