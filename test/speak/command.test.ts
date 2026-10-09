@@ -497,6 +497,32 @@ test("status reports both key presences and marks the speech override without va
   assert.equal(h.fetchCalls.length, 0);
 });
 
+for (const [name, input, status, help] of [
+  ["off by default", undefined, /^stop phrase: off; phrases: "let's go"$/m, /^Stop phrase: off \("let's go"\)$/m],
+  [
+    "on with custom phrases",
+    { stopOnPhrase: true, stopPhrases: ["send it", "ship it"] },
+    /^stop phrase: on \(audio streams to ElevenLabs while recording\); phrases: "send it", "ship it"$/m,
+    /^Stop phrase: on \("send it", "ship it"\)$/m,
+  ],
+] as const)
+  test(`status and help show the stop phrase ${name}, with no request`, async () => {
+    const h = await harness({ config: { ...VALID_CONFIG, input } });
+    await h.run("status");
+    assert.match(h.notices.at(-1)!.message, status);
+    await h.run("help");
+    assert.match(h.notices.at(-1)!.message, help);
+    assert.match(h.notices.at(-1)!.message, /Escape sends nothing but cannot recall audio already sent/);
+    quiet(h);
+  });
+
+test("help says the stop phrase state is unknown when the configuration cannot be read", async () => {
+  const h = await harness({ config: null });
+  await h.run("help");
+  assert.match(h.notices.at(-1)!.message, /^Stop phrase: unknown$/m);
+  quiet(h);
+});
+
 test("the session locale is reported, set canonically, reset, and survives session cleanup, with no request", async () => {
   const h = await harness({ config: { ...VALID_CONFIG, locale: "vi" } });
   await h.run("locale");

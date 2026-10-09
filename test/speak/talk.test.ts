@@ -1,69 +1,25 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, test } from "node:test";
-import { VALID_CONFIG, audioResponse, createHarness, type CtxOptions, type FakeChild } from "./harness.ts";
+import { test } from "node:test";
+import { audioResponse, type CtxOptions } from "./harness.ts";
+import {
+  audio,
+  baseConfig,
+  json,
+  mixed,
+  respond,
+  sessionEvent,
+  startRecording,
+  stopAndSettle,
+  stopWith,
+  useTalkHarness,
+  type Harness,
+  type Stop,
+} from "./talk-harness.ts";
 
-type Harness = Awaited<ReturnType<typeof createHarness>>;
-const open: Harness[] = [];
-afterEach(async () => {
-  while (open.length > 0) await open.pop()!.cleanup();
-});
+const harness = useTalkHarness();
 
-const baseConfig = (input: Record<string, unknown> = {}) => ({
-  ...VALID_CONFIG,
-  providers: {
-    elevenlabs: { ...VALID_CONFIG.providers.elevenlabs, sttModel: "scribe_v2" },
-    deepgram: { sttModel: "nova-3" },
-  },
-  input: { provider: "deepgram", language: "vi", ...input },
-});
-
-async function harness(options: Parameters<typeof createHarness>[0] = {}) {
-  const h = await createHarness({
-    config: baseConfig(),
-    deepgramKey: "deepgram-test-key",
-    recorders: ["rec"],
-    ...options,
-  });
-  open.push(h);
-  respond(h, "xin chào");
-  return h;
-}
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-/** Answers each provider in its own response shape. */
-function respond(h: Harness, transcript: string) {
-  h.setFetch(async (call) =>
-    call.url.includes("deepgram")
-      ? json({ results: { channels: [{ alternatives: [{ transcript }] }] } })
-      : json({ text: transcript }),
-  );
-}
-
-/** Starts a recording with the shortcut and waits for the recorder process. */
-async function startRecording(h: Harness): Promise<FakeChild> {
-  const wanted = h.recorderChildren().length + 1;
-  await h.pressShortcut();
-  await h.until(() => h.recorderChildren().length === wanted);
-  return h.recorderChildren()[wanted - 1]!;
-}
-
-/**
- * Stops a recording longer than the 0.5 s minimum and waits for the transcript outcome. The default
- * stops with the transcribe-only shortcut, so the composer is not sent.
- */
-async function stopAndSettle(h: Harness, stop: "pressShortcut" | "pressTranscribeShortcut" = "pressTranscribeShortcut") {
-  h.advance(2000);
-  await h[stop]();
-  await h.until(() => h.talkStatuses.length > 0 && h.talkStatuses.at(-1) === undefined);
-}
-
-const audio = (child: FakeChild, bytes = 3200) => child.emitAudio(new Uint8Array(bytes).fill(1));
-const sessionEvent = (h: Harness, name = "session_before_switch") => h.events.get(name)!();
-const mixed = (statuses: (string | undefined)[]) => statuses.filter(Boolean).join("\n");
 
 test("speech commands, status, and provider selection start no recorder", async () => {
   const h = await harness();
@@ -211,6 +167,31 @@ test("a recording stopped at the time cap is held unsent, and the next press tra
   assert.equal((h.fetchCalls[0]!.init.body as Uint8Array).length, 44 + 32000);
   await h.pressTranscribeShortcut();
   assert.equal(h.recorderChildren().length, 2, "the press after delivery starts a new recording");
+});
+
+test("a control pressed after the time cap, before the recorder exits, uploads once after the exit; Escape then discards", async () => {
+  const h = await harness({ config: baseConfig({ maxSeconds: 1 }) });
+  h.editor.text = "Draft";
+  const child = await startRecording(h);
+  child.autoExitOnKill = false;
+  audio(child, 40000);
+  await h.pressTranscribeShortcut();
+  assert.equal(h.talkStatuses.at(-1), "Transcribing…");
+  assert.equal(h.fetchCalls.length, 0, "nothing is uploaded before the recorder exits");
+  child.finish(0);
+  await h.until(() => h.talkStatuses.at(-1) === undefined && h.fetchCalls.length === 1);
+  assert.equal(h.editor.text, "Draft xin chào");
+  assert.equal(h.sent.length, 0);
+
+  const discarded = await harness({ config: baseConfig({ maxSeconds: 1 }) });
+  const second = await startRecording(discarded);
+  second.autoExitOnKill = false;
+  audio(second, 40000);
+  assert.equal(discarded.sendKey("\x1b"), true);
+  second.finish(0);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(discarded.fetchCalls.length, 0);
+  assert.equal(discarded.talkStatuses.at(-1), undefined);
 });
 
 test("Escape or a session change discards a held recording; the next shortcut starts a new one", async () => {
@@ -440,12 +421,6 @@ test("a provider failure is shown sanitized, not retried or rerouted, and clears
   assert.match(h.notices.at(-1)!.message, /redirect, which is not followed/);
 });
 
-type Stop = "pressShortcut" | "pressTranscribeShortcut" | "send" | "talk";
-const stopWith = async (h: Harness, stop: Stop) => {
-  if (stop === "send") await h.runTalk("send");
-  else if (stop === "talk") await h.runTalk("");
-  else await h[stop]();
-};
 const startWith = async (h: Harness, start: Stop) => {
   const wanted = h.recorderChildren().length + 1;
   await stopWith(h, start);

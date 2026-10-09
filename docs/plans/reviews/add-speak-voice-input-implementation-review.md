@@ -1295,3 +1295,290 @@ Task 6.1 (orchestrator) covers these artifact amendments:
 - **`tasks.md`:** Wave 6, tasks 6.1–6.7. Task 6.6 carries the 5.7 checks.
 
 `openspec validate --strict` passes. Base commit: the amendment commit after `780db19`.
+
+Base commit: `f15526d`.
+
+## Round 1 - Implementation Assignments (Wave 6)
+
+| Assignment | Tasks | Owner | Files and topics |
+| --- | --- | --- | --- |
+| W6-A | 6.2–6.5 | worker (`claude-bridge/claude-sonnet-5-5`, thinking high, background) | `extensions/speak/config.ts`, new `realtime.ts`, `talk.ts`, `index.ts`, `help.ts`, `README.md`; `test/speak/config.test.ts`, `command.test.ts`, new `realtime.test.ts`, `talk.test.ts`, `silence.test.ts`, `harness.ts` |
+| W6-B | 6.6 | user | live checks for Waves 5 and 6 |
+
+### W6-A result (worker run `267adbfa`)
+
+The worker reported tasks 6.2–6.5 done.
+
+**Files:**
+- New: `extensions/speak/realtime.ts` (330 lines; the client and `matchStopPhrase`), `talk-state.ts` (56 lines; types moved out of `talk.ts`), `test/speak/realtime.test.ts`.
+- Changed source files: `config.ts`, `help.ts`, `record.ts` (an `onChunk` hook and `SAMPLE_RATE`), `speech-job.ts` (an optional `webSocketFn` dependency), `talk.ts`, `README.md`.
+- Changed tests: `harness.ts`, `config.test.ts`, `command.test.ts`, `silence.test.ts`, `talk.test.ts`.
+
+**Line counts:** `talk.ts` 478, `config.ts` 567, `speech-job.ts` 659, `talk.test.ts` 1084.
+
+**Deviations reported, for Oracle judgement:**
+1. **`talk-state.ts`:** a new file, created to keep `talk.ts` under 500 lines.
+2. **Final-commit timeout:** treated as a failure. The text already committed is appended and nothing is sent; D15 does not cover this case.
+3. **Phrase removal:** it also removes the punctuation before the phrase, so "Is it done? let's go" sends "Is it done".
+4. **README:** it now calls the stop phrase "the one spoken command".
+5. **Recorder dying during a streamed recording:** reported, and the committed text is discarded. D15 covers only provider errors and closes.
+
+**Risks reported:**
+- `insufficient_audio_activity` or `commit_throttled` answering a key stop's final commit right after a pause commit would show an error.
+- Vietnamese support in the live model is unverified.
+
+**Caller verification:**
+- 510 tests, 510 pass, 0 fail, in 2 runs.
+- The filtered type check prints nothing, and `git diff --check` is clean.
+- The key goes only in the WebSocket `headers` (`realtime.ts:287`), and the URL never contains a token.
+
+CANDIDATE_REVISION=sha256:ca3a4c04f062f2af7cd741ee202ffed9fe0a5fd941d68d1d8b03a308f85f9a55 (SHA-256 over `git diff f15526d -- extensions test openspec`, then, for each of extensions/speak/realtime.ts, extensions/speak/talk-state.ts, test/speak/realtime.test.ts in that order, path + NUL + bytes)
+
+## Round 1 - Oracle Review (Wave 6)
+
+Run `45514a8a` (`claude-bridge/claude-opus-5-5`, thinking high, background). The caller condensed the returned text without changing any finding.
+
+**Gate and baseline:** gate task 6.7, INITIAL mode, Oracle round 1 of 4. The baseline `ca3a4c04…5a55` matches.
+
+**Owners reviewed:**
+- Task 6.1: orchestrator, `f15526d`.
+- W6-A: worker run `267adbfa`.
+- W6-B: user, task 6.6, unverified this round.
+
+**Checks:**
+- 510/510 in 3 runs; the filtered type check is clean; `openspec validate --strict` passes; `git diff --check` is clean.
+- 10 mutations in `/tmp`: 7 caught, 3 survived (W6-F3).
+
+**Provider page:** one read-only fetch, no API calls.
+- The query names, the `InputAudioChunk` shape, the empty-chunk final commit and every mapped error type match the page (`realtime.ts:78-119`).
+- The page does not say how the server answers a manual commit after a VAD commit (W6-F1).
+
+**Node:** Pi 1.1.0 runs on the system Node v22.19.0 (`engines >=22.19.0`), where `WebSocket` with `{ headers }` is available.
+
+**Confirmed sound:**
+- **Config:** `config.ts:359-368,394-395,426,560`; `help.ts:18-22,47-48`.
+- **Client:** `realtime.ts:96-111,154-174,214-234,259-288`. The key goes only in the header, and there is no retry.
+- **Matcher:** `:303-330`; removing the punctuation before the phrase is D15-literal.
+- **Controller:** `talk.ts:169-223,246-251,270-342,384-426`.
+- **Feature off:** the path is unchanged.
+- **Waves 1–5:** no regressions.
+
+**Worker deviations:**
+- Accepted: 1 (the `talk-state.ts` split), 3 (punctuation removal) and 4 (README wording).
+- Deviation 2 (a final-commit timeout as a failure) is accepted; see W6-F1.
+- Deviation 5 (recorder death discards the committed text) is not accepted; see W6-F2.
+
+**Findings:**
+- **W6-F1 — P2 — `final-commit-settlement` — in scope.**
+  - The final commit settles on the next message (`realtime.ts:154-174`), and every error fails it, including `insufficient_audio_activity` (`:90`) and `commit_throttled` (`:84`), which lead to `failStream` (`talk.ts:299`).
+  - After a pause, VAD has usually committed everything already, so the send key can show an error and send nothing, or wait up to 45 s.
+  - Residual risk: an in-flight VAD commit can settle `finish()` early (`:235-237`).
+  - SUGGESTED_CORRECTION: an orchestrator sentence in D15; in `onMessage`, settle those two types as `{ ok: true, text }` while a commit is pending; add tests; add a 6.6 check that pauses and then presses `alt+t`.
+- **W6-F2 — P3 — `stream-failure-text-preservation` — in scope.**
+  - When the recorder fails during streaming, the committed text is discarded (`talk.ts:264-269`), unlike a provider failure (`:334-342`). This contradicts ADR-0006's "so speech is not lost".
+  - SUGGESTED_CORRECTION: append the committed text unsent, plus one test.
+- **W6-F3 — P3 — `test-coverage/mutation-survivors` — in scope.**
+  - These mutations survived: the `rec.phase !== "recording"` guard (`talk.ts:309`), the open timer not cleared (`realtime.ts:261`), and the finish timer not cleared (`:169`).
+  - SUGGESTED_CORRECTION:
+    - add tests for a phrase segment that arrives after a transcribe-only key stop (appended, not sent, phrase kept) and after the cap (held);
+    - assert that no timer is left after a successful open and after a settled finish.
+- **W6-F4 — P3 — `docs-accuracy` — in scope.**
+  - `README.md:162` says the status line shows the stop phrase, and it does not.
+  - SUGGESTED_CORRECTION: remove "The status line,".
+- **W3-F5 — P3 — recurrence update.**
+  - `talk.test.ts` grew from 638 to 1085 lines, with the streaming cases at `:671-1056`. `config.ts` is 567, `speech-job.ts` 659, `talk.ts` 478.
+  - SUGGESTED_CORRECTION: move the streaming cases to `test/speak/talk-stream.test.ts`. Keep the source modules deferred.
+
+**Notes:**
+- Tick tasks 6.2–6.5.
+- Keep `.pi/settings.json` out of the commit.
+- Task 6.6 should cover Vietnamese, and pausing before a key stop.
+- No status line is shown while the connection opens.
+
+PROPOSED_REVIEW_ACTION=PATCH
+
+## Caller Assessment — Wave 6, Round 1
+
+#### W6-F1 — The final commit after a pause can fail or stall
+- **Oracle Severity:** P2
+- **Family:** `final-commit-settlement`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** `specs/voice-input/spec.md` "Spoken stop phrase": a key stop "SHALL request a final commit, wait up to the request deadline for it, and deliver the text in that control's mode". Failing on a "nothing left to commit" answer breaks the delivery.
+- **Decision:** `ACCEPT_BLOCKING`
+- **CORRECTION:**
+  - **Orchestrator, done:** D15 and the spec now say that an `insufficient_audio_activity` or `commit_throttled` answer to a pending final commit means the text so far is final. The spec gains a "Pause, then send key" scenario, and task 6.6 gains the pause-then-`alt+t` live check.
+  - **Worker:** in `Session.onMessage`, while a commit is pending, settle those two types as success with the current text. Add realtime and talk send-mode tests.
+  - **Not addressed by this fix:** the in-flight VAD race and the unanswered-commit wait stay residual risks for the live check.
+
+#### W6-F2 — A recorder failure discards the committed text
+- **Oracle Severity:** P3
+- **Family:** `stream-failure-text-preservation`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** ADR-0006, "so speech is not lost".
+- **Decision:** `ACCEPT_NONBLOCKING`, fixed in this batch.
+- **CORRECTION:** append the committed text unsent with the failure message, as for a provider failure, and add one test. The orchestrator has already added recorder failure and an unanswered final commit to the D15 and spec failure lists.
+
+#### W6-F3 — Mutation survivors
+- **Oracle Severity:** P3
+- **Family:** `test-coverage/mutation-survivors`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The behaviour is correct, but the guard is spec-governed and unprotected.
+- **Decision:** `ACCEPT_NONBLOCKING`, fixed in this batch.
+- **CORRECTION:** as suggested: the two late-phrase tests (after a transcribe-only key stop, and after the cap) and the timer-cleanup assertions.
+
+#### W6-F4 — README says the status line shows the stop phrase
+- **Decision:** `ACCEPT_NONBLOCKING`, fixed in this batch by removing "The status line,".
+
+#### W3-F5 — Large files
+- **Decision:**
+  - The test file split is `ACCEPT_NONBLOCKING`, done in this batch: the streaming cases move to `test/speak/talk-stream.test.ts`.
+  - The source modules stay `DEFER_OUT_OF_SCOPE`.
+
+### Summary
+- **Issues accepted blocking:** 1 (W6-F1)
+- **Issues accepted nonblocking:** 4 (W6-F2, W6-F3, W6-F4, the W3-F5 test split)
+- **Issues deferred out of scope:** 1 (W3-F5 source modules)
+- **Issues rejected:** 0
+
+### Caller Result
+
+REVIEW_ACTION=PATCH
+CONSENSUS_STATUS=NEEDS_REVISION
+
+## Round 2 - Implementation Assignments (Wave 6)
+
+| Assignment | Findings | Owner | Files and topics |
+| --- | --- | --- | --- |
+| W6-A (round 2) | W6-F1, W6-F2, W6-F3, W6-F4, W3-F5 test split | worker (`claude-bridge/claude-sonnet-5-5`, thinking high, background) | `extensions/speak/realtime.ts`, `talk.ts`, `README.md`; `test/speak/realtime.test.ts`, `talk.test.ts`, new `talk-stream.test.ts` |
+
+### Supervisor decision during W6-A round 2 (run `b7105751`)
+
+While writing the W6-F3(b) test, the worker found a real defect. At the time cap, `record.ts` stops the recorder from inside the chunk handler, but the controller sets phase `"held"` only when the recorder exits. A committed stop-phrase segment that arrives in that window, tens of milliseconds after SIGINT, passes the `rec.phase !== "recording"` guard and **sends** the message. That breaks the spec ("At the time cap the text SHALL be held"). The worker reproduced it in a throwaway test.
+
+**Decision:** the caller approved the minimal fix: an optional `onCapped` callback in `startRecorder` that marks the recording held at once. It came with these conditions:
+
+- It fires at most once.
+- A control pressed between the cap and the recorder exit waits for the exit or the final commit, then delivers once, in that control's mode.
+- Escape, session replacement and shutdown in that window still discard.
+- It applies to both paths, and the observable results of the off path are unchanged.
+- A test (b) is added, plus a test for the cap-to-exit window, and the guard mutation is proved killed.
+
+**Governing source:** the "Spoken stop phrase" requirement and the lifecycle rule that reaching the cap never sends a message. This is in scope for W6-F3, under the W6 `stream-failure`/cap family.
+
+### W6-A round 2 result (worker run `b7105751`)
+
+The worker reported every item done.
+
+- **W6-F1:** while a final commit is pending, `insufficient_audio_activity` and `commit_throttled` settle it with the text committed so far. Tests: 2 realtime tests, and 1 controller test for "Pause, then send key".
+- **W6-F2:** a recorder failure while streaming goes through `failStream`, so the committed text is appended unsent.
+- **W6-F3:** new tests (a) and (b), plus a timer-count test. They kill the three survivors.
+- **W6-F4:** the README sentence is fixed.
+- **W3-F5 split:** the streaming cases moved to `test/speak/talk-stream.test.ts`, with shared helpers in the new `test/speak/talk-harness.ts`. Counts: `talk.test.ts` went from 86 to 53 tests, `talk-stream.test.ts` has 39, `realtime.test.ts` went from 52 to 55, and the suite from 510 to 519. None were lost: 52 + 34 moved, 9 are new.
+
+**Approved deviation:** `record.ts` gains an optional `onCapped` callback, which fires once. `talk.ts` marks the recording held at the cap, and a press between the cap and the recorder exit now waits for the exit, then delivers once. Without the fix, the one-shot path would also have uploaded undefined audio in that window. Escape and lifecycle events still discard. New window tests: 2 in `talk-stream.test.ts` and 1 in `talk.test.ts`.
+
+**Mutation proofs (7):**
+
+| Mutation | Effect |
+| --- | --- |
+| Phase guard removed | 2 failures |
+| Open timer not cleared | 1 failure |
+| Finish timer not cleared | 1 failure |
+| `NOTHING_TO_COMMIT` removed | 3 failures |
+| Recorder-failure branch removed | 1 failure |
+| `onCapped` held removed | 3 failures |
+| `&& active.pcm` removed | 1 failure |
+
+**Line counts:** `talk.ts` 482, `realtime.ts` 336, `talk.test.ts` 613, `talk-stream.test.ts` 573, `talk-harness.ts` 74.
+
+**Caller verification:**
+- 519 tests, 519 pass, 0 fail, in 2 runs.
+- The filtered type check prints nothing, `git diff --check` is clean, and `openspec validate --strict` passes.
+
+PATCH_BASELINE_REVISION=sha256:6325fbf5f1cc388336e7491d31eca78ee54e6967ad7edddb37189cd059cf31f8 (SHA-256 over `git diff f15526d -- extensions test openspec`, then, for each of extensions/speak/realtime.ts, extensions/speak/talk-state.ts, test/speak/realtime.test.ts, test/speak/talk-harness.ts, test/speak/talk-stream.test.ts in that order, path + NUL + bytes)
+
+## Round 2 - Oracle Review (Wave 6)
+
+Run `9d145a91` (`claude-bridge/claude-opus-5-5`, thinking high, background). The caller condensed the returned text without changing any finding.
+
+**Gate and baseline:** gate task 6.7, PATCH mode, Oracle round 2 of 4. The candidate `sha256:6325fbf5f1cc388336e7491d31eca78ee54e6967ad7edddb37189cd059cf31f8` equals the latest `PATCH_BASELINE_REVISION`.
+
+**Owners reviewed:**
+- Task 6.1 and its round-1 amendments: orchestrator.
+- W6-A and its round-2 fixes: worker run `b7105751`, including the approved `onCapped` change.
+- W6-B: user, task 6.6, unverified.
+
+**Checks:**
+- 519/519 in 3 runs; the filtered type check is clean; `openspec validate --strict` passes; `git diff --check` is clean.
+- 17 mutations in `/tmp`: 11 caught. Of the 6 survivors, 4 cannot change behaviour, 1 gap predates this wave and 1 is new (W6-F5).
+- 9 temporary tests of the window between the cap and the recorder exit, all passing.
+
+**Fixes verified:**
+- **W6-F1:** `realtime.ts:113,229`, scoped to a pending commit (`:230-232`); `talk-stream.test.ts:464`. The residual in-flight VAD race (`:242`) is accepted.
+- **W6-F2:** `talk.ts:271,327-335`; `talk-stream.test.ts:482`.
+- **W6-F3:** `talk-stream.test.ts:510,530`; `realtime.test.ts:212`.
+- **W6-F4:** fixed; see the omission below.
+- **W3-F5 split:** counts 53 / 39 / 55 = 519. No test name was lost, and no assert line was removed.
+
+**`onCapped` change:** every condition the supervisor set was verified.
+- It fires at most once (`record.ts:194-198,186`; `talk.ts:207-210`).
+- Holding at the cap cannot send (`talk.ts:309,302`).
+- A press between the cap and the exit delivers once, in its mode, on both paths (`:92-97,280-282,300-302`).
+- Escape, `session_before_switch` and `session_shutdown` in that window discard.
+- The off path's results are unchanged; the old flow gave the same outcome. The `phase = "held"` assignments at `:278,284` are now dead code, but harmless.
+- No new race.
+
+**Regression sweep:** Wave 6 and the invariants of Waves 1–5 hold.
+
+**Findings:**
+- **W6-F5 — P3 — `cap-held-status` — in scope.**
+  - `onCapped` sets held without redrawing the status line (`talk.ts:207-210`), so it reads "● Recording …" until the recorder exits, which can take up to the 2 s kill grace (`record.ts:36`). Spec `voice-input/spec.md:109` says the held line names the reached limit.
+  - SUGGESTED_CORRECTION: call `this.render(recording)` after setting held, and add status assertions to `talk.test.ts:172` and `talk-stream.test.ts:553`.
+- **W6-F4 — P3 — `docs-accuracy` — recurs as an omission.**
+  - The README failure list (`README.md:166`) does not name a recorder failure, which D15 and the spec now include.
+  - SUGGESTED_CORRECTION: add "a recorder that fails while recording".
+- **W3-F5 — P3 — status update.** `config.ts` is 567 lines and `speech-job.ts` 659, deferred.
+
+**Residual risks:**
+- the in-flight VAD commit race, and `commit_throttled` with audio still uncommitted (observe both in the 6.6 pause-then-`alt+t` check);
+- no test of recorder-failure redaction, which is extra protection only;
+- Vietnamese in the live model is unverified.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 6, Round 2
+
+#### W6-F1, W6-F2, W6-F3, W6-F4 (round 1), W3-F5 test split, `onCapped`
+- **Decision:** verified fixed. Oracle's evidence matches my re-run: 519/519 in 2 runs, the filtered type check is clean, `git diff --check` is clean, and `openspec validate --strict` passes.
+
+#### W6-F5 — Status line during the cap-to-exit window
+- **Oracle Severity:** P3
+- **Family:** `cap-held-status`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The window is at most the 2 s kill grace, and nothing can be sent in it.
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:** Carried into the post-live-check patch, together with W6-F4 and any fixes the task 6.6 live checks require: call `this.render(recording)` in `onCapped`, plus the two status assertions. Applying it now would invalidate this PASS for a one-line display fix. The change cannot be archived before 6.6 anyway.
+
+#### W6-F4 (omission) — README failure list
+- **Decision:** `ACCEPT_NONBLOCKING`, carried into the same post-live-check patch.
+
+#### W3-F5 — Source module size
+- **Decision:** `DEFER_OUT_OF_SCOPE` (unchanged).
+
+### Terminal Baseline Validation
+
+- The current candidate equals the latest `PATCH_BASELINE_REVISION`, `sha256:6325fbf5f1cc388336e7491d31eca78ee54e6967ad7edddb37189cd059cf31f8`. The caller recomputed it after the Oracle run.
+- The Wave 6 boundary is unchanged: tasks 6.2–6.5, the round-1 artifact amendments, and the approved `record.ts` change.
+
+### Summary
+- **Issues accepted blocking:** 0 this round (W6-F1 fixed from round 1)
+- **Issues accepted nonblocking:** 2 (W6-F5, the W6-F4 omission), both carried to the post-live-check patch
+- **Issues deferred out of scope:** 1 (W3-F5 source modules)
+- **Issues rejected:** 0
+
+### Caller Result
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
+
+Wave 6 code is complete. Tasks 6.2–6.5 and 6.7 are marked done. Task 6.6, and task 5.7 carried into it, stay unchecked until the user runs them. The post-live-check patch for W6-F5, the W6-F4 omission and any live-check fixes gets its own short Oracle check before archive.

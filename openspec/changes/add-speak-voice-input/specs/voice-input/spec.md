@@ -223,7 +223,7 @@ Redirects SHALL be rejected. The request SHALL be bounded by the configured requ
 
 The configuration SHALL accept `input.stopOnPhrase` (boolean, default `false`) and `input.stopPhrases` (1 to 10 phrases, each 1 to 40 characters after trimming, default `["let's go"]`). An invalid value SHALL be a configuration error reported on use. When `input.stopOnPhrase` is on and the input provider fixed at recording start is ElevenLabs, the recording SHALL stream to `wss://api.elevenlabs.io/v1/speech-to-text/realtime` with model `scribe_v2_realtime`, 16 kHz PCM, pause-based commits after 1 second of silence, the key only in the `xi-api-key` header, and `language_code` set to the primary subtag of `input.language` when it is set. The recorder SHALL start only after the connection opens within the request deadline. When it is on and the input provider is Deepgram, a press SHALL report that the stop phrase needs ElevenLabs and SHALL record nothing.
 
-After each committed segment, when the recording's committed text ends, as whole words and ignoring case, punctuation, and apostrophe style, with a configured stop phrase, the extension SHALL stop the recording, remove that phrase from the end, and deliver the remaining text in send mode. If nothing remains, nothing SHALL be sent. A key or command that stops a streamed recording SHALL request a final commit, wait up to the request deadline for it, and deliver the text in that control's mode without removing any phrase. Escape SHALL end the stream and send no message. At the time cap the text SHALL be held until the next press or command, as for an unstreamed recording. A provider error or an unexpected close SHALL end the recording with a sanitized message, append the text already committed to the composer without sending it, and SHALL NOT retry, reconnect, or fall back to the one-shot upload. Streamed audio SHALL NOT be uploaded a second time.
+After each committed segment, when the recording's committed text ends, as whole words and ignoring case, punctuation, and apostrophe style, with a configured stop phrase, the extension SHALL stop the recording, remove that phrase from the end, and deliver the remaining text in send mode. If nothing remains, nothing SHALL be sent. A key or command that stops a streamed recording SHALL request a final commit, wait up to the request deadline for it, and deliver the text in that control's mode without removing any phrase. If the provider answers the final commit by reporting that there is no further audio to commit, the text committed so far SHALL be delivered as final. Escape SHALL end the stream and send no message. At the time cap the text SHALL be held until the next press or command, as for an unstreamed recording. A provider error, an unexpected close, an unanswered final commit, or a recorder failure during a streamed recording SHALL end the recording with a sanitized message, append the text already committed to the composer without sending it, and SHALL NOT retry, reconnect, or fall back to the one-shot upload. Streamed audio SHALL NOT be uploaded a second time.
 
 #### Scenario: Stop phrase sends the dictation
 
@@ -259,6 +259,11 @@ After each committed segment, when the recording's committed text ends, as whole
 
 - **WHEN** the streaming connection closes unexpectedly after some text was committed
 - **THEN** the recording ends with a sanitized error, the committed text is appended to the composer, and nothing is sent or retried
+
+#### Scenario: Pause, then send key
+
+- **WHEN** the stop phrase is on, the user speaks, pauses for 2 seconds so the speech is already committed, and presses the send key, and the provider answers the final commit with `insufficient_audio_activity`
+- **THEN** the committed text is sent with no error
 
 #### Scenario: Only the phrase was said
 

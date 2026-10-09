@@ -28,6 +28,8 @@ test("a minimal configuration gets the documented defaults", () => {
   assert.equal(result.config.input.shortcut, "alt+t");
   assert.equal(result.config.input.transcribeShortcut, "alt+shift+t");
   assert.equal(result.config.input.sendWhenBusy, "interrupt");
+  assert.equal(result.config.input.stopOnPhrase, false);
+  assert.deepEqual(result.config.input.stopPhrases, ["let's go"]);
   assert.equal(result.config.providers.elevenlabs.outputFormat, "mp3_44100_128");
   assert.equal(result.config.providers.elevenlabs.voiceRevision, 1);
   assert.equal(result.config.providers.elevenlabs.sttModel, "scribe_v2");
@@ -255,13 +257,47 @@ for (const [name, input] of [
   ["equal shortcuts", { ...valid, input: { shortcut: "alt+x", transcribeShortcut: "alt+x" } }],
   ["equal shortcuts differing in case", { ...valid, input: { shortcut: "Alt+X", transcribeShortcut: "alt+x" } }],
   ["a shortcut equal to the other's default", { ...valid, input: { shortcut: "alt+shift+t" } }],
+  ["a non-boolean stopOnPhrase", { ...valid, input: { stopOnPhrase: "yes" } }],
+  ["a numeric stopOnPhrase", { ...valid, input: { stopOnPhrase: 1 } }],
+  ["stopPhrases that is not a list", { ...valid, input: { stopPhrases: "let's go" } }],
+  ["an empty stopPhrases list", { ...valid, input: { stopPhrases: [] } }],
+  ["more than 10 stopPhrases", { ...valid, input: { stopPhrases: Array.from({ length: 11 }, (_, i) => `phrase ${i}`) } }],
+  ["an empty stop phrase", { ...valid, input: { stopPhrases: [""] } }],
+  ["a blank stop phrase", { ...valid, input: { stopPhrases: ["ok", "   "] } }],
+  ["a stop phrase over 40 characters", { ...valid, input: { stopPhrases: ["x".repeat(41)] } }],
+  ["a non-string stop phrase", { ...valid, input: { stopPhrases: [5] } }],
 ] as const) {
   test(`rejects ${name} input setting`, () => {
     const result = parseConfig(input);
     assert.ok(!result.ok);
-    assert.match(result.problem, /input\.(maxSeconds|language|sendWhenBusy|transcribeShortcut|shortcut)/);
+    assert.match(result.problem, /input\.(maxSeconds|language|sendWhenBusy|transcribeShortcut|shortcut|stopOnPhrase|stopPhrases)/);
   });
 }
+
+test("the stop phrase settings are read, with phrases trimmed and at most 10 of 1 to 40 characters", () => {
+  const result = parseConfig({
+    ...valid,
+    input: { stopOnPhrase: true, stopPhrases: ["  send it  ", "x", "y".repeat(40), ...Array(7).fill("again")] },
+  });
+  assert.ok(result.ok);
+  assert.equal(result.config.input.stopOnPhrase, true);
+  assert.deepEqual(result.config.input.stopPhrases.slice(0, 3), ["send it", "x", "y".repeat(40)]);
+  assert.equal(result.config.input.stopPhrases.length, 10);
+  const listed = parseConfig({ ...valid, input: { stopPhrases: ["ship it"] } });
+  assert.ok(listed.ok, "a phrase list is valid while the feature is off");
+  assert.equal(listed.config.input.stopOnPhrase, false);
+});
+
+test("the status view shows whether the stop phrase is on and which phrases count", () => {
+  for (const [input, expected] of [
+    [undefined, /^stop phrase: off; phrases: "let's go"$/m],
+    [{ stopOnPhrase: true, stopPhrases: ["let's go", "send it"] }, /^stop phrase: on \(audio streams to ElevenLabs while recording\); phrases: "let's go", "send it"$/m],
+  ] as const) {
+    const result = parseConfig({ ...valid, input });
+    assert.ok(result.ok);
+    assert.match(describeConfig(result.config, true).join("\n"), expected);
+  }
+});
 
 test("a session locale is marked in the status view", () => {
   const result = parseConfig(valid);

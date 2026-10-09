@@ -18,6 +18,7 @@ import {
 import type { SpawnFn } from "../../extensions/speak/audio.ts";
 import type { Shortcuts } from "../../extensions/speak/config.ts";
 import { registerSpeak } from "../../extensions/speak/index.ts";
+import type { RealtimeSocket } from "../../extensions/speak/realtime.ts";
 import { SpeechController } from "../../extensions/speak/speech-job.ts";
 import { TalkController } from "../../extensions/speak/talk.ts";
 import type { TranslationRegistry } from "../../extensions/speak/translation.ts";
@@ -56,6 +57,42 @@ export class FakeChild extends EventEmitter {
   /** Delivers recorded PCM as the recorder's stdout. */
   emitAudio(bytes: Uint8Array): void {
     this.stdout.emit("data", Buffer.from(bytes));
+  }
+}
+
+/** A live transcription socket that does only what a test tells it to; nothing is networked. */
+export class FakeSocket {
+  sent: string[] = [];
+  closes: (number | undefined)[] = [];
+  private listeners = new Map<string, ((event: { data: unknown }) => void)[]>();
+  readonly url: string;
+  readonly init: { headers: Record<string, string> };
+  constructor(url: string, init: { headers: Record<string, string> }) {
+    this.url = url;
+    this.init = init;
+  }
+  addEventListener(type: string, listener: (event: { data: unknown }) => void): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  send(data: string): void {
+    this.sent.push(data);
+  }
+  close(code?: number): void {
+    this.closes.push(code);
+  }
+  emit(type: string, data?: unknown): void {
+    for (const listener of this.listeners.get(type) ?? []) listener({ data });
+  }
+  /** Delivers a server message; an object is sent as JSON. */
+  message(body: unknown): void {
+    this.emit("message", typeof body === "string" ? body : JSON.stringify(body));
+  }
+  committed(text: string): void {
+    this.message({ message_type: "committed_transcript", text });
+  }
+  /** The client's messages, parsed. */
+  chunks(): { message_type: string; audio_base_64: string; commit: boolean; sample_rate: number }[] {
+    return this.sent.map((data) => JSON.parse(data));
   }
 }
 
@@ -109,6 +146,8 @@ export async function createHarness(
     sendThrows?: string;
     /** The keys registered at load; the default is the built-in pair. */
     shortcuts?: Shortcuts;
+    /** Leaves each live transcription socket unopened until the test calls `open`. */
+    holdSockets?: boolean;
   } = {},
 ) {
   const dir = await mkdtemp(join(tmpdir(), "speak-harness-"));
@@ -164,10 +203,18 @@ export async function createHarness(
     return child;
   }) as unknown as SpawnFn;
 
+  const sockets: FakeSocket[] = [];
+  const webSocketFn = (url: string, init: { headers: Record<string, string> }) => {
+    const socket = new FakeSocket(url, init);
+    sockets.push(socket);
+    if (!options.holdSockets) queueMicrotask(() => socket.emit("open"));
+    return socket as unknown as RealtimeSocket;
+  };
   const deps = {
     env,
     fetchFn,
     spawnFn,
+    webSocketFn,
     now: Date.now,
     readFile: options.readFile ?? ((path: string) => readFile(path, "utf8")),
   };
@@ -318,6 +365,7 @@ export async function createHarness(
     env,
     controller,
     fetchCalls,
+    sockets,
     children,
     spawnCalls,
     notices,

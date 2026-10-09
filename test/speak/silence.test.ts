@@ -20,6 +20,10 @@ async function load(config?: string) {
     used.push("spawn");
     throw new Error("process forbidden");
   }) as never;
+  const webSocketFn = (() => {
+    used.push("websocket");
+    throw new Error("connection forbidden");
+  }) as never;
   const readFile = async () => {
     used.push("readFile");
     if (config === undefined) throw new Error("no configuration file");
@@ -34,7 +38,7 @@ async function load(config?: string) {
       return () => undefined;
     },
   } as unknown as ExtensionAPI;
-  await speak(api, { fetchFn, spawnFn, readFile, env: {} });
+  await speak(api, { fetchFn, spawnFn, webSocketFn, readFile, env: {} });
   return { commands, shortcuts, events, used };
 }
 
@@ -110,4 +114,26 @@ test("a reload rebuilds the extension and still starts no recorder or request", 
     for (const handler of reload.events.values()) handler();
     assert.deepEqual(reload.used, ["readFile"]);
   }
+});
+
+test("loading with the stop phrase on, then firing every lifecycle handler, opens no connection", async () => {
+  const RealWebSocket = globalThis.WebSocket;
+  let globalSockets = 0;
+  globalThis.WebSocket = class {
+    constructor() {
+      globalSockets++;
+      throw new Error("connection forbidden");
+    }
+  } as never;
+  try {
+    const { shortcuts, events, used } = await load(
+      JSON.stringify({ input: { provider: "elevenlabs", stopOnPhrase: true, stopPhrases: ["send it"] } }),
+    );
+    assert.deepEqual(shortcuts, ["alt+t", "alt+shift+t"]);
+    for (const handler of events.values()) handler();
+    assert.deepEqual(used, ["readFile"]);
+  } finally {
+    globalThis.WebSocket = RealWebSocket;
+  }
+  assert.equal(globalSockets, 0);
 });
