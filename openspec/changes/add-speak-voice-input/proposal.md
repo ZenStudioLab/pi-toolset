@@ -33,6 +33,7 @@ The user asked to end a dictation by voice (ADR-0006):
 The user asked to reach Pi's commands and skills by voice (ADR-0007):
 
 - **Command and skill keys.** `alt+m` (`input.commandShortcut`) and `alt+i` (`input.skillShortcut`) record like the other keys. At the stop, the words are matched against Pi's commands and prompt templates, or against its skills, and the result, such as `/opsx-apply-loop` or `/skill:review-convergence` plus the spoken arguments, is put in the editor. Nothing runs until the user presses Enter. `input.commandAliases` maps spoken phrases to targets.
+- **Hold Space to talk, off by default** (ADR-0008). With `input.holdSpace` on, holding Space records and letting go sends, as with the send key. A tap still types a space. Letting go is detected when the key repeat stops.
 
 Out of scope: speaking answers automatically, dictation modes that send without a key press or the configured stop phrase, other voice triggers such as "interrupt", running a spoken command without Enter, silence-based auto-stop without the phrase, streaming transcription to Deepgram, any provider other than Deepgram and ElevenLabs, and keys stored in files.
 

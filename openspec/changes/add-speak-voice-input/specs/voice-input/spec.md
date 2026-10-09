@@ -314,6 +314,40 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 - **WHEN** `input.stopOnPhrase` is on, the input provider is Deepgram, and the user starts a recording with the command key
 - **THEN** the recording starts without streaming, and it is uploaded once at the stop
 
+### Requirement: Hold Space to talk
+
+The configuration SHALL accept `input.holdSpace` (boolean, default `false`); any other value SHALL be a configuration error reported on use. When it is on, the extension SHALL watch raw terminal input for Space. Only input made entirely of spaces SHALL count. The first Space SHALL always reach the editor. A Space arriving within 120 ms of the previous one SHALL count as a key repeat, and two repeats in a row SHALL start a recording as the send key does, provided no recording, held recording, or transcription exists. The Spaces typed since the hold began SHALL then be removed from the end of the editor text if it still ends with them, and later repeats SHALL be consumed. The hold SHALL end when no Space arrives for 300 ms or the terminal reports a Space release. Ending SHALL stop the recording in send mode, exactly as the send key does, or cancel it if it is still starting. The recording status line SHALL say that releasing Space sends. When the setting is off, Space SHALL reach the editor unchanged.
+
+#### Scenario: Tap types a space
+
+- **WHEN** `input.holdSpace` is on and the user taps Space
+- **THEN** one space is typed and no recording starts
+
+#### Scenario: Hold records and release sends
+
+- **WHEN** `input.holdSpace` is on, the editor holds "Draft", and the user holds Space, speaks, and lets go
+- **THEN** a recording starts once the key repeats, the spaces the hold typed are removed, and after the release the draft and the transcript are sent as with the send key
+
+#### Scenario: Release while starting
+
+- **WHEN** the user lets go of Space while the recording is still starting
+- **THEN** the attempt is cancelled and nothing is recorded or sent
+
+#### Scenario: Hold during another recording
+
+- **WHEN** a recording started with a key is in progress and the user holds Space
+- **THEN** spaces are typed as usual and the recording is unaffected
+
+#### Scenario: Off by default
+
+- **WHEN** `input.holdSpace` is not set and the user holds Space
+- **THEN** every space reaches the editor and no recording starts
+
+#### Scenario: Other key stops a held-Space recording
+
+- **WHEN** a recording started by holding Space is stopped with the transcribe-only key while Space is still held
+- **THEN** the transcript is appended without sending, and the remaining repeats are consumed until Space is released
+
 ### Requirement: Voice input secret and privacy handling
 
 The extension SHALL read `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` only from the environment and SHALL NOT write them to configuration, cache, logs, notifications, process arguments, or the recorder's environment. The extension SHALL NOT log or persist audio or transcripts; a transcript exists only in the composer or in the user message the user chose to send. Documentation SHALL state that each recording the user sends goes to the selected provider, that this is not a zero-retention guarantee, and that a discarded recording, or one held at the time cap and not sent, never leaves the machine while the stop phrase is off. It SHALL state that while the stop phrase is on, audio streams to ElevenLabs as the user speaks, and that discarding a recording stops the message but cannot recall audio already sent. Help and `/speak status` SHALL show whether the stop phrase is on and which phrases count.

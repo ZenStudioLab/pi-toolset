@@ -21,7 +21,7 @@ The host extension API already offers everything push-to-talk needs: `registerSh
 
 **Non-Goals:**
 
-- Detecting speech on the machine, showing partial transcripts, or hold-to-talk with key-release detection. (Wave 6 streams to ElevenLabs only to find the stop phrase; see D15.)
+- Detecting speech on the machine, or showing partial transcripts. (Wave 6 streams to ElevenLabs only to find the stop phrase; see D15. Wave 8 adds an optional hold-Space mode that detects letting go from the key repeat; see D17.)
 - A provider registry, plugin interface, or any third provider.
 - Writing to the config file, or storing keys anywhere.
 - Windows recording support (the recorder table is Linux/macOS).
@@ -33,7 +33,7 @@ The host extension API already offers everything push-to-talk needs: `registerSh
 The same key (or `/talk`) starts and stops recording. Escape discards. A time cap backs this up: at the cap the recorder stops and the audio is held, unsent, until the next press sends it or Escape discards it. A forgotten recording therefore never uploads by itself, and a long dictation that hits the cap is not lost. Held audio is dropped on session replacement and shutdown.
 
 - **Alternative: privateer's pitch-based silence detector** (`audio.ts`, 361 lines with tuned thresholds). It removes one keypress but adds tuning, can cut a user off mid-thought, and is the largest piece of logic in privateer. Push-to-talk already implies an explicit stop.
-- **Alternative: voicekit's hold-Space with release detection.** Key-release events depend on the terminal (only Kitty-protocol terminals send them), so behavior would vary by terminal.
+- **Alternative: voicekit's hold-Space with release detection.** Key-release events depend on the terminal (only Kitty-protocol terminals send them), so behavior would vary by terminal. Wave 8 adds it as an option that relies on the key repeat instead (D17, ADR-0008).
 
 ### D2. Record, then upload once; no streaming
 
@@ -186,6 +186,20 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 - **Alternative: run the match at once.** Rejected by the user; a misheard name would run.
 - **Alternative: fuzzy (edit-distance) matching.** Not chosen; it can pick a wrong command silently. Aliases cover names that transcription mishears.
 
+### D17. Hold Space to talk (Wave 8, ADR-0008)
+
+**Setting.** `input.holdSpace` (boolean, default `false`), read on use like the other input settings. When it is on, one `ctx.ui.onTerminalInput` listener watches for Space. While the setting is off, the listener passes every input through unchanged.
+
+**Recognizing a hold.** Only input that is exactly one or more spaces counts; bracketed paste and every other key never do. The first Space always passes to the editor. A Space that arrives within 120 ms of the previous one is a repeat. After two repeats in a row (three Spaces), the hold is recognized, if no recording, held recording or transcription exists. The extension then starts a recording through the same path as the send key, and removes from the end of the editor text the Spaces typed since the hold began, only if the text still ends with them. Without that condition, Space behaves normally.
+
+**During the hold.** Repeats are consumed, and each repeat restarts a 300 ms timer. When it fires, or when the terminal reports a Space release (`isKeyRelease`), the hold ends. Ending stops the recording in send mode through the same path as the send key, so D11, D12 and D15 apply unchanged: an empty transcript sends nothing, `input.sendWhenBusy` chooses the delivery, a recording held at the cap is sent, and on a streamed recording a final commit is requested. If the recording is still starting, ending cancels it, as a second press does. A recording shorter than 0.5 s is discarded as before. Other keys pass through; Escape discards. A recording started by a hold can also be stopped with any push-to-talk key, which then decides the mode; after that, the remaining repeats are consumed until the 300 ms timer fires.
+
+**Display.** The recording status line of a hold-started recording says "release Space to send". Help names Space when the setting is on.
+
+**Timing.** The 120 ms and 300 ms values are constants. The probe measured a 0.5 s repeat delay and a 30 ms repeat interval.
+
+- **Alternative: wait for the first repeat before letting a Space through.** It delays every typed space by the repeat delay.
+
 ## Verified Provider Facts
 
 Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
@@ -213,6 +227,7 @@ Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
 - **Key conflicts:** `alt+t` may be taken by the terminal or by Pi, and Escape is shared with the editor. → The shortcut is configurable and checked in 1.2. Escape is consumed only while a recording is starting, in progress, or held.
 - **`PULSE_SERVER` can point at a remote audio server.** → It is kept, because local audio needs it. The README says audio routing is the operator's setting.
 - **Breaking config change.** → It affects only the user's own local file. The loader names the new location for every old key, and task 4.2 migrates the file with the user's approval.
+- **Holding Space in a selector or dialog starts a recording** (ADR-0008), because the input listener runs before every component. → It is off by default, and the status line and Escape make it visible and free to discard.
 - **A misheard command name** (ADR-0007). → The result goes into the editor and runs only on Enter. Matching never guesses between equal names, and aliases fix names that are hard to transcribe.
 - **Cost:** Deepgram and ElevenLabs bill per audio second. → The time cap (120 s by default, at most 300) bounds a recording's length, and a recording held at the cap is never sent without a press.
 

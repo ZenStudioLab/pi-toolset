@@ -194,7 +194,8 @@ Verification commands:
   - add design D16 and its risk;
   - add the Wave 8 amendment to `proposal.md`;
   - in `specs/voice-input/spec.md`, add the "Voice command and skill keys" requirement and update the talk contract, the indicator and the stop-phrase streaming rule;
-  - update the manual-speech help requirement.
+  - update the manual-speech help requirement;
+  - for hold Space to talk: write ADR-0008, add D17, and add the "Hold Space to talk" requirement.
 
   Verify with `openspec validate add-speak-voice-input --strict`.
 - [ ] 8.2 [worker] Add the settings and keys, per D16:
@@ -213,12 +214,31 @@ Verification commands:
 
   Keep `talk.ts` under 500 lines; split along a responsibility boundary if needed. Verify with matcher table cases in a new `test/speak/voice-command.test.ts`, and with `test/speak/talk.test.ts` cases for every scenario of "Voice command and skill keys". Add one streaming case to `test/speak/talk-stream.test.ts`.
 - [ ] 8.4 [worker] Update `extensions/speak/README.md` with the command and skill keys, aliases (including one for an interactive command such as `/model`), the editor-only delivery, and the no-streaming rule. Verify that the config examples parse.
-- [ ] 8.5 [User] Live checks:
+- [ ] 8.5 [worker] Add hold Space to talk, per D17 and the "Hold Space to talk" requirement:
+  - `input.holdSpace` in `config.ts`;
+  - one terminal input listener, in a new module, with an injectable clock and timers;
+  - removal of the spaces the hold typed;
+  - start, release and cancel through the send-key path;
+  - the status line and help.
+
+  Verify with a fake clock in a new `test/speak/hold-space.test.ts` covering:
+  - each scenario of the requirement;
+  - bracketed paste;
+  - a `isKeyRelease` Space;
+  - repeats of 100 ms (counted) and 150 ms (not counted).
+
+  Extend `test/speak/silence.test.ts` so loading with the setting on still starts nothing, and add the setting to the README.
+- [ ] 8.6 [Orchestrator] After 8.2–8.5, and with the user's approval, set `input.holdSpace: true` in the user's config, with a backup first. Verify it with `parseConfig`.
+- [ ] 8.7 [User] Live checks:
   - `alt+m`, then "opsx apply loop" with arguments;
   - `alt+i`, then a skill name;
   - an alias;
   - a phrase that matches nothing;
-  - `alt+m` with the stop phrase on.
+  - `alt+m` with the stop phrase on;
+  - tapping Space while typing;
+  - holding Space to dictate and letting go;
+  - letting go quickly, right after the recording starts;
+  - holding Space during an `alt+shift+t` recording.
 
   Record what happened, and report anything not run as unverified.
-- [ ] 8.6 [Oracle gate: `oracle`] Review gate for Wave 8, run once after 8.2–8.4 are complete and 8.5 is complete or explicitly reported as unverified. The same rules apply as for 1.7.
+- [ ] 8.8 [Oracle gate: `oracle`] Review gate for Wave 8, run once after 8.2–8.6 are complete and 8.7 is complete or explicitly reported as unverified. The same rules apply as for 1.7.
