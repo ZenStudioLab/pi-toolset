@@ -671,6 +671,7 @@ for (const [name, stop, editor, transcript, expected, warning] of [
   ["a draft's edge whitespace does not double the spaces", "pressCommandShortcut", "  fix the login bug \n", "Review the diff", "/review the diff fix the login bug", undefined],
   ["words in another order match a skill", "pressSkillShortcut", "", "LLM online interactive check the spec", "/skill:online-llm-interactive check the spec", undefined],
   ["a skill name does not match in command mode", "pressCommandShortcut", "", "online llm interactive", "online llm interactive", /No command matched/],
+  ["a skill name with its prefix does not match in command mode", "pressCommandShortcut", "", "skill online llm interactive", "skill online llm interactive", /No command matched/],
   ["words that match no command are appended, with a warning", "pressCommandShortcut", "Draft", "order a pizza", "Draft order a pizza", /No command matched/],
   ["words that match no skill are appended, with a warning", "pressSkillShortcut", "", "order a pizza", "order a pizza", /No skill matched/],
   ["a command name does not match in skill mode", "pressSkillShortcut", "", "review the diff", "review the diff", /No skill matched/],

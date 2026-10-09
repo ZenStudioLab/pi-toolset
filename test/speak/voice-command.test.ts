@@ -42,6 +42,7 @@ for (const [name, mode, transcript, aliases, expected] of [
   ["an alias to a skill that is not listed is an unlisted target", "skill", "converge", [alias("converge", "/skill:gone")], match("/skill:gone", "", false)],
   ["an alias to a command that is not listed is an unlisted target", "command", "model", [alias("model", "/model")], match("/model", "", false)],
   ["words in another order match, and the rest are the arguments", "command", "LLM online interactive, check the spec.", [], match("/online-llm-interactive", "check the spec")],
+  ["a free-standing dash among words in another order is not a word", "command", "LLM — online interactive", [], match("/online-llm-interactive", "")],
   ["a reordered alias phrase matches, and an alias beats a name with the same words", "command", "interactive llm online", [alias("online interactive llm", "/other")], match("/other", "", false)],
   ["words in another order match skills in skill mode", "skill", "convergence review the diff", [], match("/skill:review-convergence", "the diff")],
   ["a name that matches in order beats a longer run that matches only in another order", "command", "deploy staging", [], match("/deploy", "staging")],

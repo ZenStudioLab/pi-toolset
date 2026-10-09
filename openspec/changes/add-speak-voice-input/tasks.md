@@ -305,4 +305,4 @@ Verification commands:
   - `alt+i`, then "LLM online interactive" (words in another order).
 
   Record what happened, and report anything not run as unverified.
-- [ ] 8.8 [Oracle gate: `oracle`] Review gate for Wave 8, run once after 8.2–8.6 are complete and 8.7 is complete or explicitly reported as unverified. The same rules apply as for 1.7.
+- [x] 8.8 [Oracle gate: `oracle`] Review gate for Wave 8, run once after 8.2–8.6 are complete and 8.7 is complete or explicitly reported as unverified. The same rules apply as for 1.7.

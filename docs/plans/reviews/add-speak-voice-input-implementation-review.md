@@ -2118,3 +2118,135 @@ The worker run `143fed16` is terminal and completed.
   - The spent state is now the module-level `spentHold` (`hold-space.ts:58`), with the `resetSpentHold()` test seam.
   - The real matcher maps "LLM online interactive, check the spec." to `/skill:online-llm-interactive`, with the arguments `check the spec`.
 - **Accepted deviation:** the two-instance test uses a stub target instead of the talk harness. It still exercises the real module state.
+
+## Round 2 - Oracle Review
+
+Gate task 8.8, mode PATCH, second Oracle round of the Wave 8 sequence. Loaded `code-review-expert` and `review-convergence`.
+
+**Baseline:**
+- `BASELINE_TARGET`, `BASELINE_SOURCE` (now `git diff 2452591 -- extensions test openspec`), `BASELINE_INCLUSION_PREDICATE` and `BASELINE_EXCLUSIONS` are as in Round 1, with the inclusion predicate judged against the amended D16, D17, spec, ADR-0007 and ADR-0008 (`19f26b8`).
+- `BASELINE_TARGET_REVISION`: HEAD `c678229`; candidate `sha256:0f274472ba275fc4a7a2289d847bd2c321dcc8f95832ac65b9d7150f1b878353`, verified before and after the review.
+- The user config was not read.
+
+**Checks:**
+- `node --experimental-strip-types --test test/speak/*.test.ts` in a `/tmp` copy of `c678229`: 679 pass, 0 fail.
+- The filtered tsc check prints nothing, `git diff --check 2452591 c678229` is clean, and `openspec validate add-speak-voice-input --strict` passes.
+- Source files stay under 500 lines (`talk.ts` 468, `hold-space.ts` 210, `voice-command.ts` 98). `hold-space.test.ts` is 519 and `talk.test.ts` 766, both under the 800-line trigger for tests.
+- 13 mutations in the `/tmp` copy, since deleted. 8 were caught, 3 survived as equivalent, and 2 survived as test gaps (W8-F4, W8-F5):
+  - spent state reset in the constructor, which models instance state: the two-instance test fails (1);
+  - no `this.active !== target` check in `endHold`: 3 fail (Escape during a hold, refused start, shutdown). Round 1 had this mutation as equivalent; the identity check is now covered;
+  - no arrival-time ending: 2 fail; `wordsOf` not splitting on hyphens: 5 fail; any-order pass shortest first: 4 fail; a name beating an alias in the any-order pass: 1 fails; the old untrimmed draft: 1 fails; command candidates including skills with `skill:` stripped: 1 fails;
+  - equivalent: `endSpent` sending even after a discard (the controller already released that recording, so the identity check makes it a no-op); the any-order pass skipping length 1 (a one-token run can only equal a one-word name, which the ordered pass already matched); and the Round 1 no-op attempt, redone above.
+
+### Accepted fix verification
+
+**W8-F1 — fixed.** The family `hold-space / detector-controller-identity` does not recur.
+- The spent hold is the module variable `spentHold` (`hold-space.ts:58`). Every read and write goes through it (`:118`, `:121`, `:125-127`, `:144-147`, `:158`, `:186-191`), and the instance keeps only timers, the run of Spaces and the session counter. A factory re-run for `/new`, `/resume` or `/fork` therefore sees the earlier hold.
+- The two-instance test (`hold-space.test.ts:424-460`) is meaningful. It builds a second detector on a second target, its repeats are consumed and start nothing, and the first input more than 300 ms after a reset types. The constructor-reset mutation makes it fail.
+- An ending after a reset acts only on the hold's own recording. `endSpent` calls `this.target.endHold(spent.handle, "send")` (`hold-space.ts:191`). After a factory re-run, `this.target` is the new controller, whose `active` is never the old `hold.target`. On the same controller, `resetSession` clears `active` (`talk.ts:150-155`). In both cases `endHold` returns at `talk.ts:137` before any stop, so a recording the reset discarded is never sent. A new key recording started in the new session also fails that check and is left alone.
+- Even without that check, a released recording cannot be sent: `onRecorderExit`, `upload` and `deliver` each return when `this.active !== rec` (`talk.ts:312,407,418,429`). That is the second layer behind the guard.
+- `beforeEach(resetSpentHold)` isolates tests. Node runs each test file in its own process, and `silence.test.ts` and `command.test.ts` only load the extension with the setting on; they never engage a hold.
+
+**W8-F2 — documented consistently.**
+- D17 has the "Keys Pi's fullscreen mode takes first" bullet, and the incorrect "Pi enables no focus reporting" is gone (`design.md:257-258`).
+- The spec has "Keys Pi handles first" with a SHALL to document it (`spec.md:379`).
+- ADR-0008 lists it under consequences (`0008-hold-space-to-talk.md:37`), the README under Limits (`README.md:211`), task 8.5 in its README list, and task 8.7 as a live check with the expected send.
+- The key lists agree: the README and D17 name the same keys, including focus events and right-click paste, and ADR-0008 gives a shorter "such as" list. The `--tui-mode regular` workaround matches the Round 1 evidence.
+
+**W8-F3 — fixed.** The listed path joins `draft.trim()` (`talk-delivery.ts:138`), and the table case with `"  fix the login bug \n"` fails under the old code.
+
+**W8-F4 — partly fixed; see the finding below.** `HoldHandle.recorderRunning` is removed (`talk-state.ts:24-29`, `talk.ts:129,289-292`). The new talk case does not catch the Round 1 mutation.
+
+### Word-order pass against the amended D16, spec, ADR-0007 and README
+
+- **Fallback only.** The loop runs `IN_ORDER` over every length from 8 down to 1, then `ANY_ORDER` (`voice-command.ts:81-96`). An in-order ambiguity returns before the second pass. This matches "Only when no run matches in order" (`spec.md:290`). The "deploy staging" case proves that a shorter in-order match beats a longer any-order one.
+- **Multiset.** `multisetKey` sorts and joins with repeats kept (`:48`). "stop stop go" gives none and "stop go go now" gives `/go-go-stop now`.
+- **Words.** The candidate's words are its NFKC, lowercased form split on characters other than letters and digits (`:44-45`, D16). The spoken side uses each token's collapsed form, with empty forms dropped (`:62`), as D16 says.
+- **Alias precedence and ambiguity.** These are the same code in both passes (`:85-87`), and both are tested.
+- **Arguments.** The tokens after the run are taken exactly as in the ordered pass, which the "check the spec." case checks.
+- **Listed or unlisted.** This is decided by `isListed` for aliases in both passes, so an any-order alias to `/model` keeps the empty-editor rule.
+- **Split-word limit.** "op sx sync it" matches in order, "sync op sx" gives none, and the README, ADR-0007 and D16 all state it.
+- **Test value.** The nine matcher cases cover each D16 bullet and the task 8.3 list. The talk case covers the spec scenario "Words in another order". One spoken-side rule is untested (W8-F5).
+- **Consent and egress.** These are unchanged: the pass changes only which text goes into the editor, and nothing is sent or run.
+
+### Bounded regression sweep
+
+- **`hold-space.ts`.** Only the storage of the spent hold changed. Classification, the 120 ms bound, recognition, Space removal (still guarded by the per-instance `session`), the timer token and `detach` are untouched. The Round 1 hold tests still pass.
+- **`talk.ts` and `talk-state.ts`.** Only the field was removed. `onRecorderRunning` still fires once when the recorder runs.
+- **`talk-delivery.ts`.** The unlisted path and the warnings are unchanged.
+- **Docs.** ADR-0007, ADR-0008, the README, D16, D17 and the spec agree with the code; nothing was found to contradict.
+- **Recurrence.** No Round 1 family recurs at P0–P2. `test-coverage/removal` (W8-F4) recurs at P3.
+
+### Findings — highest priority first
+
+**W8-F4 — P3 — `test-coverage/removal` — in scope. Partial recurrence.**
+- **Evidence:**
+  - The new row "a skill name does not match in command mode" (`talk.test.ts:673`) speaks "online llm interactive".
+  - The Round 1 mutation, which adds `c.source === "skill"` to the command candidates at `talk-delivery.ts:122`, keeps the `skill:` prefix. That name collapses to `skillonlinellminteractive` and has the words `skill online llm interactive`, so the row passes under the mutation.
+  - Under that mutation, saying "skill online llm interactive" with the command key would insert `/skill:online-llm-interactive`, which D16 excludes. Only a variant that also strips the prefix is caught.
+- **SUGGESTED_CORRECTION:** add a command-key row that speaks "skill online llm interactive" and expects no match with the warning. Alternatively, change the existing row's transcript to that phrase.
+
+**W8-F5 — P3 — `test-coverage/word-order-empty-token` — in scope.**
+- **Evidence:**
+  - Removing `.filter(Boolean)` from `ANY_ORDER.spoken` (`voice-command.ts:62`) fails no test.
+  - D16 requires empty forms to be dropped. A transcript like "LLM — online interactive, check" (a free-standing dash) matches only because of that filter; I checked this against the real matcher.
+- **SUGGESTED_CORRECTION:** add one matcher row such as "LLM — online interactive check" giving `/online-llm-interactive` with the argument `check`.
+
+**W3-F5 — P3 — deferred.**
+- **DEFERRED_REASON:** `speech-job.ts` is unchanged and over 500 lines. The earlier deferral stands, recorded for the archive note.
+
+### Residual risks and notes for the 8.7 live checks
+
+- **Hyphenated transcript words.** A transcript that joins two words with a hyphen ("LLM-online interactive") matches nothing in either pass, because the token collapses to one word. This follows the spec ("collapsed tokens"). If the live `alt+i` check shows the provider writing such joins, the remedy is an alias or a spec change, not a patch.
+- **Combining marks.** A combining mark that NFKC cannot compose splits a word in `wordsOf` but is dropped by `collapse`. Vietnamese letters all compose, so this is theoretical.
+- **The cross-runtime fix cannot be checked live.** Replacing the session needs a non-keyboard trigger while Space is held. The unit test and the code read are the evidence.
+- **Live checks.**
+  - PageUp while holding Space should send, as documented.
+  - The language is now `en`. Re-check that the command and skill keys still match the names the user speaks, since the earlier Vietnamese transcription concern no longer applies.
+  - The Round 1 risks still stand: Ghostty release events, the 300 ms release latency, a hiccup longer than 300 ms, and streaming on every hold while `stopOnPhrase` is on.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+---
+
+## Caller Assessment — Wave 8 Round 2
+
+### Review Mode
+- `implementation`, convergence mode `PATCH`. The candidate `sha256:0f274472…78353` at `c678229` was verified by the Oracle (run `e0e2310d`).
+
+### Per-Issue Evaluation
+
+#### W8-F1, F2, F3 — verified fixed or documented
+- **Decision:** closed. The `hold-space / detector-controller-identity` family does not recur.
+
+#### W8-F4 (P3 recurrence) — no row catches a `skill:`-prefixed name in command mode
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:**
+  - The caller added a `talk.test.ts` row: "skill online llm interactive" with the command key gives no match.
+  - Verified: dropping the source filter in `talk-delivery.ts` makes this row fail.
+
+#### W8-F5 (P3) — the step that drops empty words is untested
+- **Decision:** `ACCEPT_NONBLOCKING`
+- **CORRECTION:**
+  - The caller added a `voice-command.test.ts` row: "LLM — online interactive" matches `/online-llm-interactive`.
+  - Verified: removing `.filter(Boolean)` makes this row fail.
+
+#### W3-F5 — `speech-job.ts` over 500 lines
+- **Decision:** `DEFER_OUT_OF_SCOPE`, recorded for the archive note together with W5-F4.
+
+### Terminal Baseline Validation
+
+- The test rows above and ticking task 8.8 changed the candidate after Round 2. The new revision, the SHA-256 of `git diff 2452591 -- extensions test openspec` with these changes staged, is:
+
+  PATCH_BASELINE_REVISION=sha256:9b11f70d18daac9814b64359d45cd504096612ab2214eda828abb84df073216e
+
+- **Checks:** 681 tests pass and 0 fail, the filtered type check prints nothing, and `git diff --check` is clean.
+- **Scope:** the post-review edits are test rows only, in families already reviewed. Source code is unchanged since `c678229`.
+
+### Caller Result
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
+
+- **Gate:** task 8.8 is complete.
+- **Remaining:** task 8.7, the user's live checks, including the re-check of spoken names now that the input language is `en`.
