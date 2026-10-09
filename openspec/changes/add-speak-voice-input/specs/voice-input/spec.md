@@ -359,17 +359,17 @@ When the command or skill key, or `/talk command` or `/talk skill`, stops a reco
 
 **Ending.**
 - The hold SHALL end on a key-release event for Space, or when no Space has arrived for 300 ms. The quiet gap SHALL be confirmed only after pending input has been read.
-- Release events of other keys, and input that is neither a decodable key nor printable text, SHALL be ignored.
+- Release events of keys other than Space, and input that starts with ESC, is not a bracketed paste, and cannot be decoded as a key, SHALL be ignored. Every other input SHALL count as other input.
 - Ending an engaged hold SHALL act only on the recording that hold started:
   - **starting:** cancel it;
   - **recording or held:** send it, exactly as the send key does;
   - **otherwise:** nothing.
 
-**Other input during an engaged hold.** Escape and the registered push-to-talk keys, including the command and skill keys, SHALL behave as usual. Any other key press, printable text or paste SHALL reach the editor and discard the hold's recording, exactly as Escape does. The hold SHALL stay spent and consume Spaces until it ends, and its ending SHALL then do nothing.
+**Other input during an engaged hold.** Escape and the registered push-to-talk keys, including the command and skill keys, SHALL behave as usual. Any other input, including text in any script and bracketed paste, SHALL reach the editor and discard the hold's recording, exactly as Escape does. The hold SHALL stay spent and consume Spaces until it ends, and its ending SHALL then do nothing.
 
-Session replacement and shutdown SHALL discard the hold's recording and clear its timers, and the hold SHALL stay unrecognizable until it ends.
+Session replacement and shutdown SHALL discard the hold's recording and clear its timers, and the hold SHALL stay unrecognizable until it ends. A hold whose timer was cleared SHALL end at the first input arriving more than 300 ms after its last Space, and that input SHALL be handled normally.
 
-**Status line.** The recording status line SHALL say that releasing Space sends.
+**Status line.** The recording status line of a hold-started recording, and its held line at the time cap, SHALL say that releasing Space sends.
 
 #### Scenario: Tap types a space
 
@@ -423,8 +423,18 @@ Session replacement and shutdown SHALL discard the hold's recording and clear it
 
 #### Scenario: Other key during a hold
 
-- **WHEN** the user types another key while holding Space during a hold-started recording, then lets go
-- **THEN** that key reaches the editor, the recording is discarded, the remaining Spaces are consumed, nothing is uploaded or sent, and the release does nothing
+- **WHEN** the editor held "Draft", a hold-started recording is running (the hold's Spaces already removed), and the user types "x" while holding Space, then lets go
+- **THEN** the editor holds "Draftx", the recording is discarded, the remaining Spaces are consumed, nothing is sent, and the release does nothing. With the stop phrase on, audio already streamed is not recalled
+
+#### Scenario: Text in another script during a hold
+
+- **WHEN** the user types a Vietnamese letter or pastes text during a hold-started recording
+- **THEN** it is treated as other input: it reaches the editor and the recording is discarded
+
+#### Scenario: Terminal reply during a hold
+
+- **WHEN** an undecodable escape sequence that is not a paste arrives during a hold
+- **THEN** it is ignored and the hold continues
 
 #### Scenario: Session replaced during a hold
 

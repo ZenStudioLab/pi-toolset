@@ -216,9 +216,9 @@ The detector is its own module, with an injectable clock, timers and deferral (`
 **Reading input.** The detector classifies each input it sees:
 - **Space press or repeat:** an input that is a single space.
 - **Space release:** a key-release event whose key is Space (`isKeyRelease` together with a Space match).
-- **Ignored:** release events of other keys, and input that pi-tui's `parseKey` cannot decode and that is not printable text, such as terminal replies. These are never counted, and never end or stop anything.
+- **Ignored** (a closed list): release events of keys other than Space, and input that starts with ESC, is not a bracketed paste, and that pi-tui's `parseKey` cannot decode, such as terminal replies. These are never counted, and never end or stop anything.
 - **Passed through:** Escape and the registered push-to-talk keys (`matchesKey` against the load-time list). They pass unchanged, so their own handlers act.
-- **Other input:** any other key press or repeat that `parseKey` decodes, any printable text, and any bracketed paste.
+- **Other input:** everything else, including text in any script, such as a Vietnamese letter, and bracketed paste. A paste is recognized first, by its `\x1b[200~` start. Because other input only discards (below), anything misclassified ends in a discard, never in a send.
 
 **Recognition.** A Space press within 120 ms of the previous Space is a repeat, and the second repeat in a row recognizes a hold. In the probed terminal that is the fourth Space: the press, the first auto-repeat after about 0.5 s, then two repeats 30 ms apart. Every Space before recognition reaches the editor. The *counted run* is the number of Spaces this listener passed to the editor since the last input that was not a Space.
 
@@ -230,7 +230,7 @@ On recognition the detector calls `controller.startHold()`, and the hold becomes
 
 **Ending.** A spent hold ends on a Space release, or on a quiet gap: no Space for 300 ms. When the timer fires, the decision is deferred until pending input has been read. If a Space arrived meanwhile, judged by arrival times rather than by when the timer ran, the hold continues. An event-loop stall therefore cannot end a hold while Spaces are still queued.
 
-On ending, an engaged hold calls `controller.endHold(handle, "send")`. On a terminal that reports no Space release, a Space pressed again within 300 ms of letting go arrives before the quiet gap and so continues the same hold.
+On ending, an engaged hold calls `controller.endHold(handle, "send")`. On a terminal that reports no Space release, a Space pressed again within 300 ms of letting go arrives before the quiet gap and so continues the same hold. A spent hold whose timer was cleared by a session reset ends at the first input that arrives more than 300 ms after its last Space; that input is then handled normally.
 
 **Other input during an engaged hold.** It reaches the editor as usual and calls `controller.endHold(handle, "discard")`. The hold stays spent and keeps consuming Spaces until it ends, and its ending then does nothing, because the handle's recording has ended. Pressing another key stops Space's key repeat, so a later release could not be told apart from the typing. The recording is therefore discarded, exactly as Escape discards it: a streamed recording closes its connection, and nothing is sent.
 
@@ -243,7 +243,7 @@ On ending, an engaged hold calls `controller.endHold(handle, "send")`. On a term
 | held at the time cap | send it, as the send key does | discard, as Escape does |
 | ended any other way: Escape, the stop phrase, another control, an error, a session reset, an earlier `discard` | nothing | nothing |
 
-**Display.** The status line of a hold-started recording says "release Space to send". When the setting is on, help names Space, and says that typing another key during a hold discards the recording.
+**Display.** The status line of a hold-started recording, including its held line at the time cap, says "release Space to send". When the setting is on, help names Space, and says that typing another key during a hold discards the recording.
 
 **Timing.** The 120 ms and 300 ms values are constants. The probe measured a 0.5 s repeat delay and a 30 ms repeat interval.
 
