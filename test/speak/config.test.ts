@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   VOICE_ID_PLACEHOLDER,
   cacheDir,
+  canonicalLocale,
   configPath,
   describeConfig,
   loadConfig,
@@ -23,8 +24,10 @@ test("a minimal configuration gets the documented defaults", () => {
   assert.equal(result.config.translation, undefined);
   assert.equal(result.config.provider, "elevenlabs");
   assert.equal(result.config.input.provider, "deepgram");
-  assert.equal(result.config.input.maxSeconds, 60);
+  assert.equal(result.config.input.maxSeconds, 120);
   assert.equal(result.config.input.shortcut, "alt+t");
+  assert.equal(result.config.input.transcribeShortcut, "alt+shift+t");
+  assert.equal(result.config.input.sendWhenBusy, "interrupt");
   assert.equal(result.config.providers.elevenlabs.outputFormat, "mp3_44100_128");
   assert.equal(result.config.providers.elevenlabs.voiceRevision, 1);
   assert.equal(result.config.providers.elevenlabs.sttModel, "scribe_v2");
@@ -209,9 +212,20 @@ test("provider blocks and input settings are parsed independently", () => {
       elevenlabs: { voiceId: "AbCdEf1234567890", modelId: "eleven_flash_v2_5", sttModel: "scribe_v2" },
       deepgram: { voice: "aura-2-thalia-en", sttModel: "nova-3" },
     },
-    input: { provider: "elevenlabs", language: "VI-vn", maxSeconds: 300, shortcut: "ctrl+r" },
+    input: {
+      provider: "elevenlabs",
+      language: "VI-vn",
+      maxSeconds: 300,
+      shortcut: "ctrl+r",
+      transcribeShortcut: "ctrl+shift+r",
+      sendWhenBusy: "wait",
+    },
   });
   assert.ok(result.ok);
+  assert.equal(result.config.input.maxSeconds, 300);
+  assert.equal(result.config.input.shortcut, "ctrl+r");
+  assert.equal(result.config.input.transcribeShortcut, "ctrl+shift+r");
+  assert.equal(result.config.input.sendWhenBusy, "wait");
   assert.equal(result.config.provider, "deepgram");
   assert.equal(result.config.input.language, "vi-VN");
   assert.equal(result.config.providers.deepgram.voice, "aura-2-thalia-en");
@@ -235,13 +249,35 @@ for (const [name, input] of [
   ["above maximum", { ...valid, input: { maxSeconds: 301 } }],
   ["fractional", { ...valid, input: { maxSeconds: 1.5 } }],
   ["malformed language", { ...valid, input: { language: "vi_VN" } }],
+  ["unknown sendWhenBusy value", { ...valid, input: { sendWhenBusy: "now" } }],
+  ["numeric sendWhenBusy", { ...valid, input: { sendWhenBusy: 1 } }],
+  ["empty transcribe shortcut", { ...valid, input: { transcribeShortcut: " " } }],
+  ["equal shortcuts", { ...valid, input: { shortcut: "alt+x", transcribeShortcut: "alt+x" } }],
+  ["equal shortcuts differing in case", { ...valid, input: { shortcut: "Alt+X", transcribeShortcut: "alt+x" } }],
+  ["a shortcut equal to the other's default", { ...valid, input: { shortcut: "alt+shift+t" } }],
 ] as const) {
   test(`rejects ${name} input setting`, () => {
     const result = parseConfig(input);
     assert.ok(!result.ok);
-    assert.match(result.problem, /input\.(maxSeconds|language)/);
+    assert.match(result.problem, /input\.(maxSeconds|language|sendWhenBusy|transcribeShortcut|shortcut)/);
   });
 }
+
+test("a session locale is marked in the status view", () => {
+  const result = parseConfig(valid);
+  assert.ok(result.ok);
+  assert.match(describeConfig(result.config, true).join("\n"), /^locale: vi$/m);
+  assert.match(
+    describeConfig(result.config, true, { speechLocale: "en" }).join("\n"),
+    /^locale: en \(session override\)$/m,
+  );
+});
+
+test("canonicalLocale canonicalizes valid tags and rejects malformed ones", () => {
+  assert.equal(canonicalLocale("VI-vn"), "vi-VN");
+  assert.equal(canonicalLocale("not_a_tag"), undefined);
+  assert.equal(canonicalLocale(""), undefined);
+});
 
 test("the status view shows only the voice suffix and whether a key exists", () => {
   const result = parseConfig(valid);

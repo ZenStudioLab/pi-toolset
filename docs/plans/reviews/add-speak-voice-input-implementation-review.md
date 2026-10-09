@@ -994,3 +994,292 @@ Task 5.1 (orchestrator) covers the artifact amendments:
 - `openspec validate add-speak-voice-input --strict` passes.
 
 Base commit for Wave 5 code: the amendment commit that follows `ff04491`.
+
+Base commit: `c904c58`.
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 5. Final gate reserved: task 5.8.
+
+| Assignment | Tasks | Owner | Files and topics |
+| --- | --- | --- | --- |
+| W5-A | 5.2–5.6 | worker (`claude-bridge/claude-sonnet-5-5`, thinking high, background) | `extensions/speak/config.ts`, `talk.ts`, `index.ts`, `speech-job.ts`, `README.md`; `test/speak/config.test.ts`, `talk.test.ts`, `silence.test.ts`, `command.test.ts`, `job.test.ts`, `localized-job.test.ts` |
+| W5-B | 5.7 | user | live checks |
+
+### W5-A result (worker run `879098ff`)
+
+The worker reported tasks 5.2–5.6 done. In the middle of the run, the user added `?` as a short form of `help` for both commands. That reached the worker as a steering message and is implemented and tested.
+
+Files:
+
+- New: `extensions/speak/help.ts` (53 lines).
+- Changed source files: `config.ts`, `index.ts`, `speech-job.ts`, `talk.ts`, `README.md`.
+- Changed tests: `harness.ts`, `config.test.ts`, `silence.test.ts`, `talk.test.ts`, `command.test.ts`, `job.test.ts`, `localized-job.test.ts`.
+- `speech-job.ts` is now 653 lines and `config.ts` 539 (the W3-F5 family).
+
+Deviations the worker reported, passed to the Oracle for judgement:
+
+1. If reading `sendWhenBusy` fails at send time, the transcript is appended, nothing is sent, and the error is shown.
+2. Every unknown argument now prints the combined help, including bad provider names.
+3. Help reads the shortcuts from the file on demand. After an edit without `/reload`, help can name a key that is not registered yet.
+4. `/speak in` validates its tag before the run-mode check.
+
+Caller verification:
+
+- **First run:** 401 tests, 400 pass, 1 fail. I did not capture which test failed.
+- **Reruns:** 6 runs in a row each gave 401/401. So did 4 concurrent runs under load.
+- **Pattern:** this is the second time an unidentified failure has happened on the first run after a code change (Wave 3: 1 of 49).
+- The filtered type check prints nothing, `git diff --check` is clean, and `openspec validate --strict` passes.
+
+CANDIDATE_REVISION=sha256:ce1e35ace08431cd0d6d54fc17a27b8fb6f168181a07326bed0a76800b5cfff0 (SHA-256 over `git diff c904c58 -- extensions test openspec`, then path + NUL + bytes of extensions/speak/help.ts)
+
+### Wave 6 decisions recorded (user, 2026-10-09; to be specified after Wave 5 is committed)
+
+The user asked for a spoken stop phrase. When it is heard, the recording stops and is sent. This reverses two decisions:
+
+- **Design D2:** audio was uploaded once, after the stop.
+- **ADR-0004/0005 on voice triggers:** they ruled them out.
+
+A new ADR will record the reversal. Decisions:
+
+- **Q1:** stream to ElevenLabs first. Deepgram may come later, or never.
+- **Q2:** the stop phrase acts like `alt+t`, which transcribes and sends.
+- **Q3:** the phrase is removed from the end of the text before sending.
+- **Q5:** off by default and turned on in config. When on, every recording streams.
+- **Q6:** Wave 6 of this change, after Wave 5 is committed.
+- **Q4 (phrase list and config):** awaiting the user's answer.
+
+Provider facts were checked on 2026-10-09. Sources: https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime.md and https://elevenlabs.io/docs/overview/models.md.
+
+- **Endpoint and auth:** `wss://api.elevenlabs.io/v1/speech-to-text/realtime`, model `scribe_v2_realtime`, authenticated with the `xi-api-key` header or a single-use `token` query parameter.
+- **Audio in:** the `audio_format` enum includes `pcm_16000`, which is the default and matches our recorder. Audio is sent as `input_audio_chunk` messages carrying `audio_base_64`, `commit` and `sample_rate`.
+- **Text out:** `partial_transcript` and `committed_transcript` messages.
+- **Commit strategies:** `manual`, `vad` (commits on silence, tuned with `vad_silence_threshold_secs`) and `turn_prediction`.
+- **Language:** `language_code` takes ISO 639-1 or 639-3 codes.
+- **Errors:** `auth_error`, `resource_exhausted`, `chunk_size_exceeded`, session time limit, and `error`.
+- **Languages:** the models page lists "90+ languages" for Scribe v2 Realtime but does not name Vietnamese.
+- **Node:** Node v22.19.0's built-in `WebSocket` sends a custom `xi-api-key` header. I checked this against a local test server, with no network use.
+
+- **Q4 (user, 2026-10-09):** stop phrases come from a config list, `input.stopPhrases`, defaulting to `["let's go"]`. The user adds their own, including Vietnamese ones. The user confirmed the pause-commit approach (ElevenLabs `commit_strategy: "vad"`) and asked to proceed.
+
+### Wave 5 gate with task 5.7 unverified
+
+The user asked to proceed to Wave 6 without running the Wave 5 live checks first. Gate 5.8 accepts 5.7 as "complete or explicitly reported as unverified", so the gate runs now with 5.7 reported as **unverified, not run**. Its items are carried into the Wave 6 live checks so they run once, after both waves.
+
+## Round 1 - Oracle Review (Wave 5)
+
+Run `8f42ec69` (`claude-bridge/claude-opus-5-5`, thinking high, background). The caller condensed the returned text without changing any finding.
+
+**Gate and baseline:** gate task 5.8, INITIAL mode. The baseline `ce1e35ace08431cd0d6d54fc17a27b8fb6f168181a07326bed0a76800b5cfff0` matches, before and after the review.
+
+**Owners reviewed:**
+- Task 5.1: orchestrator, `c904c58`, plus the uncommitted `?` amendments.
+- W5-A: worker, tasks 5.2–5.6 and `?`.
+- W5-B: user, task 5.7, unverified and not run.
+
+**Checks:**
+- Tests 401/401, the filtered type check is clean, `openspec validate --strict` passes, and `git diff --check` is clean.
+- 76 suite runs ran in `/tmp` (40 one after another, then 36 concurrent) to find the flaky test.
+
+**Confirmed sound:**
+- **Config:** the new keys and defaults; equal keys rejected without regard to case (`config.ts:383-384`).
+- **Send mode:** the stopping control decides the mode (`talk.ts:115,125`); `expandPromptTemplates: false`; steer or follow-up chosen from `isIdle()` at send time (`talk.ts:315-321`); nothing sent for an empty or dropped transcript; either key cancels a starting recording (`talk.ts:107-108`); both status lines name both keys.
+- **Locale:** validation, lifetime and precedence, fixed at job start (`speech-job.ts:309,432`); the Aura check runs before translation; both cache keys and the status mark use it.
+- **Help:** `help` and `?` for both commands, in every run mode.
+- **README.**
+- **Host API signatures:** `types.d.ts:1243-1246,236`.
+- **No regressions** from Waves 1–4.
+
+**Findings:**
+
+- **W5-F1 — P1 — `send-failure-host-contract` — in scope.**
+  - `pi.sendUserMessage` returns at once and reports an asynchronous `prompt()` failure only through `runner.emitError` (`agent-session.js:2712-2719`).
+  - `prompt()` refuses during compaction (`:1534-1536`), and with no model or no credentials (`:1567-1579`).
+  - `isIdle()` is false during compaction (`:1053-1055`), so the default `interrupt` path sends, and `setEditorText("")` clears the draft plus the transcript.
+  - Pi's own Enter queues the message during compaction (`interactive-mode.js:2703-2712`).
+  - The harness fake throws synchronously (`harness.ts:173`), which the host never does. D11 (`design.md:127`) assumed it would.
+  - SUGGESTED_CORRECTION:
+    - Code: refuse before sending, keeping the text and showing a message, when `ctx.model` is undefined or compaction is in progress. Track compaction with `session_before_compact`, `session_compact` and `session_compact_failed`, and tell the user to press Enter.
+    - Artifacts: narrow the guarantee to refusals the extension can detect before sending, and document that refusals Pi reports later are shown by Pi after the composer is cleared.
+    - Tests: make the fake fail asynchronously, and add cases for compaction and for no model.
+- **W5-F2 — P3 — `registered-vs-file-shortcuts` — in scope (worker deviation 3).**
+  - Help and the status lines name the shortcuts read from the file now (`help.ts:15-19`, `talk.ts:218-219`), while Pi registers them only at load (`index.ts:178-192`).
+  - SUGGESTED_CORRECTION: pass the registered `shortcuts` into help and `TalkController`, and keep reading the file for the locale and the config-error line only. Amend D14 and the help rule to "the registered shortcuts".
+- **W5-F3 — P3 — `test-determinism` — in scope, but the test predates Wave 5.**
+  - The flaky test is `diagnostics.test.ts:117`. Its negative pattern `/401|.../` (`:136-139`) can match a random `randomUUID()` diagnostic ID (`speech-job.ts:366`) or the timestamp, so it fails in about 1–1.5 % of runs.
+  - It failed once in 76 runs, on an ID containing `401`, and failed every time with a fixed ID containing `401`.
+  - SUGGESTED_CORRECTION: remove the ID and the timestamp from the text before matching, or narrow the pattern.
+- **W3-F5 — P3 — recurrence update — deferred.** `speech-job.ts` is 653 lines and `config.ts` 539.
+
+**Worker deviations:**
+- Deviation 1 (keep the text unsent when the config read fails) is accepted.
+- Deviation 2 (every unknown argument prints the combined help) is accepted.
+- Deviation 3 (help reads shortcuts from the file) is not accepted; see W5-F2.
+- Deviation 4 (`/speak in` validates before the run-mode check) is accepted.
+
+PROPOSED_REVIEW_ACTION=PATCH
+
+## Caller Assessment — Wave 5, Round 1
+
+I checked the W5-F1 host evidence myself in Pi 1.1.0 `dist/core/agent-session.js`. Lines 2712–2719 wrap `sendUserMessage` in `.catch(runner.emitError)`. Lines 1534–1536 throw during compaction. Lines 1052–1055 show `isIdle` is false while compacting.
+
+#### W5-F1 — A failed send clears the composer
+- **Oracle Severity:** P1
+- **Family:** `send-failure-host-contract`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** `specs/voice-input/spec.md` "Transcript delivery": "If the send fails, the composer SHALL keep the draft plus transcript and the error SHALL be shown". ADR-0005: "as if the user had pressed Enter".
+- **Decision:** `ACCEPT_BLOCKING`
+- **CORRECTION:**
+  - **Before sending:** refuse, keep the composer text, and show a message when `ctx.model` is undefined, or while compaction is in progress. Compaction is tracked through the compaction events. The message tells the user to press Enter, which Pi queues.
+  - **Test fake:** it fails asynchronously, like the host. Add tests for compaction and for no model.
+  - **Artifacts (orchestrator, below):** D11 and the "Transcript delivery" requirement now limit the keep-the-text guarantee to refusals detectable before sending. They state that a refusal Pi reports only after accepting the call, such as missing credentials, is shown by Pi as an error after the composer was cleared.
+  - **README:** worker, in the same batch.
+  - This clarifies the guarantee to match the host API. It does not change scope, so no user decision is needed.
+
+#### W5-F2 — Help and status lines name file shortcuts, not registered ones
+- **Oracle Severity:** P3
+- **Family:** `registered-vs-file-shortcuts`
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold.
+- **Decision:** `ACCEPT_NONBLOCKING`, fixed in the same patch batch because it is small and touches the same files.
+- **CORRECTION:** show the registered shortcuts, and keep reading the file only for the locale and the config-error line. D14 and the help requirement are amended below.
+
+#### W5-F3 — Flaky diagnostics test
+- **Oracle Severity:** P3
+- **Family:** `test-determinism`
+- **In-scope:** `YES` (test quality; the test predates Wave 5)
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. It explains both unidentified first-run failures.
+- **Decision:** `ACCEPT_NONBLOCKING`, fixed in the same batch.
+- **CORRECTION:** remove the diagnostic ID and the timestamp from the text before the negative match.
+
+#### W3-F5 — Large modules
+- **Decision:** `DEFER_OUT_OF_SCOPE` (unchanged).
+
+### Summary
+- **Issues accepted blocking:** 1 (W5-F1)
+- **Issues accepted nonblocking:** 2 (W5-F2, W5-F3, fixed in the same batch)
+- **Issues deferred out of scope:** 1 (W3-F5)
+- **Issues rejected:** 0
+
+### Caller Result
+
+REVIEW_ACTION=PATCH
+CONSENSUS_STATUS=NEEDS_REVISION
+
+## Round 2 - Implementation Assignments (Wave 5)
+
+The orchestrator amended the artifacts for W5-F1 and W5-F2. `openspec validate --strict` passes.
+
+- **`design.md` D11:** the extension checks what it can before sending. With no model selected, or during compaction, it keeps the text and shows a message. A refusal Pi reports later is shown by Pi after the composer was cleared.
+- **`design.md` D14:** help names the shortcuts registered at load.
+- **voice-input "Transcript delivery":** narrowed accordingly, with a new scenario, "Send during compaction".
+- **manual-speech help requirement:** names the registered shortcuts.
+
+| Assignment | Findings | Owner | Files and topics |
+| --- | --- | --- | --- |
+| W5-A (round 2) | W5-F1, W5-F2, W5-F3 | worker (`claude-bridge/claude-sonnet-5-5`, thinking high, background) | `extensions/speak/talk.ts`, `index.ts`, `help.ts`, `speech-job.ts`, `README.md`; `test/speak/harness.ts`, `talk.test.ts`, `command.test.ts`, `diagnostics.test.ts` |
+
+### W5-A round 2 result (worker run `3d92d9f8`)
+
+The worker reported all three findings fixed.
+
+- **W5-F1:**
+  - Before sending, the extension refuses when `ctx.model` is undefined or compaction is in progress. It keeps the draft and the transcript, and says to press Enter during compaction.
+  - `index.ts` tracks compaction with `session_before_compact`, `session_compact` and `session_compact_failed`. None of these handlers returns a result.
+  - The harness fake now fails asynchronously.
+  - Tests added: sending during compaction (`interrupt` and `wait`), the compaction block ending, no model, and an async host refusal that is not seen.
+  - The README is updated.
+- **W5-F2:** both controllers take the registered shortcuts from `index.ts`, and help reads the file only for the locale and the error line. Tests cover an unreloaded edit and an unreadable file.
+- **W5-F3:** `diagnostics.test.ts` removes the diagnostic ID, `timestamp` and `elapsedMs` before the negative match. It was proved with a forced ID containing `401` in `/tmp`.
+
+The worker reported these API changes:
+- The harness options gain `shortcuts`, `sendThrows`, `hostErrors` and `noModel`.
+- The controllers now require a `shortcuts` argument.
+- `Shortcuts` is a new exported type in `config.ts`.
+
+Caller verification:
+- The worker's runs: 409/409 in each of 5 runs.
+- Caller rerun: 409 tests, 409 pass, 0 fail.
+- The filtered type check prints nothing, `git diff --check` is clean, and `openspec validate --strict` passes.
+
+PATCH_BASELINE_REVISION=sha256:6ad07d4a277daccde08c189c00e6dc9f8e36abf96150b23f1cc4b70ec7474184 (same method as CANDIDATE_REVISION: `git diff c904c58 -- extensions test openspec`, then path + NUL + bytes of extensions/speak/help.ts)
+
+## Round 2 - Oracle Review (Wave 5)
+
+Run `05ee7b25` (`claude-bridge/claude-opus-5-5`, thinking high, background). The caller condensed the returned text without changing any finding.
+
+**Gate and baseline:** gate task 5.8, PATCH mode, Oracle round 2 of 4. The candidate `sha256:6ad07d4a277daccde08c189c00e6dc9f8e36abf96150b23f1cc4b70ec7474184` equals the latest `PATCH_BASELINE_REVISION`.
+
+**Owners reviewed:**
+- Task 5.1: orchestrator, `c904c58` plus the uncommitted amendments.
+- W5-A: worker runs `879098ff` and `3d92d9f8`.
+- W5-B: user, task 5.7, unverified and carried into Wave 6.
+
+**Checks:**
+- 409/409 in each of 6 runs; the filtered type check is clean; `openspec validate --strict` passes; `git diff --check` is clean.
+- 7 mutations in `/tmp`, each caught by 1–6 tests: compaction refusal removed, no-model refusal removed, either clearing event ignored, a cancelling before-compact handler, help naming the file's shortcut, and the composer not cleared.
+
+**Fixes verified:**
+- **W5-F1:**
+  - The send refusal (`talk.ts:326-335`) uses the live `context.model` getter (`runner.js:642-645`).
+  - The Enter hint is accurate (`interactive-mode.js:2703-2712`), and the synchronous-throw path is kept (`talk.ts:336-351`).
+  - The fake fails asynchronously (`harness.ts:183-193`), and the tests fire the registered handlers (`talk.test.ts:554-609`).
+  - D11, the spec (`voice-input/spec.md:137`) and the README do not over-promise.
+- **W5-F2:** one `shortcuts` object goes to registration and to both controllers (`index.ts:190-206`, `help.ts:9-46`, `talk.ts:384-386`), with tests at `command.test.ts:204-227` and `talk.test.ts:611`.
+- **W5-F3:** the ID, `timestamp` and `elapsedMs` are removed before the match (`diagnostics.test.ts:136-142`). They are the only random or clock values.
+
+**Compaction flag against Pi 1.1.0 (`agent-session.js`):**
+- **Manual `/compact`:** every exit after `session_before_compact` emits `session_compact` or `session_compact_failed` (`:2193`, `:2243`, `:2282`).
+- **Auto-compaction:** the `if (started)` guard covers every started failure (`:2477`, `:2532`, `:2557`, `:2571`). A stray `session_compact_failed` only clears the flag.
+- **Cancel by another extension:** emit stops before our handler (`runner.js:819-823`).
+- **No behaviour added:** our handlers return `undefined`.
+- **During auto-compaction:** refusing is stricter than Pi requires, and harmless.
+
+**Regression sweep:** config, send mode, locale, help and README are sound, and the invariants from Waves 1–4 hold.
+
+**Findings:**
+- **W5-F4 — P3 — `send-failure-host-contract` (residual) — in scope.**
+  - During manual compaction there are two gaps: before our flag is set, while earlier extensions' `session_before_compact` handlers run (`:2170` vs `:2193`); and after it is cleared, before `_clearManualCompactionState()` (`:2243` vs `:2259`). A send in either gap is refused by Pi after the composer was cleared.
+  - DEFERRED_REASON: Pi 1.1.0 exposes no way to read whether it is compacting (`types.d.ts:587-616`). The amended spec, D11 and the README already put refusals the extension cannot see in the "shown by Pi after the composer was cleared" category. Revisit if Pi adds one.
+- **W3-F5 — P3 — recurrence update — deferred.** `speech-job.ts` is 656 lines and `config.ts` 545.
+
+**Notes (not findings):**
+- Tick tasks 5.2–5.6.
+- Keep `.pi/settings.json` out of the commit.
+- Local type checking uses pi-coding-agent 0.87.1 from `node_modules`, while Pi runs 1.1.0. This predates the round.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 5, Round 2
+
+#### W5-F1, W5-F2, W5-F3 (accepted from Round 1)
+- **Decision:** verified fixed. Oracle's evidence matches my re-run: 409/409 tests pass, the filtered type check is clean, `git diff --check` is clean, and `openspec validate --strict` passes.
+
+#### W5-F4 — Gaps between the flag and Pi's own compaction state
+- **Oracle Severity:** P3
+- **Family:** `send-failure-host-contract` (residual of W5-F1)
+- **In-scope:** `YES`
+- **GOVERNING_SOURCE:** None reaching the blocking threshold. The amended "Transcript delivery" requirement already covers refusals the extension cannot detect.
+- **Decision:** `DEFER_OUT_OF_SCOPE`
+- **CORRECTION:** None now. Pi 1.1.0 offers no way to read whether it is compacting. Revisit if one is added.
+
+#### W3-F5 — Large modules
+- **Decision:** `DEFER_OUT_OF_SCOPE` (unchanged).
+
+### Terminal Baseline Validation
+
+- The current candidate equals the latest `PATCH_BASELINE_REVISION`, `sha256:6ad07d4a277daccde08c189c00e6dc9f8e36abf96150b23f1cc4b70ec7474184`. The caller recomputed it after the Oracle run.
+- The Wave 5 boundary is unchanged: tasks 5.2–5.6, plus the orchestrator's amendments for `?`, W5-F1 and W5-F2.
+
+### Summary
+- **Issues accepted blocking:** 0 this round (W5-F1 fixed from Round 1)
+- **Issues accepted nonblocking:** 0 this round (W5-F2, W5-F3 fixed from Round 1)
+- **Issues deferred out of scope:** 2 (W5-F4, W3-F5)
+- **Issues rejected:** 0
+
+### Caller Result
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
+
+Wave 5 is complete. Tasks 5.2–5.6 and 5.8 are marked done. Task 5.7 stays unchecked, because the user has not run it; its live checks are carried into Wave 6 and will be ticked there.

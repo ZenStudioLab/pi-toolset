@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import { TALK_USAGE } from "../../extensions/speak/index.ts";
-import { VALID_CONFIG, audioResponse, createHarness, type FakeChild } from "./harness.ts";
+import { VALID_CONFIG, audioResponse, createHarness, type CtxOptions, type FakeChild } from "./harness.ts";
 
 type Harness = Awaited<ReturnType<typeof createHarness>>;
 const open: Harness[] = [];
@@ -52,10 +51,13 @@ async function startRecording(h: Harness): Promise<FakeChild> {
   return h.recorderChildren()[wanted - 1]!;
 }
 
-/** Stops a recording longer than the 0.5 s minimum and waits for the transcript outcome. */
-async function stopAndSettle(h: Harness) {
+/**
+ * Stops a recording longer than the 0.5 s minimum and waits for the transcript outcome. The default
+ * stops with the transcribe-only shortcut, so the composer is not sent.
+ */
+async function stopAndSettle(h: Harness, stop: "pressShortcut" | "pressTranscribeShortcut" = "pressTranscribeShortcut") {
   h.advance(2000);
-  await h.pressShortcut();
+  await h[stop]();
   await h.until(() => h.talkStatuses.length > 0 && h.talkStatuses.at(-1) === undefined);
 }
 
@@ -84,11 +86,13 @@ test("a missing key for the selected provider is named and starts no recorder or
   assert.equal(h.recorderChildren().length, 1, "ELEVENLABS_API_KEY is set, so the override records");
 });
 
-test("an unknown /talk argument shows usage, changes nothing, and makes no request", async () => {
+test("an unknown /talk argument shows the combined help, changes nothing, and makes no request", async () => {
   const h = await harness();
-  for (const args of ["bogus", "provider whisper", "provider deepgram extra"]) {
+  await h.run("help");
+  const help = h.notices.at(-1)!.message;
+  for (const args of ["bogus", "send now", "provider whisper", "provider deepgram extra"]) {
     await h.runTalk(args);
-    assert.equal(h.notices.at(-1)!.message, TALK_USAGE);
+    assert.equal(h.notices.at(-1)!.message, help);
   }
   assert.equal(h.recorderChildren().length, 0);
   assert.equal(h.fetchCalls.length, 0);
@@ -145,8 +149,8 @@ test("the indicator follows the recording: recording with time and level, then t
   child.emitAudio(new Uint8Array(new Int16Array(1600).fill(30000).buffer));
   await stopAndSettle(h);
   const lines = h.talkStatuses.filter(Boolean) as string[];
-  assert.match(lines[0]!, /Recording 0:00 .* alt\+t stop · Esc discard/);
-  assert.match(lines[1]!, /Recording 0:03 █ .* alt\+t stop/);
+  assert.match(lines[0]!, /Recording 0:00 .* alt\+t stop and send · alt\+shift\+t stop, transcribe only · Esc discard/);
+  assert.match(lines[1]!, /Recording 0:03 █ .* alt\+t stop and send/);
   assert.equal(lines.at(-1), "Transcribing…");
   assert.equal(h.talkStatuses.at(-1), undefined);
 });
@@ -198,14 +202,14 @@ test("a recording stopped at the time cap is held unsent, and the next press tra
   audio(child, 40000);
   await h.until(() => mixed(h.talkStatuses).includes("limit reached"));
   assert.deepEqual(child.signals, ["SIGINT"]);
-  assert.match(h.talkStatuses.at(-1)!, /Recording limit reached \(1 s\), not sent — alt\+t transcribe · Esc discard/);
+  assert.match(h.talkStatuses.at(-1)!, /Recording limit reached \(1 s\), not sent — alt\+t send · alt\+shift\+t transcribe only · Esc discard/);
   assert.equal(h.fetchCalls.length, 0);
   assert.equal(h.notices.length, 0, "a requested stop is not a failure");
-  await h.pressShortcut();
+  await h.pressTranscribeShortcut();
   await h.until(() => h.editor.text !== "");
   assert.equal(h.fetchCalls.length, 1);
   assert.equal((h.fetchCalls[0]!.init.body as Uint8Array).length, 44 + 32000);
-  await h.pressShortcut();
+  await h.pressTranscribeShortcut();
   assert.equal(h.recorderChildren().length, 2, "the press after delivery starts a new recording");
 });
 
@@ -230,7 +234,7 @@ test("a tap shorter than 0.5 seconds is discarded with a message and nothing is 
   const child = await startRecording(h);
   audio(child);
   h.advance(400);
-  await h.pressShortcut();
+  await h.pressTranscribeShortcut();
   assert.match(h.messages(), /shorter than 0.5 seconds/);
   assert.deepEqual(child.signals, ["SIGINT"]);
   assert.equal(h.fetchCalls.length, 0);
@@ -243,9 +247,9 @@ test("a press during transcription is refused, Escape is not taken, and no secon
   h.setFetch(() => new Promise<Response>((resolve) => (release = resolve)));
   audio(await startRecording(h));
   h.advance(2000);
-  await h.pressShortcut();
+  await h.pressTranscribeShortcut();
   await h.until(() => h.fetchCalls.length === 1);
-  await h.pressShortcut();
+  await h.pressTranscribeShortcut();
   await h.runTalk("");
   assert.equal(h.notices.filter((n) => /still in progress/.test(n.message)).length, 2);
   assert.equal(h.recorderChildren().length, 1);
@@ -303,10 +307,11 @@ test("Escape while the recording is starting cancels the attempt, is consumed, a
   assert.equal(h.sendKey("\x1b"), false, "Escape reaches the editor once nothing is starting or recording");
 });
 
-test("a second press while the recording is starting cancels the attempt and starts no recorder", async () => {
+for (const second of ["pressShortcut", "pressTranscribeShortcut"] as const)
+test(`a second press of ${second === "pressShortcut" ? "the send" : "the transcribe-only"} shortcut while the recording is starting cancels the attempt and starts no recorder`, async () => {
   const h = await harness();
   const { player, pressed, fetchesBefore } = await pressWhilePlayerStops(h);
-  await h.pressShortcut();
+  await h[second]();
   assert.match(h.messages(), /Recording cancelled/);
   assert.equal(h.talkStatuses.at(-1), undefined);
   player.emit("exit", null, "SIGTERM");
@@ -319,7 +324,7 @@ test("a second press while the recording is starting cancels the attempt and sta
 
 test("no recording tool names the tools looked for and starts nothing", async () => {
   const h = await harness({ recorders: [] });
-  await h.pressShortcut();
+  await h.pressTranscribeShortcut();
   assert.match(h.messages(), /looked for rec, arecord, ffmpeg/);
   assert.equal(h.spawnCalls.length, 0);
   assert.equal(h.fetchCalls.length, 0);
@@ -360,19 +365,21 @@ test("shutdown or session replacement during a recording stops the recorder and 
   }
 });
 
-test("a transcript that arrives after the session was replaced is dropped", async () => {
+for (const stop of ["pressShortcut", "pressTranscribeShortcut"] as const)
+test(`a transcript that arrives after the session was replaced is dropped, even when stopped with ${stop}`, async () => {
   const h = await harness();
   let release!: (response: Response) => void;
   h.setFetch(() => new Promise<Response>((resolve) => (release = resolve)));
   audio(await startRecording(h));
   h.advance(2000);
-  await h.pressShortcut();
+  await h[stop]();
   await h.until(() => h.fetchCalls.length === 1);
   sessionEvent(h);
   assert.equal((h.fetchCalls[0]!.init.signal as AbortSignal).aborted, true);
   release(json({ results: { channels: [{ alternatives: [{ transcript: "late" }] }] } }));
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(h.editor.text, "");
+  assert.equal(h.sent.length, 0, "a dropped transcript is never sent");
   assert.equal(h.messages(), "");
   assert.equal(h.talkStatuses.at(-1), undefined);
 });
@@ -409,7 +416,7 @@ test("provider, model, and language are fixed when a recording starts", async ()
 
 test("a malformed input.language is reported and no recording starts", async () => {
   const h = await harness({ config: baseConfig({ language: "not a tag!" }) });
-  await h.pressShortcut();
+  await h.pressTranscribeShortcut();
   assert.match(h.messages(), /input\.language/);
   assert.equal(h.recorderChildren().length, 0);
   assert.equal(h.fetchCalls.length, 0);
@@ -431,4 +438,201 @@ test("a provider failure is shown sanitized, not retried or rerouted, and clears
   await stopAndSettle(h);
   assert.equal(h.fetchCalls.length, 2);
   assert.match(h.notices.at(-1)!.message, /redirect, which is not followed/);
+});
+
+type Stop = "pressShortcut" | "pressTranscribeShortcut" | "send" | "talk";
+const stopWith = async (h: Harness, stop: Stop) => {
+  if (stop === "send") await h.runTalk("send");
+  else if (stop === "talk") await h.runTalk("");
+  else await h[stop]();
+};
+const startWith = async (h: Harness, start: Stop) => {
+  const wanted = h.recorderChildren().length + 1;
+  await stopWith(h, start);
+  await h.until(() => h.recorderChildren().length === wanted);
+  return h.recorderChildren()[wanted - 1]!;
+};
+const SENDS: Stop[] = ["pressShortcut", "send"];
+
+// Each stop is paired with a start from the other family, so the start cannot be what decides.
+for (const [start, stop] of [
+  ["pressTranscribeShortcut", "pressShortcut"],
+  ["talk", "send"],
+  ["pressShortcut", "pressTranscribeShortcut"],
+  ["send", "talk"],
+] as const)
+    test(`started with ${start}, stopped with ${stop}: the stopping control ${SENDS.includes(stop) ? "sends the composer" : "only transcribes"}`, async () => {
+      const h = await harness();
+      h.editor.text = "Refactor the loader";
+      audio(await startWith(h, start));
+      h.advance(2000);
+      await stopWith(h, stop);
+      await h.until(() => h.talkStatuses.at(-1) === undefined && h.fetchCalls.length === 1);
+      if (SENDS.includes(stop)) {
+        assert.deepEqual(h.sent.map((m) => m.text), ["Refactor the loader xin chào"]);
+        assert.deepEqual(h.sent[0]!.options, { expandPromptTemplates: false });
+        assert.equal(h.sent[0]!.composerAtCall, "Refactor the loader xin chào", "cleared only after the call returned");
+        assert.equal(h.editor.text, "");
+      } else {
+        assert.equal(h.sent.length, 0);
+        assert.equal(h.editor.text, "Refactor the loader xin chào");
+      }
+    });
+
+/** Presses the send shortcut as the stopping control, with the agent idle or working. */
+async function sendAs(h: Harness, idle: boolean, context: CtxOptions = {}) {
+  h.advance(2000);
+  await h.pressShortcut({ ...context, idle });
+  await h.until(() => h.talkStatuses.at(-1) === undefined && h.fetchCalls.length === 1);
+}
+
+for (const [label, idle, sendWhenBusy, expected] of [
+  ["idle", true, undefined, { expandPromptTemplates: false }],
+  ["busy by default", false, undefined, { deliverAs: "steer", expandPromptTemplates: false }],
+  ["busy with interrupt", false, "interrupt", { deliverAs: "steer", expandPromptTemplates: false }],
+  ["busy with wait", false, "wait", { deliverAs: "followUp", expandPromptTemplates: false }],
+] as const)
+  test(`a sent message while ${label} is delivered as ${JSON.stringify(expected)}`, async () => {
+    const h = await harness({ config: baseConfig({ sendWhenBusy }) });
+    audio(await startRecording(h));
+    await sendAs(h, idle);
+    assert.equal(h.sent.length, 1);
+    assert.deepEqual(h.sent[0]!.options, expected);
+  });
+
+test("sendWhenBusy is read when the message is sent, not when the recording starts", async () => {
+  const h = await harness();
+  audio(await startRecording(h));
+  await h.writeConfig(baseConfig({ sendWhenBusy: "wait" }));
+  await sendAs(h, false);
+  assert.deepEqual(h.sent[0]!.options, { deliverAs: "followUp", expandPromptTemplates: false });
+});
+
+test("a recording held at the time cap is sent or only transcribed by the control that releases it", async () => {
+  for (const [stop, sends] of [["pressShortcut", true], ["pressTranscribeShortcut", false], ["send", true], ["talk", false]] as const) {
+    const h = await harness({ config: baseConfig({ maxSeconds: 1 }) });
+    h.editor.text = "Draft";
+    audio(await startRecording(h), 40000);
+    await h.until(() => mixed(h.talkStatuses).includes("limit reached"));
+    await stopWith(h, stop);
+    await h.until(() => h.talkStatuses.at(-1) === undefined && h.fetchCalls.length === 1);
+    assert.equal(h.sent.length, sends ? 1 : 0, stop);
+    assert.equal(h.editor.text, sends ? "" : "Draft xin chào", stop);
+  }
+});
+
+test("a slash command in the composer is sent as plain text with template expansion off", async () => {
+  const h = await harness();
+  h.editor.text = "/compact";
+  audio(await startRecording(h));
+  await stopAndSettle(h, "pressShortcut");
+  assert.equal(h.sent[0]!.text, "/compact xin chào");
+  assert.equal((h.sent[0]!.options as { expandPromptTemplates: boolean }).expandPromptTemplates, false);
+  assert.equal(h.fetchCalls.length, 1);
+});
+
+test("an empty transcript in send mode sends nothing and leaves the composer unchanged", async () => {
+  const h = await harness();
+  respond(h, "");
+  h.editor.text = "keep me";
+  audio(await startRecording(h));
+  await stopAndSettle(h, "pressShortcut");
+  assert.equal(h.sent.length, 0);
+  assert.equal(h.editor.text, "keep me");
+  assert.match(h.messages(), /Nothing was recognized/);
+});
+
+test("a failed transcription in send mode sends nothing", async () => {
+  const h = await harness();
+  h.setFetch(async () => json({ detail: "bad" }, 401));
+  audio(await startRecording(h));
+  await stopAndSettle(h, "pressShortcut");
+  assert.equal(h.sent.length, 0);
+  assert.match(h.messages(), /Deepgram rejected the API key/);
+});
+
+test("when the send call throws the draft and transcript stay in the composer and the error is shown", async () => {
+  const h = await harness({ sendThrows: "agent unavailable" });
+  h.editor.text = "Draft";
+  audio(await startRecording(h));
+  await stopAndSettle(h, "pressShortcut");
+  assert.equal(h.sent.length, 1);
+  assert.equal(h.editor.text, "Draft xin chào");
+  assert.match(h.notices.at(-1)!.message, /Not sent: agent unavailable\. The draft and transcript are still in the composer/);
+  assert.equal(h.notices.at(-1)!.level, "error");
+});
+
+test("a refusal the host reports after the send call returned is not seen by the extension: the composer is already cleared", async () => {
+  const h = await harness({ sendFailure: "no API key for the selected provider" });
+  h.editor.text = "Draft";
+  audio(await startRecording(h));
+  await stopAndSettle(h, "pressShortcut");
+  assert.equal(h.sent.length, 1);
+  assert.equal(h.editor.text, "");
+  assert.deepEqual(h.hostErrors, ["no API key for the selected provider"]);
+  assert.equal(h.notices.length, 0, "Pi, not this extension, shows that error");
+});
+
+for (const sendWhenBusy of ["interrupt", "wait"] as const)
+  test(`a send during compaction with sendWhenBusy ${sendWhenBusy} sends nothing, keeps the draft and transcript, and says to press Enter`, async () => {
+    const h = await harness({ config: baseConfig({ sendWhenBusy }) });
+    h.editor.text = "Draft";
+    audio(await startRecording(h));
+    assert.equal(h.events.get("session_before_compact")!() as unknown, undefined, "compaction is never cancelled or changed");
+    await sendAs(h, false);
+    assert.equal(h.sent.length, 0);
+    assert.equal(h.editor.text, "Draft xin chào");
+    assert.equal(h.talkStatuses.at(-1), undefined);
+    assert.match(h.notices.at(-1)!.message, /added to the composer but not sent: Pi is compacting the conversation\. Press Enter to queue the message/);
+  });
+
+for (const end of ["session_compact", "session_compact_failed"])
+  test(`${end} ends the compaction block, so the next send goes out`, async () => {
+    const h = await harness();
+    h.events.get("session_before_compact")!();
+    h.events.get(end)!();
+    audio(await startRecording(h));
+    await sendAs(h, true);
+    assert.equal(h.sent.length, 1);
+    assert.equal(h.editor.text, "");
+  });
+
+test("a send with no model selected sends nothing, keeps the draft and transcript, and says why", async () => {
+  const h = await harness();
+  h.editor.text = "Draft";
+  audio(await startRecording(h));
+  await sendAs(h, true, { noModel: true });
+  assert.equal(h.sent.length, 0);
+  assert.equal(h.editor.text, "Draft xin chào");
+  assert.equal(h.talkStatuses.at(-1), undefined);
+  assert.match(h.notices.at(-1)!.message, /added to the composer but not sent: no model is selected/);
+});
+
+test("the status lines name the shortcuts registered at load, not the file as edited since", async () => {
+  const h = await harness({ config: baseConfig({ maxSeconds: 1, shortcut: "ctrl+alt+m", transcribeShortcut: "ctrl+alt+n" }) });
+  audio(await startRecording(h), 40000);
+  await h.until(() => mixed(h.talkStatuses).includes("limit reached"));
+  const lines = mixed(h.talkStatuses);
+  assert.match(lines, /Recording 0:00 .* alt\+t stop and send · alt\+shift\+t stop, transcribe only/);
+  assert.match(lines, /not sent — alt\+t send · alt\+shift\+t transcribe only/);
+  assert.doesNotMatch(lines, /ctrl\+alt/);
+});
+
+test("if the configuration cannot be read at send time the transcript is added but not sent", async () => {
+  const h = await harness();
+  audio(await startRecording(h));
+  await h.writeConfig({ input: { shortcut: "alt+t", transcribeShortcut: "alt+t" } });
+  await stopAndSettle(h, "pressShortcut");
+  assert.equal(h.sent.length, 0);
+  assert.equal(h.editor.text, "xin chào");
+  assert.match(h.notices.at(-1)!.message, /added to the composer but not sent: input\.shortcut and input\.transcribeShortcut must be different/);
+});
+
+test("equal shortcuts are a configuration error: nothing records and the error names both settings", async () => {
+  const h = await harness({ config: baseConfig({ shortcut: "alt+x", transcribeShortcut: "ALT+X" }) });
+  await h.pressShortcut();
+  await h.pressTranscribeShortcut();
+  assert.equal(h.notices.length, 2);
+  assert.ok(h.notices.every((n) => /input\.shortcut and input\.transcribeShortcut must be different/.test(n.message)));
+  assert.equal(h.recorderChildren().length, 0);
 });

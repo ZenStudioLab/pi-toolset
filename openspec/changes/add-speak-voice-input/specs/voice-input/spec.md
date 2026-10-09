@@ -22,7 +22,7 @@ The extension SHALL open the microphone only when the user presses a push-to-tal
 
 ### Requirement: Talk command contract
 
-The extension SHALL register a `/talk` command with these forms: no argument (start recording; or stop and transcribe only; or transcribe only a recording held at the time cap), `send` (start recording; or stop, transcribe, and send; or transcribe and send a held recording), `help` (show the combined help), `provider` (report the effective input provider and whether it is a session override), `provider <name>` (select `deepgram` or `elevenlabs` for this session), and `provider reset` (return to the configured provider). An unknown argument or provider name SHALL display the combined help, change nothing, and make no request.
+The extension SHALL register a `/talk` command with these forms: no argument (start recording; or stop and transcribe only; or transcribe only a recording held at the time cap), `send` (start recording; or stop, transcribe, and send; or transcribe and send a held recording), `help` or `?` (show the combined help), `provider` (report the effective input provider and whether it is a session override), `provider <name>` (select `deepgram` or `elevenlabs` for this session), and `provider reset` (return to the configured provider). An unknown argument or provider name SHALL display the combined help, change nothing, and make no request.
 
 The extension SHALL register two push-to-talk shortcuts when it loads: the send shortcut from `input.shortcut` (default `alt+t`), equivalent to `/talk send`, and the transcribe-only shortcut from `input.transcribeShortcut` (default `alt+shift+t`), equivalent to `/talk`. The two values SHALL differ; equal values SHALL be a configuration error. A changed shortcut takes effect after a reload. If the configuration cannot be read at load, both defaults SHALL be registered and the error reported on first use.
 
@@ -134,7 +134,7 @@ The extension SHALL capture 16 kHz mono 16-bit audio from the first available re
 
 ### Requirement: Transcript delivery
 
-A non-empty transcript SHALL be appended to the composer's current text, separated by one space when the existing text is non-empty and does not end with whitespace. In transcribe-only mode the extension SHALL NOT submit the composer. In send mode it SHALL then send the whole composer text as one user message, as if the user had pressed Enter, and clear the composer. The sent text SHALL be plain: slash commands, prompt templates, and skill commands in it SHALL NOT be run. If the send fails, the composer SHALL keep the draft plus transcript and the error SHALL be shown. When the agent is working, `input.sendWhenBusy` SHALL decide the delivery: `interrupt` (default) delivers the message to the running turn at once, and `wait` queues it until the turn ends. The extension SHALL NOT replace the composer's text or send the transcript anywhere else. An empty transcript SHALL leave the composer unchanged, send nothing, and show a message. A transcript that arrives after its recording was cancelled, or after the session was replaced, SHALL be dropped without changing the composer or sending anything.
+A non-empty transcript SHALL be appended to the composer's current text, separated by one space when the existing text is non-empty and does not end with whitespace. In transcribe-only mode the extension SHALL NOT submit the composer. In send mode it SHALL then send the whole composer text as one user message, as if the user had pressed Enter, and clear the composer. The sent text SHALL be plain: slash commands, prompt templates, and skill commands in it SHALL NOT be run. When the extension can tell before sending that Pi would refuse the message (no model selected, or the conversation is being compacted), it SHALL NOT send, the composer SHALL keep the draft plus transcript, and a message SHALL say why. If the send call itself fails, the composer SHALL keep the draft plus transcript and the error SHALL be shown. A refusal Pi reports only after accepting the message is shown by Pi; the composer has then already been cleared. When the agent is working, `input.sendWhenBusy` SHALL decide the delivery: `interrupt` (default) delivers the message to the running turn at once, and `wait` queues it until the turn ends. The extension SHALL NOT replace the composer's text or send the transcript anywhere else. An empty transcript SHALL leave the composer unchanged, send nothing, and show a message. A transcript that arrives after its recording was cancelled, or after the session was replaced, SHALL be dropped without changing the composer or sending anything.
 
 #### Scenario: Append to a half-written prompt
 
@@ -150,6 +150,11 @@ A non-empty transcript SHALL be appended to the composer's current text, separat
 
 - **WHEN** the agent is working and the user sends a recording with `input.sendWhenBusy` omitted, then again with it set to `wait`
 - **THEN** the first message is delivered to the running turn at once, and the second is queued until the turn ends
+
+#### Scenario: Send during compaction
+
+- **WHEN** Pi is compacting the conversation and the user stops a recording with the send shortcut
+- **THEN** nothing is sent, the composer keeps the draft plus transcript, and the message tells the user to press Enter to queue it
 
 #### Scenario: Slash command in a sent transcript
 

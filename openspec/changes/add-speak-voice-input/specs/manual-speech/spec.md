@@ -42,7 +42,7 @@ When Deepgram is the speech provider, on a cache miss the extension SHALL send o
 
 ### Requirement: Combined help for speak and voice input
 
-`/speak help` and `/talk help` SHALL show the same help: every `/speak` and `/talk` form, the two registered push-to-talk shortcuts and which one sends, what Escape does while a recording is starting, in progress, or held, and the effective speech locale (the session override when set, otherwise the configured value). Help SHALL read the configuration only from the local file, SHALL make no provider or model request, and SHALL work in every Pi run mode. If the configuration cannot be read, help SHALL show the default shortcuts and say the configuration has an error. An unknown `/speak` or `/talk` argument SHALL show this help.
+`/speak help`, `/speak ?`, `/talk help`, and `/talk ?` SHALL show the same help: every `/speak` and `/talk` form, the two push-to-talk shortcuts registered at load and which one sends, what Escape does while a recording is starting, in progress, or held, and the effective speech locale (the session override when set, otherwise the configured value). Help SHALL read the configuration only from the local file, SHALL make no provider or model request, and SHALL work in every Pi run mode. If the configuration cannot be read, help SHALL still name the registered shortcuts and say the configuration has an error. An unknown `/speak` or `/talk` argument SHALL show this help.
 
 #### Scenario: Help names the real shortcuts and locale
 
@@ -54,11 +54,16 @@ When Deepgram is the speech provider, on a cache miss the extension SHALL send o
 - **WHEN** the user runs `/talk help` and then `/speak help`
 - **THEN** both show the same text, listing both commands' forms
 
+#### Scenario: Question mark is help
+
+- **WHEN** the user runs `/speak ?` or `/talk ?`
+- **THEN** the combined help is shown, nothing is spoken or recorded, and no request is made
+
 ## MODIFIED Requirements
 
 ### Requirement: Command contract
 
-The extension SHALL register one `/speak` command with these subcommands: no argument (speak the latest eligible answer in the effective locale), `original` (speak that answer without translation), `in <tag>` (speak that answer in the given locale, for this command only), `text <text>`, `stop`, `replay`, `status`, `quota` (read-only account lookup, not speech), `provider` with an optional `elevenlabs`, `deepgram`, or `reset` argument (session provider selection, not speech), `locale` with an optional tag or `reset` (session locale selection, not speech), and `help` (the combined help, not speech). Everything after `text` SHALL be treated as data, not as command syntax or shell input. An unknown subcommand SHALL display the combined help without any provider request.
+The extension SHALL register one `/speak` command with these subcommands: no argument (speak the latest eligible answer in the effective locale), `original` (speak that answer without translation), `in <tag>` (speak that answer in the given locale, for this command only), `text <text>`, `stop`, `replay`, `status`, `quota` (read-only account lookup, not speech), `provider` with an optional `elevenlabs`, `deepgram`, or `reset` argument (session provider selection, not speech), `locale` with an optional tag or `reset` (session locale selection, not speech), and `help` or `?` (the combined help, not speech). Everything after `text` SHALL be treated as data, not as command syntax or shell input. An unknown subcommand SHALL display the combined help without any provider request.
 
 #### Scenario: Unknown subcommand
 

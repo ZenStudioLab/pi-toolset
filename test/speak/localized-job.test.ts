@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import {
   VALID_CONFIG,
@@ -305,4 +307,59 @@ test("translation snapshots config; cached translation can survive TTS failure a
     "cached validation made no inference request",
   );
   assert.equal(h.entries[0].data.billingUncertain, false);
+});
+
+test("a one-command tag beats the session locale, which beats the configuration, and each has its own caches", async () => {
+  const { h, f, ctx } = await setup();
+  const path = join(h.dir, "config", "pi-speak", "config.json");
+  const before = await readFile(path, "utf8");
+  const speakAndFinish = async (args: string) => {
+    const wanted = h.children.length + 1;
+    await h.run(args, ctx);
+    await h.until(() => h.children.length === wanted);
+    await finish(h);
+  };
+  await h.run("locale en");
+  await speakAndFinish("");
+  assert.match(f.calls[0].context.systemPrompt!, /locale en/);
+  assert.equal(h.fetchCalls.length, 1);
+  await speakAndFinish("in ja");
+  assert.match(f.calls[1].context.systemPrompt!, /locale ja/);
+  assert.equal(h.fetchCalls.length, 2, "the audio key differs per locale");
+  await speakAndFinish("");
+  assert.equal(f.calls.length, 2, "the one-command tag did not change the session locale; its translation is cached");
+  assert.equal(h.fetchCalls.length, 2, "and so is its audio");
+  await h.run("locale reset");
+  await speakAndFinish("");
+  assert.match(f.calls[2].context.systemPrompt!, /locale vi/);
+  assert.equal(await readFile(path, "utf8"), before);
+
+  const restarted = await setup();
+  await restarted.h.run("", restarted.ctx);
+  await restarted.h.until(() => restarted.f.calls.length === 1);
+  assert.match(restarted.f.calls[0].context.systemPrompt!, /locale vi/, "a restart returns to the configured locale");
+});
+
+test("the locale is fixed when the job starts, so a later change affects only the next job", async () => {
+  const { h, f, ctx } = await setup();
+  let release!: () => void;
+  f.setResult(
+    () =>
+      new Promise((resolve) => {
+        release = () => resolve(translatedMessage("valid translation"));
+      }),
+  );
+  await h.run("locale en");
+  await h.run("", ctx);
+  await h.until(() => f.calls.length === 1);
+  await h.run("locale ja");
+  release();
+  await h.until(() => h.children.length === 1);
+  await finish(h);
+  assert.match(f.calls[0].context.systemPrompt!, /locale en/);
+  await h.run("locale en");
+  await h.run("", ctx);
+  await h.until(() => h.children.length === 2);
+  await finish(h);
+  assert.equal(h.fetchCalls.length, 1, "the first job stored its audio under en");
 });

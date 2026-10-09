@@ -390,6 +390,32 @@ test("a Deepgram speech override refuses before translation or TTS and affects n
   assert.deepEqual(await h.cacheFiles(), []);
 });
 
+test("a session or one-command locale is checked against a Deepgram voice before any translation", async () => {
+  const h = await harness({
+    config: { ...deepgramSpeechConfig, provider: "deepgram", locale: "en" },
+    deepgramKey: "deepgram-test-key",
+  });
+  const translation = translationFixture();
+  const ctx = { messages: answer("Hello from the session locale."), registry: translation.registry };
+  await h.run("locale vi");
+  await h.run("", ctx);
+  await h.controller.whenIdle();
+  assert.match(h.notices.at(-1)!.message, /voice language en does not match locale vi/);
+  await h.run("locale reset");
+  await h.run("in vi", ctx);
+  await h.controller.whenIdle();
+  assert.match(h.notices.at(-1)!.message, /voice language en does not match locale vi/);
+  assert.equal(translation.lookups.length, 0, "refused before translation setup");
+  assert.equal(translation.calls.length, 0);
+  assert.equal(h.fetchCalls.length, 0);
+  assert.equal(h.spawnCalls.length, 0);
+  assert.deepEqual(await h.cacheFiles(), []);
+  await h.run("locale vi");
+  await h.run("original", ctx);
+  await h.until(() => h.children.length === 1);
+  assert.equal(h.fetchCalls.length, 1, "original speech is not language-checked");
+});
+
 test("a provider override changed during config loading affects only the next speech invocation", async () => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {

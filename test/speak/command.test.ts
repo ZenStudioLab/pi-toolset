@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { SPEAK_USAGE, TALK_USAGE } from "../../extensions/speak/index.ts";
 import { VALID_CONFIG, answer, createHarness } from "./harness.ts";
 import {
   TRANSLATION_CONFIG,
@@ -141,20 +140,94 @@ for (const mode of ["", "original"])
     );
   });
 
-test("an unknown subcommand and an empty text command show usage and do nothing else", async () => {
+test("an unknown subcommand and an empty text command show the combined help and do nothing else", async () => {
   const h = await harness();
+  await h.run("help");
+  const help = h.notices[0]!.message;
   for (const args of [
     "frobnicate",
     "textual",
     "text",
     "text   \n\t ",
     "text \u001b[0m",
+    "in",
+    "in ja original",
+    "locale en ja",
+    "provider deepgram extra",
   ])
     await h.run(args);
-  assert.equal(h.notices.length, 5);
-  assert.ok(h.notices.every((notice) => notice.message === SPEAK_USAGE));
+  assert.equal(h.notices.length, 10);
+  assert.ok(h.notices.every((notice) => notice.message === help));
   quiet(h);
 });
+
+test("/speak help and /talk help, and their ? short form, show the same text with every form, both keys, Escape, and the locale", async () => {
+  const h = await harness({
+    config: { ...VALID_CONFIG, locale: "ja" },
+    shortcuts: { send: "alt+t", transcribe: "ctrl+alt+t" },
+  });
+  for (const word of ["help", "?"]) {
+    await h.run(word);
+    await h.runTalk(word);
+  }
+  const [speakHelp, ...others] = h.notices.map((notice) => notice.message);
+  assert.equal(others.length, 3);
+  for (const other of others) assert.equal(other, speakHelp);
+  for (const form of [
+    "/speak ", "/speak original", "/speak in <tag>", "/speak text <text>", "/speak stop",
+    "/speak replay", "/speak status", "/speak quota", "/speak provider [elevenlabs|deepgram|reset]",
+    "/speak locale [<tag>|reset]", "/speak help | ?", "/talk ", "/talk send",
+    "/talk provider [deepgram|elevenlabs|reset]", "/talk help | ?",
+  ])
+    assert.ok(speakHelp!.includes(form), form);
+  assert.match(speakHelp!, /alt\+t sends: .*same as \/talk send/);
+  assert.match(speakHelp!, /ctrl\+alt\+t transcribes only: .*same as \/talk\)/);
+  assert.match(speakHelp!, /Escape: while a recording is starting it cancels .* recording or held .* discards/);
+  assert.match(speakHelp!, /Speech locale: ja \(configured\)/);
+  assert.doesNotMatch(speakHelp!, /default vi/);
+  quiet(h);
+});
+
+test("help works in every run mode and shows the session locale over the configured one", async () => {
+  const h = await harness();
+  await h.run("locale en-us");
+  for (const mode of ["rpc", "json", "print"])
+    for (const word of ["help", "?"]) {
+      await h.run(word, { mode });
+      assert.match(h.notices.at(-1)!.message, /Speech locale: en-US \(session override\)/);
+      await h.runTalk(word, { mode });
+      assert.match(h.notices.at(-1)!.message, /Speech locale: en-US \(session override\)/);
+    }
+  quiet(h);
+});
+
+test("help names the shortcuts registered at load, not a file edited since", async () => {
+  const h = await harness({
+    config: { ...VALID_CONFIG, input: { shortcut: "ctrl+alt+m", transcribeShortcut: "ctrl+alt+n" } },
+  });
+  await h.run("help");
+  const text = h.notices.at(-1)!.message;
+  assert.match(text, /alt\+t sends:/);
+  assert.match(text, /alt\+shift\+t transcribes only:/);
+  assert.doesNotMatch(text, /ctrl\+alt/);
+  assert.doesNotMatch(text, /configuration has an error/);
+  quiet(h);
+});
+
+for (const [name, config] of [
+  ["a shortcut conflict", { ...VALID_CONFIG, locale: "ja", input: { shortcut: "alt+x", transcribeShortcut: "alt+x" } }],
+  ["no configuration file", null],
+] as const)
+  test(`help with ${name} still shows the registered keys, says the configuration has an error, and makes no request`, async () => {
+    const h = await harness({ config, shortcuts: { send: "ctrl+alt+m", transcribe: "ctrl+alt+n" } });
+    await h.run("help");
+    const text = h.notices.at(-1)!.message;
+    assert.match(text, /ctrl\+alt\+m sends:/);
+    assert.match(text, /ctrl\+alt\+n transcribes only:/);
+    assert.match(text, /The configuration has an error \(.+\); the shortcuts shown are the ones registered at load\./);
+    assert.match(text, /Speech locale: unknown/);
+    quiet(h);
+  });
 
 test("summary and cache-clear are unavailable in this version and change nothing", async () => {
   const h = await harness();
@@ -386,11 +459,11 @@ test("unknown provider names show usage and preserve the override", async () => 
   const h = await harness();
   await h.run("provider deepgram");
   await h.run("provider openai");
-  assert.match(h.notices.at(-1)!.message, /Usage: \/speak provider/);
+  assert.match(h.notices.at(-1)!.message, /^Speak and voice input/);
   await h.run("provider");
   assert.match(h.notices.at(-1)!.message, /deepgram \(session override\)/);
   await h.runTalk("provider whisper");
-  assert.equal(h.notices.at(-1)!.message, TALK_USAGE);
+  assert.match(h.notices.at(-1)!.message, /^Speak and voice input/);
   await h.runTalk("provider");
   assert.match(h.notices.at(-1)!.message, /input provider: deepgram/);
   assert.equal(h.fetchCalls.length, 0);
@@ -422,4 +495,55 @@ test("status reports both key presences and marks the speech override without va
   assert.doesNotMatch(text, /^model:.*nova-3$/m);
   assert.doesNotMatch(text, /test-secret-key|deepgram-secret-value/);
   assert.equal(h.fetchCalls.length, 0);
+});
+
+test("the session locale is reported, set canonically, reset, and survives session cleanup, with no request", async () => {
+  const h = await harness({ config: { ...VALID_CONFIG, locale: "vi" } });
+  await h.run("locale");
+  assert.equal(h.notices.at(-1)!.message, "speech locale: vi");
+  await h.run("locale EN-us");
+  assert.equal(h.notices.at(-1)!.message, "speech locale: en-US (session override)");
+  for (const event of ["session_before_switch", "session_before_fork", "session_tree", "session_shutdown"]) {
+    h.events.get(event)!();
+    await h.run("locale");
+    assert.equal(h.notices.at(-1)!.message, "speech locale: en-US (session override)");
+  }
+  await h.run("status");
+  assert.match(h.notices.at(-1)!.message, /^locale: en-US \(session override\)$/m);
+  await h.run("locale reset");
+  assert.equal(h.notices.at(-1)!.message, "speech locale: vi");
+  await h.run("status");
+  assert.match(h.notices.at(-1)!.message, /^locale: vi$/m);
+  quiet(h);
+});
+
+test("a malformed session locale changes nothing and names the tag", async () => {
+  const h = await harness();
+  await h.run("locale ja");
+  await h.run("locale not_a_tag");
+  assert.match(h.notices.at(-1)!.message, /"not_a_tag" is not a valid BCP-47 language tag/);
+  await h.run("locale");
+  assert.equal(h.notices.at(-1)!.message, "speech locale: ja (session override)");
+  quiet(h);
+});
+
+test("/speak in with a malformed tag names it and makes no translation or speech request", async () => {
+  const h = await harness({ config: { ...VALID_CONFIG, translation: TRANSLATION_CONFIG } });
+  const translation = translationFixture();
+  await h.run("in not_a_tag", { messages: answer("Hello"), registry: translation.registry });
+  assert.equal(h.notices.length, 1);
+  assert.match(h.notices[0]!.message, /"not_a_tag" is not a valid BCP-47 language tag/);
+  assert.equal(translation.lookups.length, 0);
+  assert.equal(translation.calls.length, 0);
+  await h.run("locale");
+  assert.equal(h.notices.at(-1)!.message, "speech locale: vi");
+  quiet(h);
+});
+
+test("the session locale is kept when the configuration cannot be read, and the error is reported otherwise", async () => {
+  const h = await harness({ config: null });
+  await h.run("locale");
+  assert.match(h.notices.at(-1)!.message, /^not configured: no configuration file/);
+  await h.run("locale en");
+  assert.equal(h.notices.at(-1)!.message, "speech locale: en (session override)");
 });

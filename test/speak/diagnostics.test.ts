@@ -133,10 +133,13 @@ test("unknown exception does not guess a cause or persist arbitrary error proper
   assert.equal(h.entries[0].data.stage, "request");
   assert.equal(h.entries[0].data.blocks, undefined);
   assert.match(h.messages(), /cause unknown/);
-  assert.doesNotMatch(
-    h.messages() + JSON.stringify(h.entries),
-    /401|offline|Authorization|private|payload|source/,
-  );
+  // The random diagnostic ID and the clock values can contain "401" by chance, so they are not matched.
+  const stable =
+    h.messages().replace(/\[diagnostic [0-9a-f-]+\]/g, "") +
+    JSON.stringify(h.entries, (key, value) =>
+      ["diagnosticId", "timestamp", "elapsedMs"].includes(key) ? undefined : value,
+    );
+  assert.doesNotMatch(stable, /401|offline|Authorization|private|payload|source/);
   assert.equal(h.fetchCalls.length, 0);
 });
 

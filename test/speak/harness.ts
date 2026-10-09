@@ -16,6 +16,7 @@ import {
   type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import type { SpawnFn } from "../../extensions/speak/audio.ts";
+import type { Shortcuts } from "../../extensions/speak/config.ts";
 import { registerSpeak } from "../../extensions/speak/index.ts";
 import { SpeechController } from "../../extensions/speak/speech-job.ts";
 import { TalkController } from "../../extensions/speak/talk.ts";
@@ -82,6 +83,8 @@ export interface CtxOptions {
     "getHeader" | "getBranch"
   >;
   registry?: TranslationRegistry;
+  /** Leaves `ctx.model` undefined, as when no model is selected. */
+  noModel?: boolean;
 }
 
 type Handler = (args: string, ctx: ExtensionCommandContext) => Promise<void>;
@@ -97,6 +100,15 @@ export async function createHarness(
     entryFailure?: boolean;
     widgetFailure?: boolean;
     entrySink?: (customType: string, data: TranslationFailureRecord) => void;
+    /**
+     * Makes the fake `pi.sendUserMessage` fail as the host does: it returns normally and the failure
+     * is only reported later, to `hostErrors`.
+     */
+    sendFailure?: string;
+    /** Makes the fake `pi.sendUserMessage` throw this message synchronously. */
+    sendThrows?: string;
+    /** The keys registered at load; the default is the built-in pair. */
+    shortcuts?: Shortcuts;
   } = {},
 ) {
   const dir = await mkdtemp(join(tmpdir(), "speak-harness-"));
@@ -159,10 +171,26 @@ export async function createHarness(
     now: Date.now,
     readFile: options.readFile ?? ((path: string) => readFile(path, "utf8")),
   };
-  const controller = new SpeechController(deps);
+  const registered = options.shortcuts ?? { send: "alt+t", transcribe: "alt+shift+t" };
+  const controller = new SpeechController(deps, registered);
   // A manual clock keeps the 0.5 s minimum and the elapsed time exact.
   let clock = 1_000_000;
-  const talk = new TalkController({ ...deps, now: () => clock }, controller);
+  const editor = { text: "" };
+  /** Messages passed to `pi.sendUserMessage`, with the composer text seen at the moment of the call. */
+  const sent: { text: string; options: unknown; composerAtCall: string }[] = [];
+  /** Failures the host reports after `pi.sendUserMessage` has already returned (`runner.emitError`). */
+  const hostErrors: string[] = [];
+  const talk = new TalkController(
+    { ...deps, now: () => clock },
+    controller,
+    (text, sendOptions) => {
+      if (sendOptions.expandPromptTemplates !== false) throw new Error("templates must not be expanded");
+      sent.push({ text, options: sendOptions, composerAtCall: editor.text });
+      if (options.sendThrows) throw new Error(options.sendThrows);
+      if (options.sendFailure) hostErrors.push(options.sendFailure);
+    },
+    registered,
+  );
   const commands = new Map<string, Handler>();
   const shortcuts = new Map<string, (ctx: ExtensionCommandContext) => Promise<void>>();
   const events = new Map<string, () => void>();
@@ -193,12 +221,11 @@ export async function createHarness(
     },
   } as unknown as ExtensionAPI;
   let submitted = 0;
-  registerSpeak(api, controller, talk);
+  registerSpeak(api, controller, talk, registered);
 
   const notices: { message: string; level?: string }[] = [];
   const statuses: (string | undefined)[] = [];
   const talkStatuses: (string | undefined)[] = [];
-  const editor = { text: "" };
   const keyListeners = new Set<(data: string) => { consume?: boolean } | undefined>();
   const widgets: { key: string; content: string[] | undefined }[] = [];
   let aborts = 0;
@@ -241,6 +268,7 @@ export async function createHarness(
     return {
       mode: ctxOptions.mode ?? "tui",
       cwd,
+      model: ctxOptions.noModel ? undefined : { id: "test-model" },
       modelRegistry: ctxOptions.registry,
       ui: {
         notify: (message: string, level?: string) => notices.push({ message, level }),
@@ -256,7 +284,7 @@ export async function createHarness(
           return () => keyListeners.delete(listener);
         },
       },
-      isIdle: () => true,
+      isIdle: () => ctxOptions.idle ?? true,
       hasPendingMessages: () => false,
       sessionManager: SessionManager.inMemory(cwd),
       abort: () => aborts++,
@@ -267,9 +295,14 @@ export async function createHarness(
     await commands.get("talk")!(args, talkContext(ctxOptions));
   }
 
-  /** Presses the registered push-to-talk shortcut. */
+  /** Presses the registered send shortcut (`alt+t` unless `shortcuts` was given). */
   async function pressShortcut(ctxOptions: CtxOptions = {}) {
-    await shortcuts.get("alt+t")!(talkContext(ctxOptions));
+    await shortcuts.get(registered.send)!(talkContext(ctxOptions));
+  }
+
+  /** Presses the registered transcribe-only shortcut (`alt+shift+t` unless `shortcuts` was given). */
+  async function pressTranscribeShortcut(ctxOptions: CtxOptions = {}) {
+    await shortcuts.get(registered.transcribe)!(talkContext(ctxOptions));
   }
 
   /** Sends a key to the terminal-input listeners; true when one consumed it (the editor never sees it). */
@@ -295,13 +328,16 @@ export async function createHarness(
     run,
     runTalk,
     pressShortcut,
+    pressTranscribeShortcut,
     sendKey,
+    sent,
+    hostErrors,
     talkStatuses,
     editor,
     keyListeners,
     shortcuts,
     get submitted() {
-      return submitted;
+      return submitted + sent.length;
     },
     advance(ms: number) {
       clock += ms;
