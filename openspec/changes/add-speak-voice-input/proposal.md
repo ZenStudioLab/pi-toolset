@@ -28,7 +28,13 @@ The user asked to end a dictation by voice (ADR-0006):
 
 - **A spoken stop phrase, off by default.** With `input.stopOnPhrase` on, every recording streams to ElevenLabs live transcription while the user speaks. When a stretch of speech settles after a pause and ends with a phrase from `input.stopPhrases` (default `["let's go"]`), the recording stops, the phrase is removed, and the rest is sent as with the send key. Keys and Escape still work. Deepgram live streaming is not included.
 
-Out of scope: speaking answers automatically, dictation modes that send without a key press or the configured stop phrase, other voice triggers such as "interrupt", spoken slash commands, silence-based auto-stop without the phrase, streaming transcription to Deepgram, any provider other than Deepgram and ElevenLabs, and keys stored in files.
+### Amendment (2026-10-09, Wave 8)
+
+The user asked to reach Pi's commands and skills by voice (ADR-0007):
+
+- **Command and skill keys.** `alt+m` (`input.commandShortcut`) and `alt+i` (`input.skillShortcut`) record like the other keys. At the stop, the words are matched against Pi's commands and prompt templates, or against its skills, and the result, such as `/opsx-apply-loop` or `/skill:review-convergence` plus the spoken arguments, is put in the editor. Nothing runs until the user presses Enter. `input.commandAliases` maps spoken phrases to targets.
+
+Out of scope: speaking answers automatically, dictation modes that send without a key press or the configured stop phrase, other voice triggers such as "interrupt", running a spoken command without Enter, silence-based auto-stop without the phrase, streaming transcription to Deepgram, any provider other than Deepgram and ElevenLabs, and keys stored in files.
 
 ## Capabilities
 

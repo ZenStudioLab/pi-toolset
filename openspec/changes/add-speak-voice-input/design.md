@@ -141,7 +141,7 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 
 ### D14. Combined help
 
-`/speak help` and `/talk help`, and their short forms `/speak ?` and `/talk ?`, print the same text: every `/speak` and `/talk` form, every shortcut registered at load and which ones send, what Escape does while starting, recording, and held, and the effective speech locale (config value, or the session override when set). Help reads the config file on demand (a local read, no network) for the locale only; the shortcuts it names, like those in the recording status lines, are the ones registered at load, so an edited but not yet reloaded shortcut is never shown. If the file can't be read, help still names the registered shortcuts and says the configuration has an error. Unknown arguments still print this help. Help works in every run mode and makes no request.
+`/speak help` and `/talk help`, and their short forms `/speak ?` and `/talk ?`, print the same text: every `/speak` and `/talk` form, every shortcut registered at load and its mode, what Escape does while starting, recording, and held, and the effective speech locale (config value, or the session override when set). Help reads the config file on demand (a local read, no network) for the locale only; the shortcuts it names, like those in the recording status lines, are the ones registered at load, so an edited but not yet reloaded shortcut is never shown. If the file can't be read, help still names the registered shortcuts and says the configuration has an error. Unknown arguments still print this help. Help works in every run mode and makes no request.
 
 ### D15. Spoken stop phrase over ElevenLabs live transcription
 
@@ -165,6 +165,26 @@ A third closure field, `speechLocale`, joins the D7 overrides with the same life
 
 - **Alternative: local keyword spotting.** Rejected in ADR-0006 (native dependency, weak Vietnamese recognition of short phrases).
 - **Alternative: run the realtime API with `turn_prediction`.** It commits earlier, but only for models that predict turns, and the fixed 1-second pause is easier to reason about.
+
+### D16. Command and skill keys (Wave 8, ADR-0007)
+
+**Settings.** `input.commandShortcut` (default `alt+m`) and `input.skillShortcut` (default `alt+i`) follow D10: one key or a list of 1 to 4, read at load, and every key across all four shortcut settings is different, ignoring case. On a config error, the four defaults are registered. `/talk command` and `/talk skill` are the equivalent commands. `input.commandAliases` is an optional object of at most 50 entries, mapping a spoken phrase (1 to 40 characters after trimming) to a target: one line of 2 to 200 characters that starts with `/`. A target that starts with `/skill:` is a skill alias; any other target is a command alias. A target need not exist in Pi's list, so an alias can reach Pi's interactive commands, such as `/model`.
+
+**Modes.** D11 gains two stop modes, *command* and *skill*. A press that only starts a recording carries no decision, and a held recording is delivered in the mode of the control that releases it. A recording started with the command or skill key never streams, even with `input.stopOnPhrase` on. It is uploaded once at the stop, exactly as a transcribe-only recording, so it is also allowed while Deepgram is selected. A streamed recording stopped by the command or skill key is matched against its committed text.
+
+**Matching**, done at the stop in a pure function in a new module:
+
+- The candidates are read from `pi.getCommands()` at the stop. In command mode, they are the entries with source `extension` or `prompt`, plus the command aliases. In skill mode, they are the entries with source `skill`, matched without the `skill:` prefix, plus the skill aliases.
+- Words are compared in a collapsed form: lowercased (NFKC), keeping only letters and digits. For example, "Op SX apply-loop" and `opsx-apply-loop` both become `opsxapplyloop`.
+- The longest run of leading words (at most 8) whose collapsed form equals a candidate's collapsed name wins. At equal length, an alias beats a name. Two different names with the same collapsed form are ambiguous.
+- The words after the match are the arguments. Punctuation between the name and the arguments, and a final period, are dropped.
+
+**Delivery.** On a match, the editor text becomes `/<name>`, then the arguments, then the previous draft, joined by single spaces, with empty parts left out. Nothing is sent and no command runs; the user presses Enter. With no match or an ambiguous match, the transcript is appended as in transcribe-only mode, and a warning names the words, or the competing names. An empty transcript changes nothing. D4's rules for late transcripts and session changes apply unchanged.
+
+**Display.** The recording and held status lines, and help, name the command and skill keys. Help says that the result goes into the editor and that Pi's interactive commands need an alias.
+
+- **Alternative: run the match at once.** Rejected by the user; a misheard name would run.
+- **Alternative: fuzzy (edit-distance) matching.** Not chosen; it can pick a wrong command silently. Aliases cover names that transcription mishears.
 
 ## Verified Provider Facts
 
@@ -193,6 +213,7 @@ Checked for task 1.2 on 2026-10-08. None of the results changed a spec value.
 - **Key conflicts:** `alt+t` may be taken by the terminal or by Pi, and Escape is shared with the editor. → The shortcut is configurable and checked in 1.2. Escape is consumed only while a recording is starting, in progress, or held.
 - **`PULSE_SERVER` can point at a remote audio server.** → It is kept, because local audio needs it. The README says audio routing is the operator's setting.
 - **Breaking config change.** → It affects only the user's own local file. The loader names the new location for every old key, and task 4.2 migrates the file with the user's approval.
+- **A misheard command name** (ADR-0007). → The result goes into the editor and runs only on Enter. Matching never guesses between equal names, and aliases fix names that are hard to transcribe.
 - **Cost:** Deepgram and ElevenLabs bill per audio second. → The time cap (120 s by default, at most 300) bounds a recording's length, and a recording held at the cap is never sent without a press.
 
 ## Migration Plan

@@ -22,9 +22,9 @@ The extension SHALL open the microphone only when the user presses a push-to-tal
 
 ### Requirement: Talk command contract
 
-The extension SHALL register a `/talk` command with these forms: no argument (start recording; or stop and transcribe only; or transcribe only a recording held at the time cap), `send` (start recording; or stop, transcribe, and send; or transcribe and send a held recording), `help` or `?` (show the combined help), `provider` (report the effective input provider and whether it is a session override), `provider <name>` (select `deepgram` or `elevenlabs` for this session), and `provider reset` (return to the configured provider). An unknown argument or provider name SHALL display the combined help, change nothing, and make no request.
+The extension SHALL register a `/talk` command with these forms: no argument (start recording; or stop and transcribe only; or transcribe only a recording held at the time cap), `send` (start recording; or stop, transcribe, and send; or transcribe and send a held recording), `command` and `skill` (start recording; or stop, or release a held recording, in command or skill mode, as in "Voice command and skill keys"), `help` or `?` (show the combined help), `provider` (report the effective input provider and whether it is a session override), `provider <name>` (select `deepgram` or `elevenlabs` for this session), and `provider reset` (return to the configured provider). An unknown argument or provider name SHALL display the combined help, change nothing, and make no request.
 
-The extension SHALL register push-to-talk shortcuts when it loads: the send shortcuts from `input.shortcut` (default `alt+t`), each equivalent to `/talk send`, and the transcribe-only shortcuts from `input.transcribeShortcut` (default `alt+shift+t`), each equivalent to `/talk`. Each setting SHALL accept one key or a list of 1 to 4 keys. Every key across both settings SHALL be different, ignoring case; a repeated key SHALL be a configuration error. A changed shortcut takes effect after a reload. If the configuration cannot be read at load, or has such an error, only the two defaults SHALL be registered and the error reported on first use.
+The extension SHALL register push-to-talk shortcuts when it loads: the send shortcuts from `input.shortcut` (default `alt+t`), each equivalent to `/talk send`, the transcribe-only shortcuts from `input.transcribeShortcut` (default `alt+shift+t`), each equivalent to `/talk`, the command shortcuts from `input.commandShortcut` (default `alt+m`), each equivalent to `/talk command`, and the skill shortcuts from `input.skillShortcut` (default `alt+i`), each equivalent to `/talk skill`. Each setting SHALL accept one key or a list of 1 to 4 keys. Every key across all four settings SHALL be different, ignoring case; a repeated key SHALL be a configuration error. A changed shortcut takes effect after a reload. If the configuration cannot be read at load, or has such an error, only the four defaults SHALL be registered and the error reported on first use.
 
 #### Scenario: Unknown provider name
 
@@ -111,7 +111,7 @@ The first press of either shortcut, `/talk`, or `/talk send` SHALL start recordi
 
 ### Requirement: Recording indicator
 
-While recording, the extension SHALL show a status line stating that the microphone is recording, the elapsed time, a coarse input level, and the stop and discard keys. From the moment a recording reaches the time cap, including before the recorder has exited, and while it is held, it SHALL state that the limit was reached and show the send, transcribe-only, and discard keys. The recording line SHALL name both stop keys and which one sends. While transcribing, it SHALL state that transcription is in progress. The indicator SHALL be cleared when the transcript is delivered or sent, the recording is discarded, or an error is reported.
+While recording, the extension SHALL show a status line stating that the microphone is recording, the elapsed time, a coarse input level, and the stop and discard keys. From the moment a recording reaches the time cap, including before the recorder has exited, and while it is held, it SHALL state that the limit was reached and show the send, transcribe-only, and discard keys. The recording line SHALL name the stop keys of every mode and which ones send. While transcribing, it SHALL state that transcription is in progress. The indicator SHALL be cleared when the transcript is delivered or sent, the recording is discarded, or an error is reported.
 
 #### Scenario: Indicator follows the recording
 
@@ -226,7 +226,7 @@ Redirects SHALL be rejected. The request SHALL be bounded by the configured requ
 
 ### Requirement: Spoken stop phrase
 
-The configuration SHALL accept `input.stopOnPhrase` (boolean, default `false`) and `input.stopPhrases` (1 to 10 phrases, each 1 to 40 characters after trimming, default `["let's go"]`). An invalid value SHALL be a configuration error reported on use. When `input.stopOnPhrase` is on and the input provider fixed at recording start is ElevenLabs, the recording SHALL stream to `wss://api.elevenlabs.io/v1/speech-to-text/realtime` with model `scribe_v2_realtime`, 16 kHz PCM, pause-based commits after 1 second of silence, the key only in the `xi-api-key` header, and `language_code` set to the primary subtag of `input.language` when it is set. The recorder SHALL start only after the connection opens within the request deadline. When it is on and the input provider is Deepgram, a press SHALL report that the stop phrase needs ElevenLabs and SHALL record nothing.
+The configuration SHALL accept `input.stopOnPhrase` (boolean, default `false`) and `input.stopPhrases` (1 to 10 phrases, each 1 to 40 characters after trimming, default `["let's go"]`). An invalid value SHALL be a configuration error reported on use. When `input.stopOnPhrase` is on and the input provider fixed at recording start is ElevenLabs, a recording not started with the command or skill key SHALL stream to `wss://api.elevenlabs.io/v1/speech-to-text/realtime` with model `scribe_v2_realtime`, 16 kHz PCM, pause-based commits after 1 second of silence, the key only in the `xi-api-key` header, and `language_code` set to the primary subtag of `input.language` when it is set. The recorder SHALL start only after the connection opens within the request deadline. When it is on and the input provider is Deepgram, a press of any other control SHALL report that the stop phrase needs ElevenLabs and SHALL record nothing.
 
 After each committed segment, when the recording's committed text ends, as whole words and ignoring case, punctuation, and apostrophe style, with a configured stop phrase, the extension SHALL stop the recording, remove that phrase from the end, and deliver the remaining text in send mode. If nothing remains, nothing SHALL be sent. A key or command that stops a streamed recording SHALL request a final commit, wait up to the request deadline for it, and deliver the text in that control's mode without removing any phrase. If the provider answers the final commit by reporting that there is no further audio to commit, the text committed so far SHALL be delivered as final. Escape SHALL end the stream and send no message. At the time cap the text SHALL be held until the next press or command, as for an unstreamed recording. A provider error, an unexpected close, an unanswered final commit, or a recorder failure during a streamed recording SHALL end the recording with a sanitized message, append the text already committed to the composer without sending it, and SHALL NOT retry, reconnect, or fall back to the one-shot upload. Streamed audio SHALL NOT be uploaded a second time.
 
@@ -274,6 +274,45 @@ After each committed segment, when the recording's committed text ends, as whole
 
 - **WHEN** the user says only "let's go" and pauses
 - **THEN** the recording stops, nothing is sent, and the composer is unchanged
+
+### Requirement: Voice command and skill keys
+
+When the command or skill key, or `/talk command` or `/talk skill`, stops a recording or releases a held one, the extension SHALL transcribe it as in transcribe-only mode and then match the transcript at that moment. In command mode the candidates SHALL be Pi's extension commands and prompt templates from `pi.getCommands()` plus the command aliases from `input.commandAliases`; in skill mode, Pi's skills, without the `skill:` prefix, plus the skill aliases (targets starting with `/skill:`). Comparison SHALL ignore case and every character other than letters and digits. The longest run of leading words, at most 8, that equals a candidate SHALL win, and an alias SHALL beat a name of equal length. On a match, the editor text SHALL become `/<name>`, then the remaining words, then the previous draft, joined by single spaces. Nothing SHALL be sent, and no command SHALL run, until the user presses Enter. With no match, or with two different names equally matched, the transcript SHALL be appended as in transcribe-only mode, with a warning. A recording started with the command or skill key SHALL NOT stream, even with the stop phrase on. `input.commandAliases` SHALL hold at most 50 entries, each a phrase of 1 to 40 characters mapped to a one-line target of 2 to 200 characters starting with `/`; any other value SHALL be a configuration error.
+
+#### Scenario: Spoken command goes into the editor
+
+- **WHEN** the editor holds "fix the login bug", the user presses the command key, says "op sx apply loop, add speak voice input", and presses the command key again
+- **THEN** the editor holds `/opsx-apply-loop add speak voice input fix the login bug`, and nothing is sent or run
+
+#### Scenario: Spoken skill
+
+- **WHEN** the user records "review convergence" and stops with the skill key
+- **THEN** the editor holds `/skill:review-convergence`
+
+#### Scenario: Alias
+
+- **WHEN** `input.commandAliases` maps "model" to `/model`, and the user records "model" and stops with the command key
+- **THEN** the editor holds `/model`, although `/model` is not in Pi's command list
+
+#### Scenario: No match
+
+- **WHEN** the user records "order a pizza" and stops with the command key
+- **THEN** the words are appended as with the transcribe-only key, a warning says no command matched, and nothing runs
+
+#### Scenario: Ambiguous names
+
+- **WHEN** two different names have the same letters and digits, and the user says them
+- **THEN** the words are appended unchanged and a warning names both
+
+#### Scenario: Mode decided at the stop
+
+- **WHEN** the user starts with the send key and stops with the skill key
+- **THEN** the transcript is matched against skills and nothing is sent
+
+#### Scenario: Command key with the stop phrase on
+
+- **WHEN** `input.stopOnPhrase` is on, the input provider is Deepgram, and the user starts a recording with the command key
+- **THEN** the recording starts without streaming, and it is uploaded once at the stop
 
 ### Requirement: Voice input secret and privacy handling
 

@@ -186,3 +186,39 @@ Verification commands:
 - [x] 7.5 [User] Live checks: run task 6.6 (which carries 5.7), plus `alt+y` sends, `alt+shift+y` only transcribes, and the conflict notice at startup names only `alt+y`. Record what happened, and report anything not run as unverified.
   - **Result (2026-10-09):** the user approved the live checks of 5.7, 6.6 and 7.5 as a whole. They reported Deepgram speech working after a restart that loaded `DEEPGRAM_API_KEY`. A Vietnamese message dictated with the send key arrived correctly. The other items were not reported one by one; this record rests on the user's approval, not on observed output.
 - [x] 7.6 [Oracle gate: `oracle`] Review gate for Wave 7, run once after 7.2–7.4 are complete and 7.5 is complete or explicitly reported as unverified. The same rules apply as for 1.7.
+
+## 8. Wave 8: voice command and skill keys (amendment of 2026-10-09)
+
+- [x] 8.1 [Orchestrator] Amend the change for command and skill keys:
+  - write ADR-0007 (`docs/adr/0007-voice-command-and-skill-keys.md`);
+  - add design D16 and its risk;
+  - add the Wave 8 amendment to `proposal.md`;
+  - in `specs/voice-input/spec.md`, add the "Voice command and skill keys" requirement and update the talk contract, the indicator and the stop-phrase streaming rule;
+  - update the manual-speech help requirement.
+
+  Verify with `openspec validate add-speak-voice-input --strict`.
+- [ ] 8.2 [worker] Add the settings and keys, per D16:
+  - **`config.ts`:**
+    - `input.commandShortcut` (default `alt+m`) and `input.skillShortcut` (default `alt+i`), with the D10 list rules and uniqueness across all four shortcut settings;
+    - `input.commandAliases`, with errors on invalid values.
+  - **`index.ts`:** register every key, with the four defaults on a config error.
+  - **`/talk command` and `/talk skill`.**
+  - **Help and the status lines** name the new keys.
+
+  Verify with table cases in `test/speak/config.test.ts`, registration cases in `test/speak/silence.test.ts`, and help cases in `test/speak/command.test.ts`.
+- [ ] 8.3 [worker] Add command and skill matching and delivery, per D16:
+  - a pure matcher in a new module (`extensions/speak/voice-command.ts`);
+  - the command and skill stop modes in `talk.ts`, with no streaming for recordings started with these keys;
+  - delivery into the editor, and the warnings for no match and for ambiguous names.
+
+  Keep `talk.ts` under 500 lines; split along a responsibility boundary if needed. Verify with matcher table cases in a new `test/speak/voice-command.test.ts`, and with `test/speak/talk.test.ts` cases for every scenario of "Voice command and skill keys". Add one streaming case to `test/speak/talk-stream.test.ts`.
+- [ ] 8.4 [worker] Update `extensions/speak/README.md` with the command and skill keys, aliases (including one for an interactive command such as `/model`), the editor-only delivery, and the no-streaming rule. Verify that the config examples parse.
+- [ ] 8.5 [User] Live checks:
+  - `alt+m`, then "opsx apply loop" with arguments;
+  - `alt+i`, then a skill name;
+  - an alias;
+  - a phrase that matches nothing;
+  - `alt+m` with the stop phrase on.
+
+  Record what happened, and report anything not run as unverified.
+- [ ] 8.6 [Oracle gate: `oracle`] Review gate for Wave 8, run once after 8.2–8.4 are complete and 8.5 is complete or explicitly reported as unverified. The same rules apply as for 1.7.
