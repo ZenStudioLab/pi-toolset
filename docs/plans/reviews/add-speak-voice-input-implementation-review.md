@@ -2096,3 +2096,25 @@ REVIEW_ACTION=PATCH
 CONSENSUS_STATUS=NEEDS_REVISION
 
 The next round is Round 2, with one PATCH assignment to `worker`: W8-F1, F3, F4, the word-order pass, and the README for F2 and word order.
+
+### W8-A-R2 (worker)
+
+- **W8-F1:** `hold-space.ts` keeps the spent hold in a module variable (`spentHold`), reset by the test seam `resetSpentHold()` (called in `beforeEach` of `hold-space.test.ts`). New test: two `HoldSpace` instances, the first spent and reset, the second attached; its repeats are consumed and start nothing; after a second reset and 400 ms the first input types, and the earlier handle ends once through the second instance.
+- **Word-order pass (D16):** `voice-command.ts` runs the in-order comparison, then, only if it found nothing, a comparison of the leading tokens' collapsed forms against each candidate's words as a multiset. Same winner rules (alias, one name, 2+ ambiguous). Nine table cases added in `voice-command.test.ts`, one in `talk.test.ts`.
+- **W8-F3:** the draft is trimmed before joining (`talk-delivery.ts`); one `talk.test.ts` case.
+- **W8-F4:** `talk.test.ts` case "a skill name does not match in command mode"; `HoldHandle.recorderRunning` removed (`talk-state.ts`, `talk.ts`).
+- **README:** "Words in another order" paragraph (and the "no fuzzy matching" sentence reworded to say exact words only); Hold Space limit "Keys Pi's fullscreen mode takes first".
+- **Checks:** `node --experimental-strip-types --test test/speak/*.test.ts` twice: 679 pass, 0 fail (666 before). Mutations in a /tmp copy: (a) spent state on the instance fails the two-instance test; (b) word-order pass first fails 6 voice-command cases; (c) set instead of multiset fails "a word spoken twice…", ignoring ambiguity in the second pass fails "two names with the same words in another order are ambiguous".
+- **Deviation:** the two-instance test uses a stub target and context instead of the talk harness, because the harness builds one `HoldSpace` per harness.
+
+### W8-A-R2 Reconciliation (orchestrator)
+
+The worker run `143fed16` is terminal and completed.
+
+- **Write scope:** `extensions/speak/` and `test/speak/`, plus the worker's own subsection in this log.
+- **Caller verification:**
+  - 679 tests pass and 0 fail (666 before).
+  - The filtered type check prints nothing, and `git diff --check` is clean.
+  - The spent state is now the module-level `spentHold` (`hold-space.ts:58`), with the `resetSpentHold()` test seam.
+  - The real matcher maps "LLM online interactive, check the spec." to `/skill:online-llm-interactive`, with the arguments `check the spec`.
+- **Accepted deviation:** the two-instance test uses a stub target instead of the talk harness. It still exercises the real module state.

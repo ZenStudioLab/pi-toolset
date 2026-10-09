@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
+import { HoldSpace, resetSpentHold, type HoldTarget } from "../../extensions/speak/hold-space.ts";
+import type { HoldHandle, TalkContext } from "../../extensions/speak/talk-state.ts";
 import { FakeClock } from "./hold-clock.ts";
 import {
   audio,
@@ -10,6 +12,7 @@ import {
 } from "./talk-harness.ts";
 
 const harness = useTalkHarness();
+beforeEach(resetSpentHold);
 
 const SPACE_RELEASE = "\x1b[32;1:3u";
 const SEND_KEY_CSI_U = "\x1b[116;3u";
@@ -416,6 +419,44 @@ test("a session change during a hold discards the recording and clears the timer
   assert.equal(typeKey(h, " "), false, "more than 300 ms after the last Space, the input is handled normally");
   assert.equal(h.sent.length, 0);
   assert.equal(h.recorderChildren().length, 1);
+});
+
+test("a hold spent before Pi runs the extension factory again stays spent for the new detector, which starts nothing and ends it by arrival time", () => {
+  const clock = new FakeClock();
+  const handle = {} as HoldHandle;
+  const runtime = () => {
+    const calls = { started: 0, ended: [] as [HoldHandle, string][] };
+    const target: HoldTarget = {
+      startHold: () => (calls.started++, handle),
+      endHold: (hold, outcome) => void calls.ended.push([hold, outcome]),
+    };
+    let listener: (data: string) => { consume: true } | undefined = () => undefined;
+    const ctx = {
+      mode: "tui",
+      ui: { onTerminalInput: (fn: typeof listener) => ((listener = fn), () => undefined), getEditorText: () => "", setEditorText: () => undefined },
+    } as unknown as TalkContext;
+    const detector = new HoldSpace(target, [], clock);
+    detector.attach(ctx);
+    return { calls, detector, input: (data: string) => listener(data) };
+  };
+  const before = runtime();
+  for (const gap of [0, 500, 30, 30]) {
+    clock.advance(gap);
+    before.input(" ");
+  }
+  assert.equal(before.calls.started, 1);
+  before.detector.reset();
+  const after = runtime();
+  for (let i = 0; i < 4; i++) {
+    clock.advance(30);
+    assert.deepEqual(after.input(" "), { consume: true }, "a repeat of the earlier hold is consumed");
+  }
+  assert.equal(after.calls.started, 0, "the new detector recognizes no hold from those repeats");
+  after.detector.reset();
+  clock.time += 400;
+  assert.equal(after.input(" "), undefined, "the first input after the quiet gap is handled normally");
+  assert.equal(after.calls.started, 0);
+  assert.deepEqual(after.calls.ended, [[handle, "send"]], "the earlier hold ends once, through the new detector");
 });
 
 test("tree navigation clears the hold's timers and recording but keeps the listener, so the next hold is recognized", async () => {

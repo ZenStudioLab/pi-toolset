@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { collapse, matchVoiceCommand, type CommandAlias, type VoiceMatch, type VoiceMode } from "../../extensions/speak/voice-command.ts";
 
 const listed = {
-  commands: ["opsx", "opsx-apply", "opsx-apply-loop", "deploy", "deploy:2", "review", "foo-bar", "foobar", "abcdefghi"],
+  commands: ["opsx", "opsx-apply", "opsx-apply-loop", "deploy", "deploy:2", "review", "foo-bar", "foobar", "abcdefghi", "online-llm-interactive", "staging-deploy", "red-green-fast", "fast-red-green", "go-go-stop", "opsx-sync"],
   skills: ["review-convergence", "design-an-interface"],
 };
 const alias = (phrase: string, target: string): CommandAlias => ({ phrase, target });
@@ -41,6 +41,15 @@ for (const [name, mode, transcript, aliases, expected] of [
   ["an alias to a listed skill is a listed target", "skill", "converge", [alias("converge", "/skill:review-convergence")], match("/skill:review-convergence", "", true)],
   ["an alias to a skill that is not listed is an unlisted target", "skill", "converge", [alias("converge", "/skill:gone")], match("/skill:gone", "", false)],
   ["an alias to a command that is not listed is an unlisted target", "command", "model", [alias("model", "/model")], match("/model", "", false)],
+  ["words in another order match, and the rest are the arguments", "command", "LLM online interactive, check the spec.", [], match("/online-llm-interactive", "check the spec")],
+  ["a reordered alias phrase matches, and an alias beats a name with the same words", "command", "interactive llm online", [alias("online interactive llm", "/other")], match("/other", "", false)],
+  ["words in another order match skills in skill mode", "skill", "convergence review the diff", [], match("/skill:review-convergence", "the diff")],
+  ["a name that matches in order beats a longer run that matches only in another order", "command", "deploy staging", [], match("/deploy", "staging")],
+  ["two names with the same words in another order are ambiguous", "command", "green red fast", [], { kind: "ambiguous", names: ["red-green-fast", "fast-red-green"] }],
+  ["repeated words are counted, not merged", "command", "stop go go now", [], match("/go-go-stop", "now")],
+  ["a word spoken twice does not stand for a word spoken once", "command", "stop stop go", [], NONE],
+  ["a word spoken in parts matches in order", "command", "op sx sync it", [], match("/opsx-sync", "it")],
+  ["a word spoken in parts does not match in another order", "command", "sync op sx", [], NONE],
   ["words that match nothing", "command", "order a pizza", [], NONE],
   ["an empty transcript", "command", "", [], NONE],
   ["a blank transcript", "skill", "  \n ", [], NONE],

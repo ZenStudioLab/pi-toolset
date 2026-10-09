@@ -648,6 +648,7 @@ const LISTED = [
   { name: "foo-bar", source: "extension" },
   { name: "foobar", source: "prompt" },
   { name: "skill:review-convergence", source: "skill" },
+  { name: "skill:online-llm-interactive", source: "skill" },
 ];
 const ALIASES = { model: "/model", "new session": "/new", "apply it": "/opsx-apply-loop now" };
 
@@ -667,6 +668,9 @@ for (const [name, stop, editor, transcript, expected, warning] of [
   ["an alias to a listed command takes the alias target as written", "pressCommandShortcut", "my draft", "apply it", "/opsx-apply-loop now my draft", undefined],
   ["an interactive alias with a draft is appended, with a warning", "pressCommandShortcut", "fix the login bug", "new session", "fix the login bug new session", /needs an empty editor/],
   ["an interactive alias with words after it is appended, with a warning", "pressCommandShortcut", "", "model please", "model please", /needs an empty editor/],
+  ["a draft's edge whitespace does not double the spaces", "pressCommandShortcut", "  fix the login bug \n", "Review the diff", "/review the diff fix the login bug", undefined],
+  ["words in another order match a skill", "pressSkillShortcut", "", "LLM online interactive check the spec", "/skill:online-llm-interactive check the spec", undefined],
+  ["a skill name does not match in command mode", "pressCommandShortcut", "", "online llm interactive", "online llm interactive", /No command matched/],
   ["words that match no command are appended, with a warning", "pressCommandShortcut", "Draft", "order a pizza", "Draft order a pizza", /No command matched/],
   ["words that match no skill are appended, with a warning", "pressSkillShortcut", "", "order a pizza", "order a pizza", /No skill matched/],
   ["a command name does not match in skill mode", "pressSkillShortcut", "", "review the diff", "review the diff", /No skill matched/],
