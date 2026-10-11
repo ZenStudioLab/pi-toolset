@@ -10,4 +10,4 @@ The extension's structural activity API types mirror that host boundary. Retain 
 
 ## Dependencies and other extensions
 
-Dependencies are obtained from their publishers, not vendored here, and retain their respective licenses. The original mixed local setup's session-delete, session-title, and tool-block-borders extensions are not included in this repository. Linking to or using an upstream project does not transfer ownership.
+Dependencies are obtained from their publishers, not vendored here, and retain their respective licenses. The session-delete, session-title, and tool-block-borders extensions in this repository are original work. The pi-bookmark, pi-subscription-usage, and pi-openai-codex-fast submodules are forks of upstream projects and keep their authors' copyright and licenses in their own repositories. Linking to or using an upstream project does not transfer ownership.
