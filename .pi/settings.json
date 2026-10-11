@@ -1,33 +1,28 @@
 {
   "subagents": {
     "asyncByDefault": false,
-    "defaultModel": "openai-codex/gpt-5.6-luna",
+    "defaultModel": "anthropic/claude-sonnet-5-5",
     "defaultThinking": "high",
     "agentOverrides": {
       "oracle": {
-        "model": "openai-codex/gpt-6.1-sol",
-        "thinking": "high",
-        "fast": true
+        "model": "anthropic/claude-opus-5-5",
+        "thinking": "high"
       },
       "scout": {
-        "model": "openai-codex/gpt-5.6-luna",
-        "thinking": "xhigh",
-        "fast": true
+        "model": "anthropic/claude-haiku-4-5",
+        "thinking": "medium"
       },
       "researcher": {
-        "model": "openai-codex/gpt-5.6-luna",
-        "thinking": "high",
-        "fast": true
+        "model": "anthropic/claude-sonnet-5-5",
+        "thinking": "high"
       },
       "worker": {
-        "model": "openai-codex/gpt-5.6-luna",
-        "thinking": "high",
-        "fast": true
+        "model": "anthropic/claude-sonnet-5-5",
+        "thinking": "high"
       },
       "delegate": {
-        "model": "openai-codex/gpt-5.6-luna",
-        "thinking": "high",
-        "fast": true
+        "model": "anthropic/claude-sonnet-5-5",
+        "thinking": "high"
       }
     }
   }
