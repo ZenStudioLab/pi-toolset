@@ -17,7 +17,7 @@
   "engines": { "node": ">=22.19.0" },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/whimsical-activity/*.test.ts test/speak/*.test.ts test/subagent-profiles/*.test.mjs",
+    "test": "node --experimental-strip-types --test test/whimsical-activity/*.test.ts test/speak/*.test.ts test/subagent-profiles/*.test.mjs test/session-delete/*.test.ts test/session-title/*.test.ts test/tool-block-borders/*.test.ts",
     "check": "npm run typecheck && npm test"
   },
   "pi": { "extensions": ["./extensions/whimsical-activity/index.ts", "./extensions/subagent-profiles/index.ts"] },
