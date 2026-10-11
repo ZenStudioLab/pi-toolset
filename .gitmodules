@@ -3,10 +3,10 @@
 	url = https://github.com/ZenStudioLab/pi-subscription-usage.git
 [submodule "extensions/pi-bookmark"]
 	path = extensions/pi-bookmark
-	url = git@github.com:ZenStudioLab/pi-bookmark.git
+	url = https://github.com/ZenStudioLab/pi-bookmark.git
 [submodule "extensions/pi-opencode-bridge"]
 	path = extensions/pi-opencode-bridge
-	url = git@github.com:ZenStudioLab/pi-opencode-bridge.git
+	url = https://github.com/ZenStudioLab/pi-opencode-bridge.git
 [submodule "extensions/pi-openai-codex-fast"]
 	path = extensions/pi-openai-codex-fast
 	url = https://github.com/ZenStudioLab/pi-openai-codex-fast.git
