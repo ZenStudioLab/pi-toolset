@@ -8,7 +8,7 @@
 
 The published 0.1.x extension requires a patched Pi host and therefore does not decorate normal installations. The user selected hybrid support: normal users must get stock-Pi functionality, while the existing advanced host integration stays optional.
 
-The original mixed repository's `docs/adr/0001-native-activity-decoration.md` chose native ownership to guarantee synchronous waits, scoped lifetimes, stable width, and full settings integration. That rationale remains valid for advanced mode. This public-repository decision changes the package's support boundary, not the historical advanced contract.
+The original mixed repository's ADR-0001, now `docs/adr/0009-native-activity-decoration.md`, chose native ownership to guarantee synchronous waits, scoped lifetimes, stable width, and full settings integration. That rationale remains valid for advanced mode. This public-repository decision changes the package's support boundary, not the historical advanced contract.
 
 Released Pi 0.87.1 and 0.99.2 expose working-message and indicator setters. They support default restoration and static/hidden frames, but not previous-value reads, exclusive registration, authoritative foreground snapshots, or advanced activity settings. The package is trusted local presentation code; it must not change agent execution or install host modifications.
 
