@@ -6,7 +6,7 @@ Parallel OpenSpec sessions are unnavigable without session titles. Opencode loop
 
 ## What Changes
 
-- Add project extension `.pi/extensions/session-rename.ts` exposing minimal model-callable tool `session_rename({name})` closing over factory `pi.setSessionName` + `pi.getSessionName` verify.
+- Add extension `extensions/session-rename/index.ts` exposing minimal model-callable tool `session_rename({name})` closing over factory `pi.setSessionName` + `pi.getSessionName` verify.
 - Add rename calls to pi prompts, mirroring opencode exactly:
   - `opsx-propose.md`: claim after name-final (Step 2.5 equiv) + re-affirm after artifacts done (Step 4.5 equiv).
   - `opsx-apply.md`: once after change resolved (Step 0 equiv).
@@ -25,7 +25,7 @@ None — no existing specs exist (`openspec list --specs` empty); no prior requi
 
 ## Impact
 
-- New: `.pi/extensions/session-rename.ts` (single file, no deps, no network; full-OS-perm surface per `docs/security.md`, needs trust review).
+- New: `extensions/session-rename/index.ts` (single file, no deps, no network; full-OS-perm surface per `docs/security.md`, needs trust review).
 - Modified: `.pi/prompts/opsx-propose.md`, `.pi/prompts/opsx-apply.md` (prompt deltas only, no harness changes).
 - Runtime: `session_info` entries via `sessionManager.appendSessionInfo` (sanitize newline→space, latest-wins); persisted title survives compaction in file (`session_info` never becomes model messages). Re-affirm guards mid-flow retitling and yields a fresh tool-result acknowledgement.
 - Out of scope: B2 silent event-driven auto-rename, opencode edits, harness `interactive-mode.ts` / `agent-session.ts` changes.

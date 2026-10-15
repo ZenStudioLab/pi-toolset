@@ -2,7 +2,7 @@
 
 ## 1. Extension tool
 
-- [x] 1.1 Create `.pi/extensions/session-rename.ts` with `session_rename({name})` closing over factory `pi`, empty-guard error, `setSessionName` + `getSessionName` verify echo, plain `direct` default-active, and verify `pi --extension` lists the tool
+- [x] 1.1 Create `extensions/session-rename/index.ts` with `session_rename({name})` closing over factory `pi`, empty-guard error, `setSessionName` + `getSessionName` verify echo, plain `direct` default-active, and verify `pi --extension` lists the tool
 - [x] 1.2 Verify empty-name guard and newline sanitize by calling tool with `""` (errors, no change) and `"a\nb"` (stores `"a b"`), checking `getSessionName()` echo
 
 ## 2. Prompt integration

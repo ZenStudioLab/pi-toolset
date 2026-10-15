@@ -24,7 +24,7 @@ See proposal.md Why. Verified chain: `/name` in TUI → `interactive-mode.ts:663
 - **Validation split: tool guards empty, manager sanitizes newlines, prompt guides kebab (not tool-enforced).** Tool returns error on empty (mirrors `/name` usage path, never clears). Manager already does `[\\r\\n]→space` + trim. Prompt instructs kebab-case softly like opencode; no regex in tool to avoid hard failures. Alternative hard regex rejected — prompt drift cheaper than tool errors.
 - **Exposure plain `direct` default-active.** No `defaultActive:false`, no `setActiveTools`/`defaultTools` wiring — prompt templates expand text only (`prompt-templates.ts:304`) and cannot invoke activation APIs, and no opsx loader exists. Alternative scoped activation rejected — unspecified runtime path outside approved minimal scope.
 - **Rename points (a) mirror exactly.** Propose claim restores navigability from start; re-affirm is cheap (append, latest-wins) and guards mid-flow retitling with a fresh tool-result acknowledgement. Alternative simplify-to-once saves one call but loses re-affirm after long artifact generation.
-- **Single file `.pi/extensions/session-rename.ts`, no deps.** Smallest trust surface for full-OS-perm runtime; supply-chain review proportional.
+- **Single file `extensions/session-rename/index.ts`, no deps.** Smallest trust surface for full-OS-perm runtime; supply-chain review proportional.
 
 ## Risks / Trade-offs
 
