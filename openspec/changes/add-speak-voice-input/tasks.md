@@ -288,7 +288,7 @@ Verification commands:
     - streaming with the stop phrase on;
   - that another key discards the recording.
 - [x] 8.6 [Orchestrator] After 8.2–8.5, and with the user's approval, set `input.holdSpace: true` in the user's config, with a backup first. Verify it with `parseConfig`.
-- [ ] 8.7 [User] Live checks:
+- [x] 8.7 [User] Live checks:
   - `alt+m`, then "opsx apply loop" with arguments;
   - `alt+i`, then a skill name;
   - an alias, with an empty editor and with a draft;
@@ -305,4 +305,6 @@ Verification commands:
   - `alt+i`, then "LLM online interactive" (words in another order).
 
   Record what happened, and report anything not run as unverified.
+
+  Result (2026-10-15, reported by the user): "this work. -> pass", in English, right after a dictated test message, and in answer to the orchestrator's request to report 8.7 as tested, as seen in daily use, or as unverified. The orchestrator recorded it as a pass of the whole list, reported together rather than item by item. The user has had `input.holdSpace` on in daily use since Wave 8.
 - [x] 8.8 [Oracle gate: `oracle`] Review gate for Wave 8, run once after 8.2–8.6 are complete and 8.7 is complete or explicitly reported as unverified. The same rules apply as for 1.7.
