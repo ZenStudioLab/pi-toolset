@@ -1415,3 +1415,12 @@ Then, in separate docs-only commits:
 - **R1-F2:** the ADR-0010 Status line now reads "Accepted and implemented". It says that tasks 3.4, 4.4, and 6.7 passed, and that 6.7 was reported together rather than one by one.
 
 No code or test changed, so no test rerun is needed for these edits. Nothing in the test suite asserts either sentence.
+
+### Pre-archive spec check (orchestrator, 2026-10-15)
+
+Before archiving, the orchestrator compared each delta with the version it replaces:
+
+- **`voice-input`:** the three MODIFIED requirements of this change ("Recording starts only on an explicit action", "Talk command contract", "Push-to-talk recording lifecycle") only add text and scenarios to the versions in `add-speak-voice-input`. None of that change's Wave 8 text is dropped.
+- **`manual-speech`:** the two MODIFIED requirements ("Speech occurs only on explicit request", "Single job and responsive stop") only add text and scenarios to the current main spec. `add-speak-voice-input` modifies neither of them.
+
+One wording gap was fixed. "Single job and responsive stop" named only `speak_aloud` updates as the exception to the single-job rule, but "Spoken replies" queues answer parts on the same queue. The sentence now reads "Live-mode updates from the `speak_aloud` tool, and the parts of an answer read aloud, are the one exception". No code change follows, since the parts already share the `LiveSpeech` queue. `openspec validate --strict` passes.
