@@ -3,7 +3,7 @@
 **Status:** Accepted for implementation; runtime qualification pending (task 3.4 of `add-speak-live-conversation`).
 **Owner:** Orchestrator.
 **Change:** [add-speak-live-conversation](../../openspec/changes/add-speak-live-conversation/design.md).
-**Supersedes:** while live mode is on, and only then, [ADR-0002](0002-manual-speech-egress-boundary.md)'s rule that nothing is spoken unless the user runs a `/speak` subcommand, and [ADR-0004](0004-voice-input-and-provider-choice.md)'s exclusion of an open microphone and of automatic speech. Outside live mode both decisions stand unchanged, as does every other decision in ADR-0002 through ADR-0008.
+**Supersedes:** while live mode is on, and only then, [ADR-0002](0002-manual-speech-egress-boundary.md)'s rule that nothing is spoken unless the user runs a `/speak` subcommand, and [ADR-0004](0004-voice-input-and-provider-choice.md)'s exclusion of an open microphone and of automatic speech. While live mode is on, it also sets aside ADR-0004's choice of input and speech provider (live mode always uses ElevenLabs) and [ADR-0008](0008-hold-space-to-talk.md)'s Space holds (refused while live). Outside live mode all of these stand unchanged, and every other decision in ADR-0002 through ADR-0008 remains in force.
 
 ## Context
 

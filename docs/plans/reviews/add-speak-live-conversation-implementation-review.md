@@ -163,3 +163,295 @@ DISPATCH_BUDGET wave 1: oracle=1/1 others=1/3
 
 REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
+
+## Wave 2 Review Sequence
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 2. Final gate reserved: task 2.4 [Oracle gate: `oracle`], run once after 2.1–2.3.
+
+Between-wave reuse: the Wave 1 worker run was aborted, so it is not eligible for reuse and no reuse check is needed. A fresh `worker` and, at the gate, a fresh `oracle` are used.
+
+| Assignment | Tasks | Owner | Bounded responsibility | Files and topics |
+| --- | --- | --- | --- | --- |
+| W2-A | R1-F4 carry | orchestrator | ADR-0010 supersession wording | `docs/adr/0010-live-voice-conversation.md` (Supersedes line), `docs/adr/0004-…` (status note names the provider choice) |
+| W2-B | 2.1, 2.2, 2.3 | worker | Live session and turns, idle limit, the listening side of the README, help, and status | new `extensions/speak/live.ts` (plus a responsibility split if needed), `index.ts`, `talk.ts`, `help.ts`, `speech-job.ts` / `speech-status.ts` (status only), `README.md`, `test/live.test.ts`, `test/command.test.ts`, `test/harness.ts` (fakes) |
+
+Carried into W2-B:
+
+- **F5 (optional):** start checks for the ElevenLabs voice, model, and player.
+- **F12:**
+  - verify the redaction scenario and manual-speech "Speech without live mode";
+  - `/talk live` while live mode is starting cancels the start;
+  - `/talk live` is refused while a push-to-talk attempt is starting;
+  - split tests by behavior when they grow.
+- **R1-F1:** in 2.3, restore the HEAD order of the `/speak status` job-phase read.
+- **R1-F3:** `/speak replay` stays refused while live mode is on.
+
+### W2-A (orchestrator) evidence
+
+- **ADR-0010:** the Supersedes line now also names, for live mode only, ADR-0004's input and speech provider choice and ADR-0008's Space holds.
+- **ADR-0004:** its status note now names the provider choice too.
+
+### W2-B (worker, mission `248b7c40`, `anthropic/claude-sonnet-5-5`, completed)
+
+Tasks 2.1–2.3. The changed files, all in `extensions/speak`, with line counts:
+
+- **`live.ts`** (new, 308): `LiveSession` and `LivePhase` (`off | starting | on`). It owns the start checks, connection, streaming recorder, turn delivery, idle timer, and end paths, plus its own `TranscriptDelivery` for the composer fallback.
+- **`talk.ts`** (484): routes presses to live mode while it is on or starting, refuses Space holds while live, adds `liveBlock()`, and combines `speechBlock`.
+- **`index.ts`** (249): the `/talk live` form, the live pre-check for `/speak` forms that produce speech, and `live.resetSession()` on session reset.
+- **`help.ts`** (65), **`speech-job.ts`** (489, `status(ui, livePhase)`), **`speech-status.ts`** (68), and **`README.md`** (301).
+- **Tests:**
+  - `test/harness.ts` (494, fakes only);
+  - `test/command.test.ts` (632);
+  - new `test/live.test.ts` (401), `test/live-turns.test.ts` (161), and `test/live-idle.test.ts` (90);
+  - `test/live-harness.ts` (18).
+
+Signature changes to existing symbols:
+
+- `SpeechController.status` takes `livePhase: () => LivePhase`.
+- `StatusState.jobPhase` and `livePhase` are getters.
+- `registerSpeak` gains a `live` parameter.
+- `TalkController`'s constructor gains a trailing `live` parameter.
+
+Carried items:
+
+- **F12:** covered, with the tests split by behavior.
+- **F5:** done; the start checks include the ElevenLabs voice and model and the player.
+- **R1-F1:** the job phase is read after the awaits, and a test fails if the read moves earlier.
+- **R1-F3:** `/speak replay` is refused while live, even with a clip.
+
+Worker-declared deviations, for the gate to judge:
+
+- **Idle timer:** a re-armed 15 s one-shot timer instead of an interval, so it works with `FakeClock`. The idle count starts at the first idle tick, so live mode can end up to 15 s late but never early.
+- **`/speak` refusal order:** speech-producing `/speak` forms are refused with the live message before the agent-busy and replay checks.
+- **Send key while live:** shows "Nothing is being spoken." until task 3.2.
+- **README:** mentions the cut-off key early, and says the live transcription billing basis is unchecked.
+- **Risk:** `test/harness.ts` is at 494 lines, so Wave 3's tool fakes will need it split.
+
+Orchestrator re-verification, inside the 4 GB scope:
+
+- `node --experimental-strip-types --test test/*.test.ts`: 778 pass, 0 fail (Wave 1: 702).
+- `npx tsc --noEmit`: clean.
+
+#### Provider decision (user, during Wave 2)
+
+From the Wave 2 gate onward, every dispatch passes a `claude-bridge/` model explicitly: `claude-bridge/claude-opus-5-5:high` for `oracle` and `claude-bridge/claude-sonnet-5-5:high` for `worker`. `pi-toolset/.pi/settings.json` (`anthropic/` overrides) is left unchanged. Earlier runs used `anthropic/claude-sonnet-5-5` (worker) and `anthropic/claude-opus-5-5` (oracle), the same models and thinking levels. If a bridge dispatch fails before it starts, it is rerun in the background on the same bridge model; it is never silently switched to `anthropic/`.
+
+BASELINE_TARGET=Wave 2 of add-speak-live-conversation: tasks 2.1–2.3 as implemented, plus the R1-F4 ADR wording
+BASELINE_TARGET_REVISION=sha256:9ea0d0345721cec2 (git -C extensions/speak diff HEAD, then live.ts and test/live-harness.ts, live-idle.test.ts, live-turns.test.ts, live.test.ts in that order, then git diff HEAD -- docs/adr)
+BASELINE_SOURCE=openspec/changes/add-speak-live-conversation (proposal, design, tasks, three spec deltas); docs/adr/0002, 0004, 0005, 0006, 0008, 0010
+BASELINE_INCLUSION_PREDICATE=files changed or created for tasks 2.1–2.3 and R1-F4: extensions/speak/{live,talk,index,help,speech-job,speech-status}.ts, extensions/speak/README.md, extensions/speak/test/{harness.ts,live-harness.ts,live.test.ts,live-turns.test.ts,live-idle.test.ts,command.test.ts}, docs/adr/0004, 0010
+BASELINE_EXCLUSIONS=Wave 3 work (the speak_aloud tool, the update queue, muting, cut-off, barge-in, and the speaking side of the README); Wave 1 code except as context; unrelated uncommitted add-pi-session-rename-tool files; host/pi
+
+DISPATCH_BUDGET wave 2: oracle=0/1 others=1/3 (before the gate)
+
+## Round 1 - Oracle Review
+
+Gate task consumed (once): 2.4 [Oracle gate: `oracle`] Review gate for Wave 2, run once after 2.1–2.3 are complete. Mode: FULL (first review of this wave), under `review-convergence`. Output is advisory; the caller owns reconciliation, the authoritative action, and status.
+
+Task and owner mapping reviewed:
+
+| Task | Owner | Reviewed against |
+| --- | --- | --- |
+| R1-F4 carry | orchestrator (W2-A) | `docs/adr/0010-live-voice-conversation.md` Supersedes line; `docs/adr/0004-…` status note |
+| 2.1 | worker (W2-B) | `live.ts`, `talk.ts`, `index.ts`, `test/live.test.ts`, `test/live-turns.test.ts`, `test/live-harness.ts`, `test/harness.ts`; D2, D4, D5, D10; "Live mode starts and ends only by user action or a stop condition", "Starting live mode", "Live turn delivery", "Other voice controls during live mode", "Live mode ends cleanly", "Live mode privacy" (redaction); modified `voice-input` and `manual-speech` requirements |
+| 2.2 | worker (W2-B) | `live.ts` idle timer, `test/live-idle.test.ts`; D9; "Live idle limit" |
+| 2.3 | worker (W2-B) | `README.md`, `help.ts`, `speech-job.ts`, `speech-status.ts`, `test/command.test.ts`; D11; "Live mode status, help, and settings" (listening side), "Live mode privacy" (documentation); carried R1-F1 and R1-F3 |
+
+Baseline: recomputed `sha256` over `git -C extensions/speak diff HEAD`, then `live.ts`, `test/live-harness.ts`, `test/live-idle.test.ts`, `test/live-turns.test.ts`, `test/live.test.ts`, then `git diff HEAD -- docs/adr`. The digest is `9ea0d0345721cec2679b…`, so `BASELINE_TARGET_REVISION=sha256:9ea0d0345721cec2` is **confirmed**. `extensions/speak` is at `5ff7869` (the Wave 1 commit), and its status shows only the eight modified and five new files of the inclusion predicate. No tests were re-run: the recorded evidence (778 pass, clean `tsc`, both inside the 4 GB scope) stands, and nothing in the review gave a concrete reason to re-run.
+
+### What holds
+
+- **State machine (2.1, D10).** `LiveSession.state` (`live.ts:57`) is the single authority for `off | starting | on`. Every await in `start` is followed by a claim check (`:138`, `:147`, `:150`, `:154`, `:162`, `:175`), and a late connection or recorder is closed or stopped when the claim is gone (`:163`, `:176–177`). `/talk live` while starting aborts the pending connection through `claim.cancel` (`:89`, `:276`). `end()` is idempotent, because it clears `state` before any side effect (`:273–275`). Provider error or close, the recorder exiting on its own, and every lifecycle event (`index.ts:185–197`, with reload arriving as `session_shutdown`) all reach `end()`. Nothing retries. A late commit, send, or idle tick re-checks `this.state !== on` (`:213`, `:228`, `:263`).
+- **Turns (2.1, D4).** Only `session.text.slice(delivered)` becomes a turn (`:214–216`). The filter `[\p{L}\p{N}]` drops `...` and keeps `Ừ.`, `yes.`, and `42`. Sends go out in commit order through `on.sending`. `sendWhenBusy` comes from a fresh `loadConfig` for each turn, and the mapping matches `talk-delivery.ts:73–78`. `expandPromptTemplates: false` is always set, and the harness throws if it is not. The composer is touched only by the fallback `append`, and the fallback covers no model, compaction, an invalid configuration, and a throwing send. Warnings never contain the turn, which a test asserts.
+- **Ownership.** `TalkController` keeps push-to-talk, `SpeechController` keeps the job, and live mode keeps its session. The two controllers check each other's state: `liveBlock()` (`talk.ts:75–81`) checks push-to-talk, and the `live.phase` checks in `press` and `startHold` (`talk.ts:97`, `:141`) check live mode. The combined `speechBlock` is computed, not stored (`talk.ts:68–72`). The compaction flag now exists twice, once in each `TranscriptDelivery`, but it has one writer (`talk.ts:160–163` forwards to `live.ts:119–121`), so the two copies cannot disagree. This is acceptable.
+- **Refusals.** Space holds return `undefined` from `startHold` while live, so Spaces keep typing. Live mode registers no terminal-input listener, so Escape is not intercepted. The `/speak` forms that produce speech hit `live.speechBlock()` before any request (`index.ts:62–64`), and `/speak replay` is refused even with a clip (R1-F3). `/speak stop`, `status`, `quota`, `provider`, `locale`, `/talk provider`, and help sit above that check and keep working.
+- **Start (F5).** The start checks the configuration, the key, the ElevenLabs voice and model, the recorder, and the player before any connection opens. It stops the extension's own speech first (`:153`), and starts the recorder only after the connection opens. The start message names ElevenLabs, the language setting, the cut-off key, and `/talk live`.
+- **Status (2.3, R1-F1).** `jobPhase` and `livePhase` are getters, read after the awaits (`speech-status.ts:66`). The new command test fails if the read moves earlier. Status shows `live mode: off|starting|on` and both effective settings.
+- **README privacy and cost.** The README (`README.md:247–266`) covers all five statements that "Live mode privacy" requires: streaming except during muted playback, turns saved as user messages, spoken text sent and cached, no zero-retention guarantee, and ending live mode as the way to stop streaming. It also states that the key never leaves the environment, and that how live transcription is billed is unchecked, which follows design "Open Questions" and leaves task 3.4 to settle it.
+- **ADR (W2-A, R1-F4).** The ADR-0010 Supersedes line now names, for live mode only, ADR-0004's provider choice and ADR-0008's Space holds. ADR-0004's status note names the provider choice. Each ADR changed in exactly one line. R1-F4 is closed.
+- **Regressions.** The push-to-talk, Space-hold, and `/speak` paths change only by the live checks inserted before them. No existing assertion changed apart from the help-form list, which adds `/talk live`.
+- **Test memory safety.** No large buffer is compared with `deepEqual`. Every loop is bounded (at most 40 iterations), and `h.until` has a 3 s deadline (`test/harness.ts:462–468`). Idle tests run on `FakeClock` and assert `clock.pending`.
+
+### Worker-declared deviations, judged
+
+- **Idle timer as a re-armed 15 s one-shot instead of an interval: accepted.** It is behaviorally equivalent to D9's 15-second timer, never ends early, and `idleSince` starts at live start (`live.ts:194`), so the "up to 15 s late" case applies only after agent work. The README states it. No artifact amendment is needed.
+- **`/speak` refused before the agent-busy and replay checks: accepted.** The spec requires refusal with a message and no request. It sets no order among the checks.
+- **The send key shows "Nothing is being spoken." until 3.2: accepted for the send key,** which matches the voice-input scenario "Shortcut during live mode". The same path also catches `/talk send`, which is finding R1-F1 below.
+- **README names the cut-off key and leaves billing unchecked: accepted.** The start message must name the key anyway, and billing is design's open question for 3.4.
+- **`test/harness.ts` at 494 lines: accepted as a Wave 3 note.** It is a handwritten test helper. The testing-governance thresholds are 800 for review and 1,000 for a required split, and the global 500-line default would apply when 3.1 adds the tool fakes. Split by responsibility then, for example by moving the host `pi` fake out.
+
+### Findings (highest priority first; no P0 or P1)
+
+**R1-F1 — family `live-control-routing`, root `talk-send-conflated-with-send-key`.** P2. In scope (2.1).
+- Evidence: `index.ts:151–152` (`/talk send`) and `index.ts:164–166` (the send shortcut) both call `talk.press(ctx, "send")`. `live.ts:99–104` cannot tell them apart and answers both with "Nothing is being spoken." while live mode is on. But "Other voice controls during live mode" (`specs/voice-conversation/spec.md:166–168`) requires `/talk send` to be refused with a message naming `/talk live`. The modified "Talk command contract" (`specs/voice-input/spec.md:23`) makes only the send *shortcuts* behave as "Cutting Pi off" while live, and "Cutting Pi off" names only the shortcuts and `/speak stop`. Three artifacts now disagree:
+  - `test/live.test.ts:254–263` asserts the non-conforming behavior for `/talk send`;
+  - `README.md:253` documents the spec behavior, so it contradicts the code;
+  - Wave 3's task 3.2 would build the cut-off on this shared path, and `/talk send` would then cut Pi off.
+- SUGGESTED_CORRECTION: carry the control's origin into `press`. For example, `TalkController.press(ctx, mode, fromKey = false)`, with the send shortcut handler passing `true`, and `LiveSession.press(ui, mode, fromKey)` treating only `fromKey && mode === "send" && phase === "on"` as the (later cut-off) send key. Split `test/live.test.ts:254–263` into two assertions: the send key says nothing is being spoken, and `/talk send` is refused with `/Run \/talk live to end live mode/`. The `/talk send` case can join the table at `test/live.test.ts:235–242`.
+
+**R1-F2 — family `live-start-commit`, root `replayed-failure-before-render`.** P2. In scope (2.1).
+- Evidence: `openRealtime` builds the `Session`, with its own `close`, `error`, and message listeners, as soon as the socket opens (`realtime.ts:305–307`, `:141–146`). A failure that arrives while `start` awaits `startRecorder` (`live.ts:169`, which awaits `findRecorder`) is stored and replayed synchronously by `listen` (`realtime.ts:149–152`). Inside `session.listen` at `live.ts:198–201`, `fail(on)` then `end()` stops the recorder, closes the connection, clears the status line, and shows "… Live mode ended." Execution then continues unconditionally:
+  - `scheduleIdleCheck(on)` (`:203`) arms a stray timer;
+  - `render(on)` (`:204`) sets "● Live — listening · … /talk live ends live mode" again;
+  - the notice at `:205–208` says "Live mode is on …".
+
+  The status line then stays wrong until the next live session ends, because only `end()` clears it. "Live mode ends cleanly" requires ending to clear the status line. A provider error message or close right after the handshake (quota, session limit, network) is enough to trigger this, and no test covers that window.
+- SUGGESTED_CORRECTION: after `session.listen(...)`, add `if (this.state !== on) return;` before the recorder-exit hook, the timer, the render, and the start notice. Equivalently, attach `listen` last. Add one test with `holdSockets: true` and a `FakeClock`: open the socket, then emit `close` before the start continues. Assert that `liveStatuses.at(-1)` is `undefined`, that no "Live mode is on" notice follows the ended message, and that `clock.pending` is 0.
+
+**R1-F3 — family `live-start-commit`, root `refusal-after-cancel`.** P3. In scope (2.1).
+- Evidence: `live.ts:145–146` and `:148–149` call `refuse(...)` *before* the claim checks at `:147` and `:150`. `refuse` (`:133–136`) notifies whether or not the claim is still current. If `/talk live` cancels the start, or a session event ends it, while `findRecorder` or `resolveExecutable` is pending and that check fails, a second "… Live mode was not started." warning follows "Live mode start cancelled." Or it goes to a replaced session's UI.
+- SUGGESTED_CORRECTION: make `refuse` silent when the claim is gone, `if (this.state !== claim) return;` before the notify. No new test is required. One optional case: cancel during a missing-player check, and expect exactly one message.
+
+**R1-F4 — family `help-accuracy`, root `help-live-send-key-and-settings`.** P3. Deferred.
+- Evidence: `help.ts:55` says "Push-to-talk keys … are refused while it is on", but the send key is not refused while live mode is on. It shows "Nothing is being spoken." now and cuts Pi off from 3.2. Help also does not yet name the cut-off key or `input.liveListenWhileSpeaking`, which "Live mode status, help, and settings" requires.
+- DEFERRED_REASON: task 3.3 owns help's speaking side: the cut-off key, `/speak stop`, and `input.liveListenWhileSpeaking`. Carry to 3.3: exclude the send key from the refused list, and add the two missing items. Nothing in Wave 2 depends on it.
+
+### Wave 3 seams (notes, not findings)
+
+- **Send-key cut-off:** depends on R1-F1's origin flag. Without it, 3.2 cannot satisfy both "Cutting Pi off" and "Other voice controls".
+- **`onChunk` mute:** `live.ts:173` is a closure over `session`. 3.2 needs a mute deadline reachable from that closure before `on` exists, for example a field on `claim` or a `let` captured by the closure.
+- **`end()`:** it is the single exit and is idempotent. 3.1 and 3.2 add queue clearing, `stopOwnAudio`, and tool removal there. The R1-F2 guard keeps those from running twice.
+- **Status line:** `render(on)` is fixed to "listening". 3.2 makes it state-dependent. Carried Wave 1 R1-F2 (hook throws) still applies to the hooks 3.2 writes.
+- **`talk.ts` size:** it is at 484 lines, so 3.2's routing must stay small or move into `live.ts`.
+
+### Notes for the caller (not findings)
+
+- `tasks.md` 2.1–2.3 are still unchecked. Checking them is caller-owned bookkeeping.
+- **Residual, not raised:** `on.context.model` (`live.ts:231`) and `on.context.isIdle()` in the timer (`:264`) are host getters that call `runner.assertActive()`. They are safe because every runner replacement emits a lifecycle event that ends live mode first. A host path that invalidated the runner without one would turn `:231` into an unhandled rejection that stalls `on.sending`, and `:264` into an uncaught timer exception.
+- **Coarse idle check:** an agent run that starts and ends between two 15 s ticks is not seen, so typed prompts with short runs can still let the idle limit expire. D9 chose this coarse timer. Only a spoken turn resets the count (`:229`).
+
+PROPOSED_REVIEW_ACTION=PATCH
+
+## Caller Assessment — Wave 2, Round 1
+
+Mode: `FULL`. Gate: task 2.4. Oracle ran in the background on `claude-bridge/claude-opus-5-5:high` (run `994a875a`), after the foreground bridge dispatch failed before starting with a prompt-capture error (run `11fb63b9`, no writes). Baseline `sha256:9ea0d0345721cec2` confirmed by Oracle.
+
+#### R1-F1 — `/talk send` is treated as the send key while live mode is on
+- **Oracle severity:** P2. **Caller severity:** P1, for three reasons:
+  - The code breaks a SHALL requirement in two spec deltas.
+  - A test (`test/live.test.ts`) locks in the wrong behavior, and the README already contradicts the code.
+  - Task 3.2 would build the cut-off on this routing, so `/talk send` would cut Pi off.
+- **GOVERNING_SOURCE:** `voice-conversation` "Other voice controls during live mode" (`/talk send` SHALL be refused, naming `/talk live`), and `voice-input` "Talk command contract" (only the send *shortcuts* get the live exception).
+- **Decision:** `ACCEPT_BLOCKING`.
+- **CORRECTION:**
+  - `TalkController.press(ctx, mode, fromShortcut = false)`, and the four shortcut handlers in `index.ts` pass `true`.
+  - `LiveSession.press` shows "Nothing is being spoken." only for the send shortcut while live mode is on.
+  - `/talk send` joins the refusal table in `test/live.test.ts`, and the send-key test asserts its exact message.
+
+#### R1-F2 — a failure right after the connection opens leaves live mode looking on
+- **Oracle severity:** P2. **Caller severity:** P1. After live mode has ended, the status line, which is the user's visible sign that the microphone is streaming, says "● Live — listening". The message also says live mode is on, and a stray timer is left behind.
+- **GOVERNING_SOURCE:** `voice-conversation` "Live mode ends cleanly" (ending SHALL clear the status line), plus a concrete correctness risk: a false live-state indication.
+- **Decision:** `ACCEPT_BLOCKING`.
+- **CORRECTION:** `if (this.state !== on) return;` right after `session.listen(...)` in `live.ts`. A new test sends `open` then `close` on a held socket and asserts four things:
+  - the recorder had started and received SIGINT;
+  - the message is the connection failure with "Live mode ended";
+  - there is no start message and no idle timer;
+  - the status line is cleared.
+
+#### R1-F3 — a failed start check can warn after the start was cancelled
+- **Decision:** `ACCEPT_NONBLOCKING`, applied now because it is in the same function.
+- **CORRECTION:** `refuse` returns silently when its attempt is no longer current.
+- **Untested:** the race depends on the timing of real filesystem calls. The guard is two lines.
+
+#### R1-F4 — help text for live mode
+- **Decision:** `ACCEPT_NONBLOCKING`, carried to task 3.3.
+- **CORRECTION:** help says the send key is not refused while live, and names the cut-off key and `input.liveListenWhileSpeaking`.
+
+#### Worker-declared deviations
+The caller accepts Oracle's judgments. The re-armed one-shot idle timer, the `/speak` refusal order, the README wording, and the `harness.ts` size note for Wave 3 are all accepted. "Nothing is being spoken." is accepted for the send shortcut only.
+
+#### Oracle-noted risks (no edit)
+- Host getters that throw on a stale context are safe because every session change ends live mode first.
+- The coarse idle check missing short runs between ticks was accepted under D9.
+
+### Summary
+- **Accepted blocking:** 2 (R1-F1, R1-F2).
+- **Accepted nonblocking:** 2 (R1-F3, applied now; R1-F4, carried).
+- **Deferred:** 0.
+- **Rejected:** 0.
+
+REVIEW_ACTION=PATCH
+CONSENSUS_STATUS=NEEDS_REVISION
+
+## Round 2 - Implementation Assignments
+
+Wave handled: 2. Final gate reused: task 2.4.
+
+Owner: the orchestrator, performing the revision in the main context. The fix was small and bounded, the context was already loaded, and the Wave 2 worker ran on `anthropic/`, while the user now wants `claude-bridge/`.
+
+- **Files:** `extensions/speak/live.ts` (312), `talk.ts` (484), `index.ts` (249), and `test/live.test.ts` (418).
+- **Mutation check:** with each fix reverted, its test fails ("/talk send during live mode starts no recording and names /talk live"; "a connection that fails while the recorder is starting…"). Both fixes were restored afterwards.
+- **Validation inside the 4 GB scope:**
+  - `test/live.test.ts` alone: 47 pass.
+  - full suite: 780 pass, 0 fail.
+  - `npx tsc --noEmit`: clean.
+- **README:** `README.md:253` already said `/talk send` is refused while live, and now matches the code. No edit.
+
+PATCH_BASELINE_REVISION=sha256:5870f2eedc5231b6 (same recipe as BASELINE_TARGET_REVISION)
+
+## Round 2 - Oracle Review
+
+Gate task: 2.4 (reused), Wave 2. Mode: PATCH under `review-convergence`, the same Oracle instance as Round 1. Output is advisory; the caller owns reconciliation, the authoritative action, and status.
+
+Baseline: recomputed `sha256` with the same recipe: `git -C extensions/speak diff HEAD`, then `live.ts`, `test/live-harness.ts`, `test/live-idle.test.ts`, `test/live-turns.test.ts`, `test/live.test.ts`, then `git diff HEAD -- docs/adr`. The digest is `5870f2eedc5231b6c220…`, so `PATCH_BASELINE_REVISION=sha256:5870f2eedc5231b6` is **confirmed**. `extensions/speak` is still at `5ff7869`, and its status shows the same eight modified and five new files, so the boundary fields are unchanged. Independent check inside the 4 GB scope: `node --experimental-strip-types --test test/live.test.ts` alone gave 47 pass, 0 fail, matching the recorded figure. The full suite and `tsc` were not re-run; the recorded 780 pass and clean `tsc` stand.
+
+### Accepted fixes, verified
+
+- **R1-F1 (`live-control-routing`): fixed.**
+  - `TalkController.press(ctx, mode, fromShortcut = false)` (`talk.ts:88`) passes the flag on only in the live branch (`talk.ts:98`).
+  - All four shortcut loops in `index.ts:163–183` pass `true`, so every key in each list is covered.
+  - The `/talk` forms (`index.ts:150`, `:152`) use the default `false`.
+  - `LiveSession.press` (`live.ts:100–104`) shows "Nothing is being spoken." only for `send && fromShortcut && phase === "on"`. `/talk send`, and the send key while live mode is starting, get the refusal that names `/talk live`, as "Other voice controls during live mode" requires.
+  - Tests: `/talk send` is now in the refusal table (`test/live.test.ts:257`), and the send-key test asserts the exact single message (`:276`).
+- **R1-F2 (`live-start-commit`, `replayed-failure-before-render`): fixed.**
+  - `live.ts` returns after `session.listen(...)` when the state is no longer `on`. That happens before the recorder-exit hook, the idle timer, the render, and the start notice.
+  - The new test (`test/live.test.ts:93–108`) sends `open` then `close` on a held socket before the recorder starts, and asserts five things: the recorder started and received SIGINT; the failure message says "Live mode ended"; no "Live mode is on" or "was not started" message appears; `clock.pending` is 0; and the status line is cleared.
+  - Leaving the recorder-exit hook unattached is safe, because `end()` has already stopped the recorder and `done` never rejects.
+- **R1-F3 (`live-start-commit`, `refusal-after-cancel`): fixed** as the caller accepted it, untested. `refuse` returns before clearing state or notifying when its attempt is no longer current. That also keeps it from clearing a newer attempt's state.
+
+### Regression sweep (whole wave)
+
+- **The new parameter does not mis-route anything.** `fromShortcut` is read only in `live.ts:101`, and only while live mode is on or starting. With live mode off, `talk.ts:99` onward is unchanged, so normal push-to-talk, held recordings, and the stopping control's mode behave exactly as at HEAD.
+  - Space holds reach `TalkController` through `startHold`, not `press` (`hold-space.ts:157`), so the parameter does not affect them.
+  - No test calls `talk.press` directly. Every key helper goes through the registered shortcut handlers (`test/harness.ts:377–395`), so the tests exercise the real index wiring.
+- **The rest of the wave is unchanged by this round.** The state machine, turn delivery, idle timer, ownership split, `/speak` refusals, status getters, and ADR lines are as judged in Round 1. `live.ts` is 312 lines and `talk.ts` 484, both under 500.
+- **README and help.**
+  - `README.md:253` (`/talk send` refused; the send key too only while live mode is starting) now matches the code.
+  - `help.ts:55` still lists push-to-talk keys as refused without excluding the send key. This is carried R1-F4, owned by 3.3, and is not counted again here.
+  - The README does not yet describe what the send key does while live mode is on. That is the speaking side, which belongs to 3.3, and the start message already names the key.
+
+### Findings
+
+None new. Carried: R1-F4 (task 3.3), and Wave 1 R1-F2 and R1-F5 (tasks 3.2 and 3.1). The Wave 3 seam notes from Round 1 still apply, and the send-key seam is now in place: 3.2 attaches the cut-off at `live.ts:101`.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 2, Round 2
+
+Mode: `PATCH`. Gate: task 2.4, the same Oracle instance resumed in the background on `claude-bridge/claude-opus-5-5:high` (run `cba5d6f8`).
+
+- **Fixes verified:** Oracle confirmed R1-F1, R1-F2, and R1-F3 and ran `test/live.test.ts` alone inside the 4 GB scope (47 pass).
+- **Regression sweep:** no new findings. With live mode off, push-to-talk and held recordings run the same code as before. Space holds use `startHold`, not `press`. No test calls `press` directly. The README matches the code.
+- **Carried items unchanged:**
+  - Wave 2 R1-F4 (help text) to task 3.3;
+  - Wave 1 R1-F2 (hook robustness) to task 3.2;
+  - Wave 1 R1-F5 (single length limit) to task 3.1.
+- **Remaining risk accepted:** R1-F3 has no test, because the race depends on real filesystem timing.
+
+### Summary
+- **Accepted blocking:** 0.
+- **Accepted nonblocking:** 0 new.
+- **Deferred:** 0.
+- **Rejected:** 0.
+
+### Terminal baseline validation
+- **Boundary:** `BASELINE_TARGET`, `BASELINE_SOURCE`, `BASELINE_INCLUSION_PREDICATE`, and `BASELINE_EXCLUSIONS` are unchanged.
+- **Candidate:** recomputed `sha256:5870f2eedc5231b6`, equal to the latest recorded `PATCH_BASELINE_REVISION`.
+- **Rounds:** 2 of 4 Oracle rounds used, and no rebuild.
+
+DISPATCH_BUDGET wave 2: oracle=1/1 others=1/3
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD
