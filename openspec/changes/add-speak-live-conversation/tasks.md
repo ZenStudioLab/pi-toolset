@@ -110,3 +110,83 @@ Archive order: archive this change only after `add-speak-voice-input`, whose `vo
   Record the results here, or report them as unverified.
   - **Result (2026-10-15):** the user explicitly reported this check as unverified ("mark unverified") and asked to fold it into one combined live check after Wave 6. With the user's approval, the orchestrator added `"liveLanguages": ["vi", "en"]` to `~/.config/pi-speak/config.json` and confirmed that the Wave 5 code accepts it. The pause, the two languages, and the Vietnamese stop phrase are covered by automated tests only.
 - [x] 5.5 [Oracle gate: `oracle`] Final review gate for Wave 5, run once after 5.1–5.3 are complete and 5.4 is complete or explicitly reported as unverified, under the same rules as 1.6: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.
+
+## 6. Wave 6: live key, words as you speak, and spoken replies (amendment of 2026-10-15)
+
+- [x] 6.1 [Orchestrator] Amend ADR-0010 for D15–D17. Must be done before 6.2.
+  - **Decision:** live mode starts and ends by `/talk live` or the live key; Pi's finished answer is read aloud, cleaned as for `/speak original`; the words heard so far are only shown.
+  - **Consequences:** spend now includes every answer read aloud; a forgotten `speak_aloud` call is covered by the read-aloud answer.
+  - **Alternatives:** "Speak every answer automatically" is marked as adopted by the user on 2026-10-15, with its mitigations.
+  - **Status and Change lines:** name tasks 3.4 and 4.4 as done and 6.7 as pending, and list D13–D17.
+
+  Verify that ADR-0010 agrees with D15–D17 and that no other ADR is edited.
+- [x] 6.2 [worker] Add the live key (design D15, "Live shortcut"):
+  - **Setting:** `input.liveShortcut` in `input-settings.ts`, default `alt+l`, parsed like the other shortcut settings, and included in the repeated-key check across all five settings.
+  - **Shortcuts:** the `Shortcuts` type in `config.ts` gains `live`, read at load like the others, with a matching load-time default in `index.ts`. Each key is registered in `index.ts` with a handler that calls the same toggle as `/talk live`.
+  - **`live.ts`:**
+    - the status line says that the live key or `/talk live` ends live mode;
+    - the refusal message for other voice controls names the live key and `/talk live`.
+  - **Help:** describes `input.liveShortcut` and lists the live key among the registered keys.
+  - **Carried from the Wave 5 gate (R1-F2):**
+    - help says "With the list empty, live mode detects any language unless input.language fixes one.";
+    - the README settings row says "Empty adds no limit beyond `input.language`.";
+    - `/speak status` prints `live languages: none`, with no parenthetical;
+    - update the exact strings in `test/command.test.ts`;
+    - optionally rename the test at `test/live.test.ts:49`, whose name still says "the existing realtime parameters".
+
+  Verify with:
+  - config cases: the default; one key and a list; a key repeated against each of the other four settings; an invalid value;
+  - a test that the live key is registered and toggles live mode on and off, including ending while Pi speaks without aborting the agent;
+  - the status-line, refusal-message, and help assertions.
+- [x] 6.3 [worker] Show the words heard so far (design D16, "Words heard so far"):
+  - **Partials:** `live.ts` always subscribes to `onPartial`, not only for barge-in. Barge-in still cuts Pi off only when `input.liveListenWhileSpeaking` is on.
+  - **Widget:** the latest partial is shown with `setWidget` above the editor. A long partial may be shortened to its last words.
+  - **Clearing:** the widget is cleared on commit, on every end path, and on session reset.
+  - **Display only:** nothing is written to the composer, logs, or messages.
+
+  Verify with tests:
+  - a partial is shown and replaced by a newer one;
+  - the widget clears on commit, on end, and on session reset;
+  - the composer is untouched;
+  - with barge-in off, a partial while Pi speaks does not cut Pi off;
+  - a long partial is shortened.
+- [x] 6.4 [worker] Read Pi's answers aloud (design D17, "Spoken replies"):
+  - **Trigger:** an `agent_end` handler in `index.ts` reaches live mode only while it is `on`.
+  - **Selection and cleanup:** the answer is selected with `selectSessionAnswer` and cleaned with `prepareAnswerText`, exactly as `/speak original` does.
+  - **Parts:** split at paragraph breaks; a paragraph longer than 1,000 characters is split at sentence ends, or at a space when a single sentence is longer.
+  - **Queue:** parts are queued on the live update queue while their total stays within the speech limit read at live start. When the answer is longer, one message says the rest was not read, without repeating it.
+  - **Silent cases:** aborted or failed runs, no text, nothing speakable, and live mode off speak nothing and show no message.
+  - **Guidance:** `speak-aloud.ts` drops the end-summary instruction and says that the final answer is read aloud automatically.
+  - **Size:** keep `live.ts` under 500 lines; put the splitting in its own small module if that helps.
+
+  Verify with:
+  - splitter cases: paragraphs, a long paragraph split at sentences, an over-long sentence split at a space, and no empty parts;
+  - a live test where a finished run queues parts in order without code;
+  - the limit and its message;
+  - cut-off dropping the remaining parts while live mode stays on;
+  - aborted, no text, and live-off cases speak nothing;
+  - the guidance text.
+- [x] 6.5 [worker] Update the README's "Live conversation" section, the configuration example and defaults, and the settings table:
+  - `input.liveShortcut` and its default;
+  - the words heard so far being shown only;
+  - answers read aloud in parts up to the speech limit, cleaned as for `/speak original`, with cut-off;
+  - the privacy and cost text for answers sent to ElevenLabs.
+
+  Verify with a read-through against the spec.
+
+  For tasks 6.2–6.5, run each changed test file alone first inside the memory scope, then the full suite and the type check.
+- [x] 6.6 [Orchestrator] With the user's approval of 2026-10-15, set `"shortcut": ["alt+s"]` and `"liveShortcut": ["alt+t"]` under `input` in `~/.config/pi-speak/config.json`, changing nothing else. Confirm that `parseConfig` from the Wave 6 code accepts the file.
+- [x] 6.7 [User] Combined live check for Waves 5 and 6, after `/reload`:
+  - alt+t starts live mode;
+  - the start message says "limited to vi, en";
+  - your words appear above the input box as you speak;
+  - a 1.5 s pause mid-sentence stays one message;
+  - Vietnamese and English are each transcribed in their own language, with no Chinese;
+  - Pi's answer is read aloud, and alt+s cuts it off while live mode stays on;
+  - "Dừng cuộc hội thoại" ends live mode;
+  - alt+t ends live mode.
+
+  Record the results here, or report them as unverified.
+
+  Result (2026-10-15, reported by the user in live mode): the user confirmed that cutting Pi off with alt+s works ("mình đã thử và nó hoạt động"), then reported that every item of this check was tested and passed ("tất cả những yếu tố ở trên mà em cần test thì đã xong xuôi cả rồi … tất cả đều ổn cả"). The orchestrator observed in the same conversation that live turns arrive transcribed in Vietnamese, and that one turn was sent mid-sentence after a thinking pause of about 2 s ("…nhưng mà"). With the user's approval, `input.livePauseSeconds` in the user's own configuration was set to 3, the provider's maximum; the default stays 2. The per-item results were reported together, not one by one.
+- [x] 6.8 [Oracle gate: `oracle`] Final review gate for Wave 6, run once after 6.1–6.6 are complete and 6.7 is complete or explicitly reported as unverified, under the same rules as 1.6: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.

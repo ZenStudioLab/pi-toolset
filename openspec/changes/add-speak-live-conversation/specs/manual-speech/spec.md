@@ -4,7 +4,7 @@
 
 ### Requirement: Speech occurs only on explicit request
 
-The extension SHALL start translation, speech generation, summarization, or playback only as the direct result of the user running a `/speak` subcommand that produces speech, or, while the user has live mode on, of the model calling the `speak_aloud` tool as the `voice-conversation` capability defines. Loading, reloading, session start, ordinary prompts, execution of any tool other than `speak_aloud` in live mode, agent completion, and any other lifecycle event SHALL NOT initiate a provider request, a model call, or playback. Lifecycle events MAY cancel or clean up this extension's own work.
+The extension SHALL start translation, speech generation, summarization, or playback only as the direct result of the user running a `/speak` subcommand that produces speech, or, while the user has live mode on, of the model calling the `speak_aloud` tool or of an agent run ending, whose answer is then read aloud, as the `voice-conversation` capability defines. Loading, reloading, session start, ordinary prompts, execution of any tool other than `speak_aloud` in live mode, agent completion while live mode is off, and any other lifecycle event SHALL NOT initiate a provider request, a model call, or playback. Lifecycle events MAY cancel or clean up this extension's own work.
 
 #### Scenario: Silent startup and agent activity
 

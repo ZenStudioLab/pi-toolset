@@ -1,8 +1,8 @@
 # ADR-0010: Live Voice Conversation
 
-**Status:** Accepted for implementation; runtime qualification pending (task 3.4 of `add-speak-live-conversation`).
+**Status:** Accepted for implementation; the user's live checks of tasks 3.4 and 4.4 confirmed live mode and the English stop phrase, and the rest of runtime qualification is pending in task 6.7 of `add-speak-live-conversation`.
 **Owner:** Orchestrator.
-**Change:** [add-speak-live-conversation](../../openspec/changes/add-speak-live-conversation/design.md), with the amendment of 2026-10-15 (live stop phrase, design D12).
+**Change:** [add-speak-live-conversation](../../openspec/changes/add-speak-live-conversation/design.md), with the amendments of 2026-10-15: live stop phrase (design D12), thinking pause and live languages (D13, D14), and a live key, words heard so far, and spoken replies (D15–D17).
 **Supersedes:** while live mode is on, and only then, [ADR-0002](0002-manual-speech-egress-boundary.md)'s rule that nothing is spoken unless the user runs a `/speak` subcommand, and [ADR-0004](0004-voice-input-and-provider-choice.md)'s exclusion of an open microphone and of automatic speech, and ADR-0004's "no spoken commands" rule, for the live stop phrase only, which can only end live mode. While live mode is on, it also sets aside ADR-0004's choice of input and speech provider (live mode always uses ElevenLabs) and [ADR-0008](0008-hold-space-to-talk.md)'s Space holds (refused while live). Outside live mode all of these stand unchanged, and every other decision in ADR-0002 through ADR-0008 remains in force.
 
 ## Context
@@ -15,10 +15,11 @@ The trust boundary is the one in ADR-0004: one user's own machine and the servic
 
 ## Decision
 
-Add an explicit opt-in **live mode** to `extensions/speak/`. `/talk live` turns it on and `/talk live` again turns it off. Nothing else starts it, and it never survives a reload, restart, or session replacement.
+Add an explicit opt-in **live mode** to `extensions/speak/`. `/talk live` or the live key (`input.liveShortcut`, default `alt+l`) turns it on, and either one again turns it off. Nothing else starts it, and it never survives a reload, restart, or session replacement.
 
 - **Open microphone, only while live.** Microphone audio streams to ElevenLabs live transcription for as long as live mode is on. Each stretch of speech that ends with a pause is sent to Pi as one plain user message, under `input.sendWhenBusy` as in [ADR-0005](0005-voice-send-and-session-locale.md). The composer is left alone, and no slash command, template, or skill runs.
-- **Pi chooses what is spoken.** A model-callable `speak_aloud` tool, active only while live mode is on, synthesizes the text Pi writes, without a `/speak` command. Pi writes it in the language the user just spoke, so there is no translation step.
+- **Pi's updates and Pi's answers are spoken.** A model-callable `speak_aloud` tool, active only while live mode is on, synthesizes the short acknowledgements and progress Pi writes, without a `/speak` command. Since the amendment of 2026-10-15, every answer Pi finishes while live mode is on is also read aloud: it is selected and cleaned as for `/speak original`, read in parts so speech starts quickly, and stopped at the speech length limit. Both are in the language the user just spoke, so there is no translation step.
+- **The words heard so far are only shown (amendment of 2026-10-15).** While the user speaks, the provider's partial transcript is shown above the editor and cleared when the turn is sent. It is never stored, sent, or put in the composer.
 - **ElevenLabs in both directions.** It is the only provider here with live transcription and voices that follow the user between languages. Live mode ignores the input and speech provider choices of ADR-0004.
 - **Muted while Pi speaks, by default.** From playback start until 500 ms after it ends, silence is sent in place of microphone audio, so Pi never hears itself. The send key or `/speak stop` cuts Pi off. `input.liveListenWhileSpeaking` keeps the microphone live for voice barge-in, for headphones or system echo cancellation.
 - **Bounded streaming.** `input.liveIdleMinutes` (default 5) ends live mode when nothing happens, and a status line is shown for as long as it is on. A connection failure ends live mode without retry or reconnect.
@@ -28,9 +29,9 @@ Add an explicit opt-in **live mode** to `extensions/speak/`. `/talk live` turns 
 ## Consequences
 
 - **Audio leaves continuously while live.** Everything the microphone hears, except during muted playback, goes to ElevenLabs. Neither tier is a zero-retention guarantee. Ending live mode is the way to stop streaming. The README says so.
-- **Spend is less predictable** than with explicit `/speak`. The connection is billed while open, and every update is a synthesis request. The idle limit, the status line, and the off-by-default design bound it.
+- **Spend is less predictable** than with explicit `/speak`. The connection is billed while open, and every update and every answer read aloud is a synthesis request. A long answer can take minutes to read. The idle limit, the status line, and the off-by-default design bound it.
 - **A misheard turn can act through Pi's tools.** The user accepted this for live mode. Turns are plain text that never run commands, and text with no letter or digit is dropped.
-- **The model may forget or overuse the tool.** The written answer remains the full record; there is no automatic fallback speech.
+- **The model may forget or overuse the tool.** The written answer remains the full record, and since it is read aloud automatically, a forgotten call costs only the acknowledgement or progress.
 - **The push-to-talk stop phrase of [ADR-0006](0006-spoken-stop-phrase.md) has no effect in live mode.** Each pause already ends a turn. Live mode has its own stop phrases, which end live mode instead of sending. A misheard turn that equals one ends live mode early. That is harmless, because nothing is sent and `/talk live` restarts it. While Pi speaks with the microphone muted, a stop phrase is not heard. Push-to-talk keys and Space holds ([ADR-0008](0008-hold-space-to-talk.md)) are refused while live, except that the send key cuts Pi off.
 - **Mocked tests cannot prove echo, turn-taking, or recognition quality.** A user-run live check with speakers and headphones qualifies them.
 
@@ -40,5 +41,5 @@ Add an explicit opt-in **live mode** to `extensions/speak/`. `/talk live` turns 
 - **Adopt pi-realtime.** No license, macOS-only terminal capture, OpenAI only.
 - **OpenAI Realtime.** Breaks ADR-0004's two-provider choice and costs more per minute.
 - **Hosted ElevenLabs or Deepgram voice agents.** They run their own model and would need a local OpenAI-style server to reach Pi, losing Pi's context.
-- **Speak every answer automatically.** Long technical answers read aloud poorly; Pi choosing short spoken updates keeps the written answer as the record.
+- **Speak every answer automatically.** First rejected, because long technical answers read aloud poorly. Adopted by the user on 2026-10-15, with mitigations: the answer is cleaned of code, command output, links, and hashes; it is read in parts; it stops at the speech length limit; and the send key or `/speak stop` cuts it off. Reading only about one minute of each answer was offered, and declined by the user.
 - **Keep the microphone open during playback by default.** Without headphones or echo cancellation, Pi's own voice would be sent as turns.

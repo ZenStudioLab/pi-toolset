@@ -1159,3 +1159,248 @@ DISPATCH_BUDGET wave 5: oracle=1/1 others=1/3
 
 REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
+
+Wave 5 committed: pi-speak `7e4c452`, root `7b0b90a`.
+
+## Wave 6 Review Sequence
+
+## Change amendment (user requests, 2026-10-15): live key, words as you speak, and spoken replies
+
+What the user asked for:
+
+- **Keys:** "alt+t = trigger this mode", plus "can we change alt Y, it's used by herdr".
+- **Words as you speak:** "can you stream text that user speaks (like claude does)?"
+- **Spoken replies:** "in live mode, I want the reply to be outloud".
+
+The user's answers:
+
+- **Q1:** `alt+s` replaces `alt+y` for push-to-talk send, which is also live cut-off.
+- **Q2:** "yes". The orchestrator read this as the recommendation, live mode only, and told the user that push-to-talk can be added later.
+- **Q3:** B, read the whole answer up to the speech limit.
+- **Q4:** A, mark 5.4 unverified and do one combined check later.
+- **Earlier:** the live key always ends live mode (Q1 = A of the previous round), and permission to edit the speak config.
+
+Orchestrator narrowing, reported to the user: no on/off setting for spoken replies (`input.liveSpeakReplies` was mentioned and then dropped). Turning replies off would also require the `speak_aloud` guidance to switch back to an end summary, and the user wants replies on. The reasons are in design D17.
+
+Artifacts amended:
+
+- **Proposal:** a new bullet; the non-goals no longer exclude a live-mode shortcut or chunking of answers (only of `speak_aloud` updates); the capability and cost lines.
+- **Spec `voice-conversation`:**
+  - new requirements "Live shortcut" (three scenarios), "Words heard so far" (two), and "Spoken replies" (four);
+  - "Live mode starts and ends…", "Spoken updates tool" (no end summary), "Other voice controls during live mode", "Live mode ends cleanly", "Live mode status, help, and settings", and "Live mode privacy" are updated.
+- **Spec `manual-speech`:** "Speech occurs only on explicit request" admits answers read aloud while live.
+- **Spec `voice-input`:** "Recording starts only on an explicit action" adds the live key.
+- **Design:** D15–D17, D11 naming the new setting, and three risk lines.
+- **Tasks:** Wave 6, tasks 6.1–6.8.
+- **Validation:** `openspec validate --strict` is valid.
+
+Facts checked by the orchestrator:
+
+- **Keys:** Pi's host keybindings bind none of `alt+l`, `alt+s`, `alt+t`; its Alt letters are b, d, f, y, and p, q, v, z with Windows-style keys. `alt+y` is Pi's yank-pop. Herdr's `config.toml` sets only `prefix = "ctrl+x"`, and the user reports that herdr captures `alt+y`.
+- **Host API:** `AgentEndEvent` carries `messages`; `ctx.ui.setWidget(key, lines, { placement })` defaults to `aboveEditor`; `registerShortcut` handlers receive an `ExtensionContext`.
+- **Reuse:** `selectSessionAnswer` (`session.ts`) and `prepareAnswerText` (`text.ts:159`) are what `/speak original` uses.
+- **Synthesis:** the clip is not streamed, so a long answer needs parts.
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 6. Final gate reserved: task 6.8 [Oracle gate: `oracle`].
+
+| Assignment | Tasks | Owner | Bounded responsibility | Files and topics |
+| --- | --- | --- | --- | --- |
+| W6-A | 6.1 | orchestrator | ADR-0010 amendment for D15–D17 | `docs/adr/0010-live-voice-conversation.md` |
+| W6-B | 6.2–6.5 | worker (fresh) | live key and carried Wave 5 R1-F2; words-heard widget; spoken replies; README | `input-settings.ts`, `config.ts`, `index.ts`, `live.ts`, a new reply-splitting module if useful, `speak-aloud.ts`, `speech-status.ts`, `help.ts`, `README.md`, and the matching tests |
+| W6-C | 6.6 | orchestrator | the user's config shortcut lines, after W6-B | `~/.config/pi-speak/config.json` |
+| W6-D | 6.7 | user | the combined live check for Waves 5 and 6 | recorded in task 6.7 |
+
+### W6-A (orchestrator) evidence
+
+ADR-0010 is amended:
+
+- **Status:** tasks 3.4 and 4.4 done, 6.7 pending.
+- **Change line:** lists D12–D17.
+- **Decision:** start and end by `/talk live` or the live key; "Pi's updates and Pi's answers are spoken"; a new "words heard so far are only shown" bullet.
+- **Consequences:** spend includes answers read aloud; a forgotten tool call is covered.
+- **Alternatives:** "Speak every answer automatically" is marked adopted by the user, with its mitigations and the declined one-minute option.
+- **Other ADRs:** none edited.
+
+Worker reuse check on the Wave 4/5 worker (`af8e687a`):
+
+| Gate | Condition | Value | Result |
+| --- | --- | --- | --- |
+| 2 | Idle under 1 hour | 04:56 to 07:26 UTC, about 2.5 hours | **fail** |
+
+A fresh `worker` is used, dispatched in the background on `claude-bridge/claude-sonnet-5-5:high`.
+
+### W6-B (worker, run `39ca4bdd`, background, `claude-bridge/claude-sonnet-5-5:high`, completed)
+
+Provider confirmed from the child transcript: all 67 model turns went through `claude-bridge`. The write scope was `extensions/speak` only, and nothing was staged.
+
+Tasks 6.2–6.5. Line counts:
+
+- **Source:** `live.ts` 447, `index.ts` 284, `config.ts` 464, `input-settings.ts` 225, `help.ts` 73, `speech-status.ts` 70, `speak-aloud.ts` 57, `README.md` 324, and a new `reply-parts.ts` 39.
+- **New tests:** `test/live-key.test.ts` 79, `test/live-words.test.ts` 105, `test/live-reply.test.ts` 141, `test/reply-parts.test.ts` 58.
+- **Changed tests:** `harness.ts` 494, `command` 716, `config` 525, `silence` 184, `live-idle` 122, `live-tool` 162, `live-speech` 195, `live-stop` 144, `live` 448, `talk` 767.
+
+New exports and signatures:
+
+- `splitReply(text): string[]` in `reply-parts.ts`: paragraphs, then sentences packed up to 1,000 characters with `Intl.Segmenter`, then words for an over-long sentence. A run with no spaces stays whole.
+- `LiveSession.speakReply(text)`.
+- `Shortcuts.live` and `InputConfig.liveShortcut`. `pushToTalkKeys` is unchanged and leaves out the live key.
+- A private `onPartial` replaces `cutOffByVoice`.
+
+Behavior:
+
+- **Live key:** registered in `index.ts` with `live.toggle(ctx)`.
+- **Spoken replies:** the `agent_end` handler returns before reading the context while live mode is not `on`; otherwise it calls `selectSessionAnswer`, then `prepareAnswerText`, then `speakReply`. Parts are queued while their total stays within `on.speechLimit`, and an over-long answer gets one message that repeats no text.
+- **Words heard so far:** a `Hearing: …` widget above the editor, shortened to the last 200 characters at a word, and cleared on commit, on every end path, and on reset.
+
+Worker-declared deviations, all accepted by the caller:
+
+- **(a) Messages name the live key:** the `/speak` refusal and the start message now name the live key. The spec requires naming the ways to end live mode.
+- **(b) Existing test fixtures adjusted to the new `alt+l` default:**
+  - a `config.test.ts` fixture moves from `alt+l` to `alt+n`, because `alt+l` is now the live default;
+  - the expected key lists in `silence.test.ts` and `talk.test.ts` gain `alt+l`;
+  - the "no agent event" test in `silence.test.ts` now allows `agent_end`, and uses a Proxy context to assert the handler never reads it while live mode is off.
+- **(c) Help and README beyond the task list:** they describe the words-heard line, answers read aloud, privacy, and cost, as the spec's help and documentation sentences require.
+- **(d) Stale spec wording reported, not edited:** `voice-input` still said "all four settings" and "only the four defaults". The orchestrator amended both sentences in the delta to include `input.liveShortcut`, and strict validation passes.
+
+Worker's mutation checks (14 in total), each detected:
+
+- the live key bypassing the toggle (6 failures);
+- the repeated-key check missing `liveShortcut` (7);
+- partials shown only with barge-in (9);
+- the widget not cleared on end (5) or on commit (1);
+- a long partial not shortened (1);
+- a reply sent as one part (12);
+- long paragraphs not split at sentences (4);
+- the speech limit ignored (1);
+- aborted or failed runs spoken (2);
+- `agent_end` without the live-mode check (5);
+- the guidance asking for a summary again (1);
+- reply speech not counted as activity (1);
+- the status wording reverted (1).
+
+Orchestrator re-verification inside the 4 GB scope:
+
+- **Alone:** `live-key` 5, `live-words` 11, `live-reply` 13, `reply-parts` 7, `silence` 23, all passing.
+- **Full suite:** 949 pass, 0 fail (Wave 5: 894).
+- **`npx tsc --noEmit`:** clean.
+- **Code read:** `reply-parts.ts`, the `index.ts` diff (the live key and `agent_end`), `speakReply`, and `onPartial`/`onCommitted`.
+
+Sizes: `live.ts` 447 is under 500. `talk.test.ts` 767 and `command.test.ts` 716 are under the 800-line review threshold; `talk.test.ts` is the nearest.
+
+### W6-C (orchestrator) evidence: task 6.6
+
+`~/.config/pi-speak/config.json` `input` now has `"shortcut": ["alt+s"]` and `"liveShortcut": ["alt+t"]`, replacing `["alt+t", "alt+y"]`. Nothing else changed: `transcribeShortcut` (`alt+shift+t`, `alt+shift+y`), `liveLanguages` `["vi", "en"]`, and the rest of the file are untouched.
+
+`parseConfig` from the Wave 6 code accepts the file: shortcut `["alt+s"]`, liveShortcut `["alt+t"]`, liveLanguages `["vi","en"]`, pause 2.
+
+### W6-D (user) evidence: task 6.7
+
+Reported in live mode on 2026-10-15:
+
+- **First report:** cutting Pi off with alt+s works.
+- **Second report:** every item of the combined check was tested and passed. The items were reported together, not one by one.
+
+The orchestrator observed two things in the same conversation:
+
+- live turns arrived transcribed in Vietnamese;
+- one turn was sent mid-sentence after a thinking pause of about 2 s.
+
+With the user's approval, `input.livePauseSeconds` is now 3 in `~/.config/pi-speak/config.json`. That is the provider's maximum; the shipped default stays 2. `parseConfig` accepts the file with pause 3, live key `alt+t`, and send key `alt+s`.
+
+The orchestrator also amended `specs/voice-input/spec.md` "Push-to-talk shortcuts": the repeated-key rule and the fallback defaults now include `input.liveShortcut`. This was the stale wording the worker reported.
+
+BASELINE_TARGET=Wave 6 of add-speak-live-conversation: tasks 6.1–6.6 as implemented (ADR-0010 amendment, live key, words heard so far, spoken replies, README, carried Wave 5 R1-F2), with 6.7 reported by the user
+BASELINE_TARGET_REVISION=sha256:4ff2d4e83fd2b053 (git -C extensions/speak diff HEAD, then the untracked extensions/speak/{reply-parts.ts,test/live-key.test.ts,test/live-reply.test.ts,test/live-words.test.ts,test/reply-parts.test.ts} in that order, then git diff HEAD -- docs/adr/0010-live-voice-conversation.md; pi-speak HEAD 7e4c452, root HEAD 7b0b90a)
+BASELINE_SOURCE=openspec/changes/add-speak-live-conversation (proposal, design D15–D17 and the risks, tasks 6.x, specs/voice-conversation/spec.md "Live shortcut", "Words heard so far", "Spoken replies" and the requirements they amend, specs/manual-speech and specs/voice-input first requirements) as of the task 6.7 result; docs/adr/0010
+BASELINE_INCLUSION_PREDICATE=files changed or created for tasks 6.1–6.5: extensions/speak/{config,input-settings,index,live,reply-parts,speak-aloud,speech-status,help}.ts, extensions/speak/README.md, extensions/speak/test/{harness.ts,live-key,live-words,live-reply,reply-parts,command,config,silence,live-idle,live-tool,live-speech,live-stop,live,talk}.test.ts, docs/adr/0010-live-voice-conversation.md
+BASELINE_EXCLUSIONS=Waves 1–5 code except as context; unrelated uncommitted add-pi-session-rename-tool files and the staged session-rename move; host/pi; ~/.config/pi-speak/config.json (task 6.6 is evidence, not a reviewed file)
+
+DISPATCH_BUDGET wave 6: oracle=0/1 others=1/3 (before the gate)
+
+## Round 1 - Oracle Review
+
+Transcribed by the caller from the response of Oracle run `fe550e4a`. The Oracle could not write files. It ran in the background on `claude-bridge/claude-opus-5-5:high`; all 43 model turns in its transcript went through `claude-bridge`.
+
+Gate task consumed (once): 6.8 [Oracle gate: `oracle`]. Mode: FULL. Output is advisory.
+
+**Baseline.**
+
+- **Mismatch:** the recorded `sha256:4ff2d4e83fd2b053` did not match. The stated recipe, run from the repo root, gives `sha256:7d95f51d6f9250f9`. The HEADs are as recorded (pi-speak `7e4c452`, root `7b0b90a`).
+- **Cause, confirmed by the supervisor:** the recorded value was computed from inside `extensions/speak` with `git -C .. diff HEAD -- docs/adr/…`. That pathspec resolved to `extensions/docs/…`, so the ADR diff came out empty.
+- **Basis of this review:** following the supervisor's reply (Q1 = B), the review is against `7d95f51d6f9250f9`. No in-scope file was changed after the evidence was written.
+
+**Independent checks** (inside the 4 GB scope):
+
+- `test/live-reply.test.ts` alone: 13 pass.
+- Full suite: 949 pass, 0 fail, 0 cancelled.
+- `npx tsc --noEmit`: exit 0.
+- Mutation spot-checks in a throwaway copy (since deleted), each caught:
+  - removing the widget clear in `end()`: 5 tests fail;
+  - ignoring the speech limit: 1 fails;
+  - never splitting long paragraphs: 4 fail;
+  - skipping `prepareAnswerText`: 3 fail.
+
+**What holds:**
+
+- **Live key (D15).**
+  - The key calls the same `live.toggle(ctx)` as `/talk live`: a press while starting cancels the start, and a press while on ends live mode mid-reply without aborting the agent.
+  - The send key's cut-off path is untouched.
+  - The repeated-key check covers all five settings.
+  - The tests cover every pair and the registration at load.
+- **Words heard so far (D16).**
+  - `onPartial` is always subscribed, and it cuts Pi off only with barge-in on.
+  - The widget is cleared in `onCommitted` and in the single `end()` that every end path uses.
+  - Late partials are dropped by the `this.state !== on` guard.
+  - Nothing reaches the composer, logs, or messages.
+- **Spoken replies (D17).**
+  - `agent_end` returns before touching `ctx` unless the phase is `on`, as the Proxy test enforces.
+  - The answer goes through `selectSessionAnswer`, then `prepareAnswerText`, then `speakReply`, which checks the phase again.
+  - The handler is synchronous, so no stale `On` is possible.
+  - The host saves the final message before `agent_end` (`agent-session.ts:1140–1162`).
+  - Runs that end aborted, failed, or on a tool call are silent; a successful retry is read.
+  - Parts share the `LiveSpeech` queue, so cut-off, `/speak stop`, mute, and end all apply. Each part also counts as activity for the idle clock.
+  - The limit is counted in code points, as `checkLength` counts.
+- **Privacy:** no transcript or answer text in any message, warning, or log.
+- **Guidance:** the end summary is removed and a test guards it.
+- **Carried Wave 5 R1-F2:** all three places match, with exact-line assertions.
+- **Sizes:** `live.ts` is 447 lines and the largest test file is 767. No dead code or padded tests.
+- **ADR-0010:** agrees with D15–D17, and no other ADR is edited.
+
+### Findings
+
+- **R1-F1 (P3, family `readme-shortcut-count`, root `four-defaults-after-fifth-setting`).** `extensions/speak/README.md:135` still says "the four shortcuts" and "only the four defaults are registered", but five defaults are now registered. SUGGESTED_CORRECTION: "…the four push-to-talk shortcuts and the live key, …" and "…only the five defaults are registered."
+- **R1-F2 (P3, family `adr-status`, root `6.7-reported-but-adr-says-pending`).** The ADR-0010 Status line still says runtime qualification is "pending in task 6.7", but 6.7 is checked and recorded. SUGGESTED_CORRECTION: say that the user's combined check (task 6.7, 2026-10-15) passed, reported together rather than one by one.
+- **R1-F3 (P3, family `baseline-recipe`, root `relative-pathspec-from-submodule`).** This is a caller-process item: correct `BASELINE_TARGET_REVISION` to `sha256:7d95f51d6f9250f9`, and state that the recipe runs from the repo root.
+
+### Notes (not findings)
+
+- **Microphone open between reply parts.**
+  - Muting follows the player (D6), so while the next part is synthesizing, after the 500 ms tail, the microphone is open.
+  - With barge-in off, words said in that gap are shown and sent as a turn while the reply continues.
+  - This matches the spec, but multi-part answers make it more noticeable.
+  - Possible follow-ups: synthesize the next part while the current one plays, or stay muted while the queue is busy.
+- **Unlisted silent case:** a session whose project does not match the working directory reads nothing and shows no message. This follows `/speak original`, but the spec's list of silent cases does not name it.
+- **Answer written next to a final tool call:** if the model writes its answer in the same message as a final `speak_aloud` call and then ends with an empty message, nothing is read. The selection looks only at the last assistant message, and the new guidance makes this unlikely.
+- **New default key:** anyone who already bound `alt+l` to another shortcut setting now gets a repeated-key error. The spec requires this, and the user's own config is unaffected.
+- **Bookkeeping:** task 6.8 is unchecked, and the commit is pending.
+
+PROPOSED_REVIEW_ACTION=PASS
+CONFIRMED_BASELINE=sha256:7d95f51d6f9250f9
+
+## Caller Assessment — Wave 6, Round 1
+
+- **Reconciliation:** the Oracle run completed and was reconciled. Its provider was confirmed from the transcript (`claude-bridge`, 43 turns). There were no P0 or P1 findings.
+- **R1-F1:** ACCEPT_NONBLOCKING. `README.md` is inside the frozen hash, and this is the last wave, so the fix goes in a docs-only follow-up commit after the reviewed revision is committed. That keeps the gated commit equal to the reviewed revision. The Oracle's wording is used.
+- **R1-F2:** ACCEPT_NONBLOCKING. ADR-0010 is inside the hash, so the Status line is fixed in the same follow-up commit. It will say that tasks 3.4, 4.4, and 6.7 passed, and that 6.7 was reported together rather than one by one.
+- **R1-F3:** ACCEPT. The caller's recipe error is confirmed: from `extensions/speak`, `git -C ..` resolves to `extensions/`. The corrected line follows; the line recorded before the gate is superseded.
+  - BASELINE_TARGET_REVISION=sha256:7d95f51d6f9250f9 (run from the repo root: git -C extensions/speak diff HEAD, then the five untracked files in the recorded order, then git diff HEAD -- docs/adr/0010-live-voice-conversation.md; pi-speak HEAD 7e4c452, root HEAD 7b0b90a)
+- **Notes:** none is a defect against the spec. The microphone-between-parts note and the two possible follow-ups are reported to the user as optional future work, with no task created. The silent-case and tool-call notes match `/speak original`'s selection rule.
+- **Candidate:** recomputed by the caller from the repo root: `sha256:7d95f51d6f9250f9`, equal to the corrected baseline.
+- **Boundary:** `BASELINE_TARGET`, `BASELINE_SOURCE`, `BASELINE_INCLUSION_PREDICATE`, and `BASELINE_EXCLUSIONS` are unchanged.
+
+DISPATCH_BUDGET wave 6: oracle=1/1 others=1/3
+
+CONSENSUS_STATUS=MOSTLY_GOOD
+REVIEW_ACTION=PASS

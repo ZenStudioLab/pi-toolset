@@ -89,7 +89,7 @@ The new `live.ts` owns the live session: connection, streaming recorder, turn de
 
 ### D11. Flat settings
 
-`input.liveIdleMinutes`, `input.liveListenWhileSpeaking`, `input.liveStopPhrases` (D12), `input.livePauseSeconds` (D13), and `input.liveLanguages` (D14) follow the existing flat `input.*` style (`stopOnPhrase`, `holdSpace`) rather than a nested block.
+`input.liveIdleMinutes`, `input.liveListenWhileSpeaking`, `input.liveStopPhrases` (D12), `input.livePauseSeconds` (D13), `input.liveLanguages` (D14), and `input.liveShortcut` (D15) follow the existing flat `input.*` style (`stopOnPhrase`, `holdSpace`) rather than a nested block.
 
 ### D12. Ending live mode by voice (amendment of 2026-10-15)
 
@@ -140,11 +140,44 @@ So the documentation states the rule plainly: live mode recognises only the list
 - **`input.secondaryLanguages` (the handoff's name).** Rejected for two reasons. The setting is live-only, which the `live` prefix of D11 signals. And without `input.language`, the list is the whole allowed set rather than a secondary one.
 - **Applying the list to push-to-talk.** Rejected: push-to-talk sends its recorded clip to the batch or Deepgram endpoint, which this list does not reach, and its live connection only listens for the stop phrase.
 
+### D15. A key for live mode (amendment of 2026-10-15)
+
+The user asked for a key that starts and ends live mode, as a hands-free alternative to typing `/talk live`. `input.liveShortcut` is registered at load, like the other shortcut settings, and calls the same toggle as `/talk live`, so starting, cancelling a start, and ending behave identically. A key may not appear in two shortcut settings; the existing repeated-key check is extended to the fifth setting.
+
+- **One key, one meaning.** The live key always ends live mode, even while Pi speaks. Cutting Pi off stays with the send key. The user chose this over a single key that cuts Pi off while it speaks and ends live mode while it listens, which would end the conversation on a press made just as Pi finishes.
+- **The default is `alt+l`.** Pi binds none of `alt+l`, `alt+s`, or `alt+t`. Keeping push-to-talk's `alt+t` default unchanged leaves other users' keys alone. The user's own configuration moves live mode to `alt+t` and push-to-talk to `alt+s`, because herdr, the user's terminal workspace manager, captures `alt+y`, and Pi binds it to yank-pop.
+
+### D16. Showing the words heard so far (amendment of 2026-10-15)
+
+The provider already sends partial transcripts of the segment being spoken. Live mode used them only for barge-in (D8); it now always subscribes and shows the latest one in a widget above the editor, replacing it as newer ones arrive. The widget clears when the segment is committed, when live mode ends, and when the session is replaced, and the committed turn then appears as the user's message.
+
+- **A widget, not the composer.** "Live turn delivery" forbids live mode from reading or changing the composer, where the user may have typed a draft.
+- **Display only.** The privacy rule still holds: the words are not logged, stored, or repeated in a message.
+- **Live mode only.** Push-to-talk keeps its current behavior; the user chose live mode only.
+
+### D17. Reading Pi's answers aloud (amendment of 2026-10-15)
+
+The user wants Pi's replies spoken, not only the short updates Pi chooses. When an agent run ends while live mode is on, the extension selects and cleans the answer exactly as `/speak original` does (`selectSessionAnswer` and `prepareAnswerText`), and queues it on the same update queue as `speak_aloud`. Muting, cutting Pi off, the cache, failure handling, and the idle clock therefore apply unchanged.
+
+- **In parts.** Synthesis returns a whole clip before playback starts, so a long answer read in one request would leave a long silence. The answer is split at paragraph breaks, and a paragraph longer than 1,000 characters is split at sentence ends, or at a space when a single sentence is longer. Each part is one queued update, so the first starts quickly, and cutting Pi off drops the rest.
+- **The whole answer, up to the speech limit.** The user chose to hear the whole answer rather than about a minute of it. Parts are queued while their total stays within the speech length limit read at live start (10,000 characters for ElevenLabs by default); the rest is skipped with a message.
+- **As written.** Pi answers in the language the user spoke, so there is no translation step and no extra model call.
+- **Guidance changes.** `speak_aloud` keeps the acknowledgement and progress guidance, and its guidance now says that the final answer is read aloud automatically, so Pi should not repeat or summarize it with the tool.
+- **Silent cases.** Aborted or failed runs, answers without text, and answers with nothing speakable after cleaning are skipped without a message.
+
+**Alternatives:**
+
+- **An on/off setting.** Not added. Turning replies off would also require the tool guidance to switch back to an end summary, and the user wants replies on. The send key and `/speak stop` cut a reply short.
+- **Translate through the `/speak` path.** Rejected: it adds a model call and delay, and it would force `locale` instead of the language the user spoke.
+- **Read about one minute only.** Offered and declined by the user.
+
 ## Risks / Trade-offs
 
 - **Pi's voice reaching the microphone through speakers when barge-in is on** → it is off by default, muting is the default, and help and README state that the setting needs headphones or echo cancellation.
 - **Continuous streaming cost** → the idle limit, a live status line that is always visible, and `/talk live` to end it.
-- **The model forgetting to call `speak_aloud`, or overusing it** → tool guidance, a live check in tasks, and the written answer as the full record; there is no automatic fallback speech.
+- **The model forgetting to call `speak_aloud`, or overusing it** → tool guidance and a live check in tasks. The finished answer is read aloud anyway (D17), so a forgotten call costs only the acknowledgement or progress.
+- **Long answers take minutes to read and are billed per character** → the answer is cleaned and read in parts, it stops at the speech length limit, and the send key or `/speak stop` cuts it off at any time.
+- **A technical answer reads poorly aloud** → the cleanup drops code, command output, links, and hashes, and replaces tables with a short notice. Inline paths and identifiers are kept, because the cleanup never summarizes.
 - **A misheard turn acting through Pi's tools** → the user accepted this risk for live mode in ADR-0010. Turns are plain text that never run commands, and text with no letter or digit is dropped.
 - **A pause longer than `input.livePauseSeconds` splitting one thought into two turns** → while Pi is busy, the second turn steers the same run. The provider caps the pause at 3 s; D13 names the next step if that is too short.
 - **Speech in a language outside `input.liveLanguages` is not transcribed** → the segment comes back empty and is dropped without a message. Help and the README say that the list is the complete set of languages heard.
