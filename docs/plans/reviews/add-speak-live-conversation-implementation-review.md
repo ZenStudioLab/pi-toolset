@@ -948,3 +948,214 @@ DISPATCH_BUDGET wave 4: oracle=1/1 others=1/3
 
 REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
+
+## Wave 5 Review Sequence
+
+## Change amendment (user requests, 2026-10-15): thinking pause and live languages
+
+What the user asked for, and why:
+
+- **Thinking pause:** "when user is thinking/pausing/hesitating, the talk responds too fast". Q1 was not answered, so option A applies: a live-only `input.livePauseSeconds`, defaulting to 2.
+- **Live languages:** a handoff asked to limit recognition to Vietnamese and English. Under auto-detect, Vietnamese was reported to come out as Chinese. The user's `input.language: "en"` was removed earlier by the user. Q2 = A.
+
+API probe of 2026-10-15, done by the orchestrator:
+
+- **Method:** a scratch script in `/tmp`, since deleted. Clips were made with ElevenLabs text-to-speech (`eleven_flash_v2_5`, the user's voice) and sent to `wss://…/v1/speech-to-text/realtime` with `scribe_v2_realtime`, a manual commit, and `include_language_detection`. There was one synthetic clip per language.
+- **Auto-detect:** vi→vi, en→en, zh→**Chinese text**, vi with English words→vi.
+- **`language_code=vi` alone:** English text came back labelled `vi`, and zh came back empty.
+- **`language_code=vi` + `secondary_languages=en`:** vi→vi, en→**en**, zh→empty, mixed→vi.
+- **`secondary_languages=vi` + `secondary_languages=en`, no language code:** the same as the line above.
+- **`secondary_languages=en` alone:** vi→**empty**, mixed→empty. Without `language_code`, the list is the complete allowed set.
+- **`language_code=vi` + `secondary_languages=vi,en`:** accepted, and vi and en were both detected correctly.
+- **The `session_started` echo:** confirms `secondary_languages`, and gives a server default `vad_silence_threshold_secs` of 1.5.
+- **Pause bounds:** 2 and 3 are accepted. 3.5 is refused with `invalid_request: vad_silence_threshold_secs must be between 0.3 and 3.0`, which matches the `elevenlabs-js` client check (`src/wrapper/realtime/scribe.ts`).
+
+Conclusion: `secondary_languages` behaved as a limit, not a hint. Audio in a language outside the set came back as an empty segment. This is one synthetic sample per language, so real speech remains task 5.4.
+
+Artifacts amended by the orchestrator, with no parallel specification:
+
+- **Proposal:** a new bullet for the pause and the languages.
+- **Spec `voice-conversation`:**
+  - a new requirement "Live pause and languages" with five scenarios;
+  - "Starting live mode" (the start message names the languages it listens for), "Live turn delivery" (the pause setting), and "Live mode status, help, and settings" now refer to it.
+- **Design:** D13 (pause) and D14 (languages), with the probe evidence and rejected alternatives. The non-goal now reads "push-to-talk's pause and languages unchanged", D11 lists the new settings, and Risks gains two lines.
+- **Tasks:** Wave 5, tasks 5.1–5.5.
+- **Validation:** `openspec validate --strict` is valid.
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 5. Final gate reserved: task 5.5 [Oracle gate: `oracle`].
+
+| Assignment | Tasks | Owner | Bounded responsibility | Files and topics |
+| --- | --- | --- | --- | --- |
+| W5-A | 5.1 | orchestrator | ADR wording carried from the Wave 4 gate (R1-F1, R1-F2) | `docs/adr/0004-…` status note; `docs/adr/0010-…` Supersedes line and the "Ending by voice" bullet |
+| W5-B | 5.2, 5.3 | worker (Wave 4 worker resumed) | `input.livePauseSeconds` and `input.liveLanguages`; pause and language list on the live connection only; start message, `/speak status`, help, README; carried Wave 4 R1-F3 (delete the test) | `input-settings.ts`, `realtime.ts`, `live.ts`, `config.ts` (status), `help.ts`, `README.md`, `test/realtime.test.ts`, `test/config.test.ts`, `test/live*.test.ts`, `test/command.test.ts` |
+| W5-C | 5.4 | user | Live check: a 1.5 s pause, Vietnamese and English with `liveLanguages`, and the Vietnamese stop phrase | Recorded in task 5.4 |
+
+### W5-A (orchestrator) evidence
+
+- **ADR-0004:** its Status line now says the "no spoken commands" rule is superseded by ADR-0010 while live mode is on, for the live stop phrase only.
+- **ADR-0010:** the Supersedes line names the same exclusion, and the "Ending by voice" bullet now reads "a turn that contains a phrase among other words is sent to Pi as usual". ADR-0010 agrees with D12.
+- No other ADR is edited.
+
+Worker reuse check:
+
+| Gate | Condition | Value | Result |
+| --- | --- | --- | --- |
+| 1 | Same agent type, completed, and reconciled (Wave 4 PASS) | `af8e687a` | pass |
+| 2 | Idle under 1 hour | 04:26 to 04:52 UTC | pass |
+| 3 | Last context plus about 150k under 350k | 108,874 + 150k ≈ 259k | pass |
+
+The worker is resumed with a bounded delta, on the same model (`claude-bridge/claude-sonnet-5-5:high`).
+
+### W5-B (worker, resumed as run `de0ea9a4`, background, `claude-bridge/claude-sonnet-5-5:high`, completed)
+
+Provider confirmed from the child transcript: every model turn in the session went through `claude-bridge` (54 entries across Waves 4 and 5).
+
+Tasks 5.2 and 5.3. Files, all in `extensions/speak`, with line counts:
+
+- **Source:** `input-settings.ts` (220), `realtime.ts` (368), `live.ts` (392), `speech-status.ts` (70), `help.ts` (71), `README.md` (317).
+- **Tests:** `test/realtime.test.ts` (461), `test/config.test.ts` (504), `test/live.test.ts` (448), `test/talk-stream.test.ts` (611), `test/live-stop.test.ts` (144), `test/command.test.ts` (692).
+- **`talk.ts`:** unchanged, confirmed with `git diff --quiet HEAD -- talk.ts`.
+
+New export and signatures:
+
+- `primarySubtags(tags): string[]` in `realtime.ts`: the distinct primary subtags, in order.
+- `realtimeUrl(language, pauseSeconds = 1, languages = [])`: with no extra arguments the URL is unchanged.
+- `openRealtime` options gain optional `pauseSeconds` and `languages`.
+- `InputConfig` gains `livePauseSeconds` and `liveLanguages`.
+
+Behavior:
+
+- **Settings:** `parseLivePauseSeconds` accepts a number from 0.3 to 3 inclusive, default 2. `parseLiveLanguages` accepts 0–10 tags through `parseLocale`, default `[]`.
+- **Connection:** `live.ts` passes both values at live start. The start message says "detected for each turn among any language", "fixed to X", or "limited to …".
+- **`/speak status`:** shows `live pause: N seconds` and `live languages: … | none (not limited)`.
+- **Help and README:** updated, including a new "Pause and languages" paragraph in the README.
+- **Carried Wave 4 R1-F3:** the test is deleted from `test/live-stop.test.ts`.
+
+Deviation, accepted by the caller: `/speak status` is built in `speech-status.ts`, not `config.ts` as task 5.2 said. The task named the wrong file; the behavior is what it asked for.
+
+Worker's mutation checks, each detected:
+
+- pause not sent (2 failures), or fixed at `"1"` (6);
+- list joined with commas (4);
+- duplicates not removed (4);
+- live defaults leaking into push-to-talk (4);
+- lower bound made exclusive (1), upper bound made exclusive (2), bounds widened to 0.2–3.5 (3).
+
+Orchestrator re-verification, inside the 4 GB scope. A first attempt was interrupted before any test ran; no process was left behind, and it was rerun from scratch:
+
+- changed files alone: `realtime` 84, `config` 132, `live` 53, `talk-stream` 43, `live-stop` 21, `command` 46, all passing;
+- full suite: 894 pass, 0 fail (Wave 4: 859);
+- `npx tsc --noEmit`: clean.
+
+### W5-C (user) evidence: task 5.4
+
+- **Result (2026-10-15):** the user explicitly reported the check as unverified ("mark unverified", answer Q4 = A) and asked to fold it into one combined live check after Wave 6.
+- **Config:** with the user's approval, the orchestrator added `"liveLanguages": ["vi", "en"]` to `~/.config/pi-speak/config.json`. `parseConfig` from the Wave 5 code accepts the file (`livePauseSeconds` 2).
+- **Covered by automated tests only:** the pause, the two languages, and the Vietnamese stop phrase.
+- **Where it is recorded:** in task 5.4 itself.
+
+BASELINE_TARGET=Wave 5 of add-speak-live-conversation: tasks 5.1–5.3 as implemented (live pause, live languages, the ADR wording carried from the Wave 4 gate, and the deleted test)
+BASELINE_TARGET_REVISION=sha256:c6bdcc3197ec97ab (git -C extensions/speak diff HEAD, then git diff HEAD -- docs/adr/0004-voice-input-and-provider-choice.md docs/adr/0010-live-voice-conversation.md, in that order; pi-speak HEAD 2430a77, root HEAD c7de008; no untracked files)
+BASELINE_SOURCE=openspec/changes/add-speak-live-conversation (proposal, design D13 and D14, tasks, specs/voice-conversation/spec.md "Live pause and languages" and the requirements that refer to it) as of the task 5.4 result; docs/adr/0004 and 0010; the API probe evidence in this log's Wave 5 section
+BASELINE_INCLUSION_PREDICATE=files changed for tasks 5.1–5.3: extensions/speak/{input-settings,realtime,live,speech-status,help}.ts, extensions/speak/README.md, extensions/speak/test/{realtime,config,live,talk-stream,live-stop,command}.test.ts, docs/adr/0004-voice-input-and-provider-choice.md, docs/adr/0010-live-voice-conversation.md
+BASELINE_EXCLUSIONS=Waves 1–4 code except as context; Wave 6 (live shortcut, streaming text, spoken replies), not yet specified; unrelated uncommitted add-pi-session-rename-tool files and the staged session-rename move; host/pi; ~/.config/pi-speak/config.json
+
+DISPATCH_BUDGET wave 5: oracle=0/1 others=1/3 (before the gate)
+
+## Round 1 - Oracle Review
+
+*The caller transcribed this section from the Oracle's final output, because the Oracle run (`176075d3`, `claude-bridge/claude-opus-5-5:high`, background) had no file-writing tool. The content is the Oracle's; the caller condensed only the formatting.*
+
+Gate task consumed (once): 5.5 [Oracle gate: `oracle`] Final review gate for Wave 5, run once after 5.1–5.3 are complete and 5.4 is complete or explicitly reported as unverified. Mode: FULL (first review of this wave), under `review-convergence`. Output is advisory.
+
+Task and owner mapping reviewed:
+- 5.1, orchestrator (W5-A): ADR-0004 Status line; ADR-0010 Supersedes line and "Ending by voice"; D12; Wave 4 R1-F1 and R1-F2.
+- 5.2, worker (W5-B): `input-settings.ts`, `realtime.ts`, `live.ts`, `speech-status.ts`, `help.ts`, and their tests; D11, D13, D14; the spec; Wave 4 R1-F3.
+- 5.3, worker (W5-B): the README against the spec.
+- 5.4, user (W5-C): the recorded result.
+
+Baseline: the Oracle recomputed `sha256:c6bdcc3197ec97ab` exactly as the log describes, and it is **confirmed**. pi-speak is at `2430a77` and the root at `c7de008`. Exactly the twelve included files are modified, there are no untracked files, and `talk.ts` is not in the diff.
+
+Independent checks inside the 4 GB scope: `test/realtime.test.ts` alone gave 84 pass, and `test/live.test.ts` alone gave 53 pass. The recorded 894 pass and clean `tsc` stand.
+
+### What holds
+
+- **Pause:** `parseLivePauseSeconds` refuses strings, NaN, ±Infinity, and both out-of-range sides, and keeps 0.3 and 3 inclusive.
+- **Languages:** `parseLiveLanguages` refuses a non-list and more than 10 entries; each entry goes through `parseLocale`.
+- **Refusal at start:** `/talk live` refuses all four spec examples before opening anything.
+- **URL:**
+  - the pause becomes `vad_silence_threshold_secs`;
+  - `language_code` is unchanged;
+  - each distinct primary subtag of the list is a repeated `secondary_languages` value, in first-seen order;
+  - the key is only in the header.
+- **Push-to-talk unchanged:** the URL is byte-identical, guarded by `test/realtime.test.ts:57–66` and `test/talk-stream.test.ts:51–57`, and `talk.ts` is unchanged.
+- **Live wiring:** both values are read once per start and passed through, and three tests through the real socket URL catch either one being dropped.
+- **Start message:** it matches D14 in all four cases and reuses `primarySubtags`.
+- **`/speak status`, help, and README:** all match the spec.
+- **Carried items closed:** the Wave 4 R1-F3 test deletion, and the R1-F1 and R1-F2 ADR wording.
+- **Test value:** the tests are memory-safe, and each of the worker's mutations maps to a test that actually fails.
+- **Sizes:** within policy. `command.test.ts` is 692 lines and `talk-stream.test.ts` 611, both below the 800-line review threshold.
+- **Gate condition for 5.4:** met.
+- **Worker-declared deviation (`/speak status` in `speech-status.ts`):** accepted. `/speak status` has been built there since Wave 1, and task 5.2's text names no file.
+
+### Findings
+
+**R1-F1** — family `spec-consistency`, root `starting-live-mode-fixed-1s-pause`. P2, in scope.
+- Evidence: `specs/voice-conversation/spec.md:30` ("Starting live mode") still requires "pause-based commits after 1 second of silence" and lists no `secondary_languages`. Meanwhile `:56` and "Live pause and languages" require `input.livePauseSeconds`, default 2. The code follows the newer requirements. There is no runtime defect, but the contradiction would reach the main spec on archive.
+- SUGGESTED_CORRECTION: replace that phrase with "pause-based commits after `input.livePauseSeconds` of silence, the language list that "Live pause and languages" defines", then re-run strict validation.
+
+**R1-F2** — family `live-language-wording`, root `empty-list-said-unlimited-despite-input-language`. P3, in scope.
+- Evidence: with `input.language` set and an empty list, live mode is "fixed to X" (`live.ts:271`). Yet three places describe an empty list as unlimited:
+  - help, `help.ts:59`: "An empty list leaves detection unlimited.";
+  - the README settings row: "Empty means no limit.";
+  - `/speak status`, `speech-status.ts:54`: `none (not limited)`.
+- SUGGESTED_CORRECTION:
+  - help: "With the list empty, live mode detects any language unless input.language fixes one.";
+  - README row: "Empty adds no limit beyond `input.language`.";
+  - status: `none`, with no parenthetical;
+  - update the two exact strings in `test/command.test.ts`.
+
+### Notes (not findings)
+
+- **The stop phrase can be absorbed:** with the 2 s default, speech that ends less than 2 s before a stop phrase joins the same turn, which is then sent. The help and README wording ("with nothing else before the pause") is accurate. This belongs in the deferred live check.
+- **"Dropped" rests on the probe:** it was one synthetic sample per language, so this too belongs in the deferred live check.
+- **ADR-0010 and D13–D14:** no ADR edit is needed, because neither setting changes data egress or the provider.
+- **Test name:** `test/live.test.ts:49` still says "the existing realtime parameters"; renaming it is optional.
+- **Shared configuration:** an invalid live setting also blocks push-to-talk and `/speak`, because they share `loadConfig`. This is existing convention.
+- **Bookkeeping:** tasks 5.2–5.4 are still unchecked. F11 commit order is still carried.
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 5, Round 1
+
+Mode: `FULL`. Gate: task 5.5. The Oracle's section above was transcribed by the caller, and its baseline confirmation matches the caller's own recomputation (`sha256:c6bdcc3197ec97ab`).
+
+#### R1-F1 — "Starting live mode" still names a 1 s pause
+- **Decision:** `ACCEPT_NONBLOCKING`. Family `spec-consistency`. The code follows the newer requirements, so this is stale wording in a source artifact, not a code defect. It is not raised to P1, because no SHALL is violated by behavior that the newer requirements do not themselves require.
+- **CORRECTION:** applied now in `spec.md:30`, with the Oracle's wording. This is source text, not the reviewed revision. Strict validation is re-run below.
+
+#### R1-F2 — an empty list is described as "unlimited" even when `input.language` fixes a language
+- **Decision:** `ACCEPT_NONBLOCKING`. Family `live-language-wording`. The user's own setup does not hit it.
+- **CORRECTION:** carried to Wave 6 task 6.2, which edits `help.ts`, `README.md`, and `speech-status.ts` anyway, so that this wave commits the reviewed revision. It uses the Oracle's suggested strings, with the exact test strings in `test/command.test.ts`, and includes the optional rename at `test/live.test.ts:49`.
+
+#### Notes
+- The stop phrase being absorbed by the 2 s pause, and the "dropped" behavior, join the combined live check (Wave 6 task 6.7).
+- No ADR edit is needed for D13 and D14.
+
+### Summary
+- **Accepted blocking:** 0.
+- **Accepted nonblocking:** 2 (R1-F1 applied now; R1-F2 carried to 6.2).
+- **Deferred:** 0.
+- **Rejected:** 0.
+
+### Terminal baseline validation
+- **Boundary:** the four boundary fields are unchanged.
+- **Candidate:** recomputed `sha256:c6bdcc3197ec97ab`, equal to the recorded `BASELINE_TARGET_REVISION`.
+- **Rounds:** 1 of 4 Oracle rounds used, and no rebuild.
+
+DISPATCH_BUDGET wave 5: oracle=1/1 others=1/3
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD

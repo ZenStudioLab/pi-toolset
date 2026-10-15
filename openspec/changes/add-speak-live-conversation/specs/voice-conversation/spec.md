@@ -27,9 +27,9 @@ The extension SHALL start live mode only when the user runs `/talk live` while l
 
 ### Requirement: Starting live mode
 
-When `/talk live` starts live mode, the extension SHALL first check that the configuration is valid, that `ELEVENLABS_API_KEY` is set, and that a recording tool is available. It SHALL refuse with a message that names the problem, and start nothing, when any check fails, or when a recording, a recording held at the time cap, or a transcription is active. It SHALL stop this extension's own speech before opening the microphone. It SHALL then open one connection to `wss://api.elevenlabs.io/v1/speech-to-text/realtime` with model `scribe_v2_realtime`, 16 kHz PCM, pause-based commits after 1 second of silence, the key only in the `xi-api-key` header, and `language_code` set to the primary subtag of `input.language` only when `input.language` is set. The recorder SHALL start only after the connection opens within the request deadline. If the connection does not open, the extension SHALL show a sanitized message, start no recorder, and SHALL NOT retry.
+When `/talk live` starts live mode, the extension SHALL first check that the configuration is valid, that `ELEVENLABS_API_KEY` is set, and that a recording tool is available. It SHALL refuse with a message that names the problem, and start nothing, when any check fails, or when a recording, a recording held at the time cap, or a transcription is active. It SHALL stop this extension's own speech before opening the microphone. It SHALL then open one connection to `wss://api.elevenlabs.io/v1/speech-to-text/realtime` with model `scribe_v2_realtime`, 16 kHz PCM, pause-based commits after `input.livePauseSeconds` of silence, the language list that "Live pause and languages" defines, the key only in the `xi-api-key` header, and `language_code` set to the primary subtag of `input.language` only when `input.language` is set. The recorder SHALL start only after the connection opens within the request deadline. If the connection does not open, the extension SHALL show a sanitized message, start no recorder, and SHALL NOT retry.
 
-Live mode SHALL use ElevenLabs for listening and for speaking, whatever `input.provider`, the configured speech provider, and their session overrides select. The message shown when live mode starts SHALL say that it uses ElevenLabs, whether the spoken language is detected per turn or fixed to `input.language`, the key that cuts Pi off, and that `/talk live` ends it.
+Live mode SHALL use ElevenLabs for listening and for speaking, whatever `input.provider`, the configured speech provider, and their session overrides select. The message shown when live mode starts SHALL say that it uses ElevenLabs, which spoken languages it listens for (detected per turn among any language, fixed to `input.language`, or limited as "Live pause and languages" defines), the key that cuts Pi off, and that `/talk live` ends it.
 
 #### Scenario: Missing key
 
@@ -53,7 +53,7 @@ Live mode SHALL use ElevenLabs for listening and for speaking, whatever `input.p
 
 ### Requirement: Live turn delivery
 
-While live mode is on, each segment the provider commits after a pause SHALL be one turn. A turn whose text contains no letter or digit SHALL be dropped without a message. Every turn with at least one letter or digit, however short, SHALL be sent to Pi as one plain user message, with no expansion: slash commands, prompt templates, and skill commands in it SHALL NOT run. The extension SHALL NOT read, change, or send the composer's text when sending a turn. When the agent is idle, the turn SHALL start a new agent run. When the agent is working, `input.sendWhenBusy`, read at send time, SHALL decide: `interrupt` (default) delivers the turn to the running turn at once, and `wait` queues it until the run ends. When the extension can tell before sending that Pi would refuse the message (no model selected, or the conversation is being compacted), or when the send call fails, it SHALL append the turn to the composer instead, show a message saying why it was not sent, and keep live mode on. The push-to-talk stop phrases (`input.stopPhrases`) SHALL have no effect in live mode: a turn is sent with its words unchanged. A turn that matches a live stop phrase is not sent; "Live stop phrase" defines it. A segment committed after live mode ended or after the session was replaced SHALL be dropped.
+While live mode is on, each segment the provider commits after a pause of `input.livePauseSeconds` SHALL be one turn. A turn whose text contains no letter or digit SHALL be dropped without a message. Every turn with at least one letter or digit, however short, SHALL be sent to Pi as one plain user message, with no expansion: slash commands, prompt templates, and skill commands in it SHALL NOT run. The extension SHALL NOT read, change, or send the composer's text when sending a turn. When the agent is idle, the turn SHALL start a new agent run. When the agent is working, `input.sendWhenBusy`, read at send time, SHALL decide: `interrupt` (default) delivers the turn to the running turn at once, and `wait` queues it until the run ends. When the extension can tell before sending that Pi would refuse the message (no model selected, or the conversation is being compacted), or when the send call fails, it SHALL append the turn to the composer instead, show a message saying why it was not sent, and keep live mode on. The push-to-talk stop phrases (`input.stopPhrases`) SHALL have no effect in live mode: a turn is sent with its words unchanged. A turn that matches a live stop phrase is not sent; "Live stop phrase" defines it. A segment committed after live mode ended or after the session was replaced SHALL be dropped.
 
 #### Scenario: Turn sent while a draft is typed
 
@@ -220,6 +220,37 @@ A matched turn SHALL NOT be sent to Pi, added to the composer, or stored. Turns 
 - **WHEN** `input.liveStopPhrases` is `"stop"` or contains `"..."`, and the user runs `/talk live`
 - **THEN** the configuration error is reported and live mode does not start
 
+### Requirement: Live pause and languages
+
+The configuration SHALL accept `input.livePauseSeconds`, a number from 0.3 to 3 inclusive, defaulting to 2, and `input.liveLanguages`, a list of 0 to 10 language tags, each valid as `input.language` is, defaulting to `[]`. Any other value SHALL be a configuration error reported when the user runs `/talk live`.
+
+Live mode's transcription connection SHALL ask the provider to end a segment after `input.livePauseSeconds` of silence. When `input.liveLanguages` is not empty, the connection SHALL send the primary subtag of each tag, each distinct subtag once, as a separate `secondary_languages` value, and SHALL still send `language_code` when `input.language` is set. The provider then recognises only those languages and `input.language`; speech in another language is not transcribed. Neither setting SHALL change push-to-talk, whose connection keeps a 1-second pause and sends no `secondary_languages`. The connection URL SHALL never contain the API key.
+
+#### Scenario: Thinking pause
+
+- **WHEN** `input.livePauseSeconds` is omitted and the user pauses for 1.5 seconds in the middle of a sentence
+- **THEN** the whole sentence is one turn
+
+#### Scenario: Vietnamese and English only
+
+- **WHEN** `input.liveLanguages` is `["vi", "en"]` and `input.language` is omitted
+- **THEN** the connection sends `secondary_languages=vi` and `secondary_languages=en` and no `language_code`
+
+#### Scenario: Main language plus another
+
+- **WHEN** `input.language` is `vi` and `input.liveLanguages` is `["en-US"]`
+- **THEN** the connection sends `language_code=vi` and `secondary_languages=en`
+
+#### Scenario: Push-to-talk unchanged
+
+- **WHEN** both settings are set and push-to-talk listens for its spoken stop phrase
+- **THEN** its connection uses a 1-second pause and sends no `secondary_languages`
+
+#### Scenario: Invalid pause or languages
+
+- **WHEN** `input.livePauseSeconds` is `3.5` or `"2"`, or `input.liveLanguages` is `"vi"` or contains an invalid tag, and the user runs `/talk live`
+- **THEN** the configuration error is reported and live mode does not start
+
 ### Requirement: Live idle limit
 
 The configuration SHALL accept `input.liveIdleMinutes`, an integer from 1 to 60, defaulting to 5; an invalid value SHALL be a configuration error reported when the user runs `/talk live`. Live mode SHALL end when, for that many minutes in a row, the agent has been idle, no update has been synthesized or played, and no turn has been sent. A message SHALL say that live mode ended because it was idle.
@@ -250,7 +281,7 @@ Live mode SHALL end on `/talk live`, on a live stop phrase, on the idle limit, o
 
 ### Requirement: Live mode status, help, and settings
 
-While live mode is on, a status line SHALL show whether the extension is listening or Pi is speaking, the key that cuts Pi off, and that `/talk live` ends live mode, together with the first live stop phrase when any is configured. `/speak status` SHALL show whether live mode is on and the effective `input.liveIdleMinutes` and `input.liveListenWhileSpeaking`. Help SHALL describe `/talk live`, the key that cuts Pi off, the live settings, including `input.liveStopPhrases` and its whole-turn rule, and that live mode uses ElevenLabs for listening and speaking. The configuration SHALL accept `input.liveListenWhileSpeaking` as a boolean defaulting to `false`; any other value SHALL be a configuration error. Other unknown keys SHALL still be rejected.
+While live mode is on, a status line SHALL show whether the extension is listening or Pi is speaking, the key that cuts Pi off, and that `/talk live` ends live mode, together with the first live stop phrase when any is configured. `/speak status` SHALL show whether live mode is on and the effective `input.liveIdleMinutes`, `input.liveListenWhileSpeaking`, `input.livePauseSeconds`, and `input.liveLanguages`. Help SHALL describe `/talk live`, the key that cuts Pi off, the live settings, including `input.liveStopPhrases` and its whole-turn rule, `input.livePauseSeconds`, and `input.liveLanguages` and what it limits, and that live mode uses ElevenLabs for listening and speaking. The configuration SHALL accept `input.liveListenWhileSpeaking` as a boolean defaulting to `false`; any other value SHALL be a configuration error. Other unknown keys SHALL still be rejected.
 
 #### Scenario: Status line follows playback
 

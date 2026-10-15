@@ -72,3 +72,41 @@ Archive order: archive this change only after `add-speak-voice-input`, whose `vo
   - **Result (2026-10-15):** the user reported "stop the conversation work[s]": the English phrase ended live mode in their live test.
   - **Not reported, so unverified:** the Vietnamese phrase, which the config's `input.language: "en"` would likely garble, and the longer sentence containing a phrase. Both are covered by automated tests only.
 - [x] 4.5 [Oracle gate: `oracle`] Final review gate for Wave 4, run once after 4.1–4.3 are complete and 4.4 is complete or explicitly reported as unverified, under the same rules as 1.6: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.
+
+## 5. Wave 5: thinking pause and live languages (amendment of 2026-10-15)
+
+- [x] 5.1 [Orchestrator] ADR wording carried from the Wave 4 gate. Must be done before 5.2.
+  - **R1-F1:** ADR-0010's Supersedes line sets aside, while live mode is on, ADR-0004's "no spoken commands", for the live stop phrase only. ADR-0004's status note gains a matching line.
+  - **R1-F2:** ADR-0010's "Ending by voice" bullet says that a turn containing the phrase among other words is sent.
+
+  Verify that ADR-0010 agrees with D12, and that the only ADRs edited are 0004 and 0010.
+- [x] 5.2 [worker] Add the live pause and the live languages (design D13 and D14, "Live pause and languages"):
+  - **Settings:** in `input-settings.ts`:
+    - `input.livePauseSeconds` is a number from 0.3 to 3 inclusive, default 2.
+    - `input.liveLanguages` is a list of 0 to 10 tags, each validated as `input.language` is (`parseLocale`), default `[]`.
+  - **Connection:** `openRealtime`/`realtimeUrl` in `realtime.ts` take an optional pause and an optional language list:
+    - the pause becomes `vad_silence_threshold_secs`;
+    - each distinct primary subtag of the list becomes a repeated `secondary_languages` entry;
+    - `language_code` is unchanged.
+    - Push-to-talk (`talk.ts`) passes neither, so it keeps `1` and sends no `secondary_languages`.
+  - **Live mode:** `live.ts` passes both, read at live start. The start message names the languages it listens for: any, fixed, or limited.
+  - **`/speak status`** shows both effective values.
+  - **Help** describes both, including that the list is the complete set heard when `input.language` is unset.
+  - **Carried from the Wave 4 gate (R1-F3):** delete the test at `test/live-stop.test.ts:101–108`.
+
+  Verify with:
+  - `realtimeUrl` cases: repeated `secondary_languages` entries, an empty list sending none, tags reduced to primary subtags and sent once, the pause value, the push-to-talk URL unchanged, and no API key in the URL;
+  - config cases: defaults, bounds 0.3 and 3 accepted, 0.2, 3.5 and `"2"` refused, a list of tags accepted, a non-list, an invalid tag and 11 entries refused, and unknown keys still rejected;
+  - one live test showing that the URL live mode opens carries both values;
+  - status, help, and start-message assertions.
+
+  Run each changed test file alone first inside the memory scope, then the full suite and the type check.
+- [x] 5.3 [worker] Update the README's configuration example, the defaults paragraph, and the "Live conversation" section with both settings: the 2 s default and the 3 s provider limit, the list as the complete set of languages heard (plus `input.language`), speech in other languages being dropped, and push-to-talk being unaffected. Verify with a read-through against the spec.
+- [x] 5.4 [User] Live check, with `"liveLanguages": ["vi", "en"]` in `~/.config/pi-speak/config.json`, after `/reload` and `/talk live`:
+  - pause about 1.5 s in the middle of a sentence, and confirm it stays one message;
+  - speak Vietnamese and English, and confirm each is transcribed in its own language with no Chinese;
+  - say "Dừng cuộc hội thoại" (carried from 4.4), and confirm it ends live mode.
+
+  Record the results here, or report them as unverified.
+  - **Result (2026-10-15):** the user explicitly reported this check as unverified ("mark unverified") and asked to fold it into one combined live check after Wave 6. With the user's approval, the orchestrator added `"liveLanguages": ["vi", "en"]` to `~/.config/pi-speak/config.json` and confirmed that the Wave 5 code accepts it. The pause, the two languages, and the Vietnamese stop phrase are covered by automated tests only.
+- [x] 5.5 [Oracle gate: `oracle`] Final review gate for Wave 5, run once after 5.1–5.3 are complete and 5.4 is complete or explicitly reported as unverified, under the same rules as 1.6: one wave-level review, advisory Oracle output, complete caller reconciliation and caller-owned `REVIEW_ACTION`, at most four rounds and one rebuild, terminal baseline validation, and `PATCH`/`REBUILD` returning to this wave.
