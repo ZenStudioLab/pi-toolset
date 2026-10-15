@@ -1,6 +1,6 @@
 # ADR-0002: Manual-Only Speech Extension With an Explicit Cloud Egress Boundary
 
-**Status:** Accepted for implementation; runtime qualification pending.
+**Status:** Accepted for implementation; runtime qualification pending. Its manual-only speech rule is superseded by [ADR-0010](0010-live-voice-conversation.md) while live mode is on.
 **Owner:** Orchestrator.
 **Change:** [add-manual-speak-extension](../../openspec/changes/archive/2026-10-08-add-manual-speak-extension/design.md).
 
