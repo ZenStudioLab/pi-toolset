@@ -26,7 +26,7 @@ The Pi host provides what the tool needs. `pi.getActiveTools()` and `pi.setActiv
 
 **Non-Goals:**
 
-- Tuning the turn-ending pause beyond the existing 1 s, or making it configurable.
+- Changing push-to-talk's 1 s pause or its languages: the settings of D13 and D14 apply to live mode only.
 - Measuring cost inside the extension; `/speak quota` stays the only account view.
 
 ## Decisions
@@ -89,7 +89,7 @@ The new `live.ts` owns the live session: connection, streaming recorder, turn de
 
 ### D11. Flat settings
 
-`input.liveIdleMinutes`, `input.liveListenWhileSpeaking`, and `input.liveStopPhrases` (D12) follow the existing flat `input.*` style (`stopOnPhrase`, `holdSpace`) rather than a nested block.
+`input.liveIdleMinutes`, `input.liveListenWhileSpeaking`, `input.liveStopPhrases` (D12), `input.livePauseSeconds` (D13), and `input.liveLanguages` (D14) follow the existing flat `input.*` style (`stopOnPhrase`, `holdSpace`) rather than a nested block.
 
 ### D12. Ending live mode by voice (amendment of 2026-10-15)
 
@@ -112,13 +112,42 @@ Ordering: the match happens when the segment is committed, before the letter-or-
 - **Listen for the phrase during playback.** Rejected: it would reopen the echo path that muting exists to close.
 - **No default phrases.** Rejected: the user asked for the feature to work, and a default is easy to change or turn off.
 
+### D13. A longer thinking pause (amendment of 2026-10-15)
+
+The live check showed that 1 s of silence ends a turn while the user is still thinking, so Pi answers too soon. Live mode now sends `vad_silence_threshold_secs` from `input.livePauseSeconds`, which defaults to 2 and is limited to 0.3–3.
+
+- **The limit comes from the provider.** A probe on 2026-10-15 showed that ElevenLabs accepts 2 and 3 but refuses 3.5 with `invalid_request` ("must be between 0.3 and 3.0"). The `elevenlabs-js` client applies the same check. Validating locally turns that refusal into a configuration error before anything connects.
+- **The default is 2 s.** That is above the provider's own 1.5 s default, and every answer starts about a second later than before. The user can lower it.
+- **Push-to-talk keeps 1 s.** There the pause only ends the stop-phrase listener's segment, and the user's key, not a pause, ends the recording.
+
+Alternative rejected for now: holding a committed turn on the client and joining it with the next one if speech resumes. That allows pauses longer than 3 s, but adds a timer, a join rule, and an interaction with the stop phrase's whole-turn match. It is the next step if 3 s proves too short.
+
+### D14. Limiting live languages (amendment of 2026-10-15)
+
+Under auto-detect, Vietnamese was reported to come out as Chinese, and fixing `input.language` to one language garbles the other. Live mode now sends each entry of `input.liveLanguages` as a separate `secondary_languages` value, reduced to its primary subtag and sent once, alongside `language_code` when `input.language` is set.
+
+The 2026-10-15 probe, one synthetic clip per language, showed the following:
+
+- **The list limits recognition rather than hinting at it.** Chinese audio came back empty instead of as Chinese text.
+- **`language_code=vi` plus `secondary_languages=en` detects English as `en`.**
+- **Without `language_code`, the list is the complete allowed set.** `secondary_languages=en` alone dropped Vietnamese entirely.
+- **Repeating the main language in the list is accepted.**
+
+So the documentation states the rule plainly: live mode recognises only the listed languages, plus `input.language` when it is set. The user's own setup is `"liveLanguages": ["vi", "en"]` with `input.language` omitted, which leaves push-to-talk's own language behavior as it is.
+
+**Alternatives:**
+
+- **`input.secondaryLanguages` (the handoff's name).** Rejected for two reasons. The setting is live-only, which the `live` prefix of D11 signals. And without `input.language`, the list is the whole allowed set rather than a secondary one.
+- **Applying the list to push-to-talk.** Rejected: push-to-talk sends its recorded clip to the batch or Deepgram endpoint, which this list does not reach, and its live connection only listens for the stop phrase.
+
 ## Risks / Trade-offs
 
 - **Pi's voice reaching the microphone through speakers when barge-in is on** → it is off by default, muting is the default, and help and README state that the setting needs headphones or echo cancellation.
 - **Continuous streaming cost** → the idle limit, a live status line that is always visible, and `/talk live` to end it.
 - **The model forgetting to call `speak_aloud`, or overusing it** → tool guidance, a live check in tasks, and the written answer as the full record; there is no automatic fallback speech.
 - **A misheard turn acting through Pi's tools** → the user accepted this risk for live mode in ADR-0010. Turns are plain text that never run commands, and text with no letter or digit is dropped.
-- **A 1 s pause splitting one thought into two turns** → while Pi is busy, the second turn steers the same run. The live check decides whether a longer pause is needed later.
+- **A pause longer than `input.livePauseSeconds` splitting one thought into two turns** → while Pi is busy, the second turn steers the same run. The provider caps the pause at 3 s; D13 names the next step if that is too short.
+- **Speech in a language outside `input.liveLanguages` is not transcribed** → the segment comes back empty and is dropped without a message. Help and the README say that the list is the complete set of languages heard.
 - **A long session reaching `realtime.ts`'s 1 MiB transcript cap** → that would take hours of speech. Live mode ends cleanly with the existing "too large" message, and the user restarts it.
 - **Toggling the tool changes the system prompt** → the prompt cache misses once per toggle, which is acceptable.
 - **A run started by another extension's message** (`sendCustomMessage` with `triggerTurn`) skips `before_agent_start`, so after a resume it can still declare `speak_aloud` → the tool answers that live mode is off and nothing is spoken, and the next prompt removes it. No extension in this repository starts runs that way.
@@ -129,7 +158,7 @@ Ordering: the match happens when the segment is committed, before the letter-or-
 
 ## Migration Plan
 
-Additive and off by default. Users opt in with `/talk live`, and the two new settings are optional. Rollback means not using `/talk live`, or reverting the change. No configuration or data migration is needed. This change archives after `add-speak-voice-input`, whose `voice-input` requirements it modifies.
+Additive and off by default. Users opt in with `/talk live`, and the new settings are optional. Rollback means not using `/talk live`, or reverting the change. No configuration or data migration is needed. This change archives after `add-speak-voice-input`, whose `voice-input` requirements it modifies.
 
 ## Open Questions
 
