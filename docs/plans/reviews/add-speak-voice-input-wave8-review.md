@@ -1047,3 +1047,12 @@ CONSENSUS_STATUS=MOSTLY_GOOD
   - a terminal that resumes Space's repeat after another key is released can start a new hold;
   - key-repeat behaviour outside the probed Ghostty setup is unknown;
   - Vietnamese input methods are unknown.
+
+## Task 8.7 result (user, 2026-10-15)
+
+The user reported "this work. -> pass" in English, after a dictated test message. It answered the orchestrator's request to report 8.7 as tested, as seen in daily use, or as unverified.
+
+- **Recorded as:** a pass of the whole 8.7 list, reported together rather than item by item.
+- **Not separately confirmed:** the residual risks above remain unconfirmed one by one: Space repeat resuming after another key, other terminals, and Vietnamese input methods.
+
+All 49 tasks of `add-speak-voice-input` are now complete.
