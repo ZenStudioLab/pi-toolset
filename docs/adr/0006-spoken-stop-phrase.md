@@ -3,6 +3,7 @@
 **Status:** Accepted. The user approved the live checks on 2026-10-09 (task 7.5 of `add-speak-voice-input`).
 **Owner:** Orchestrator.
 **Change:** [add-speak-voice-input](../../openspec/changes/add-speak-voice-input/design.md) (Wave 6 amendment of 2026-10-09).
+**Related:** [ADR-0010](0010-live-voice-conversation.md): the stop phrase has no effect while live mode is on.
 **Supersedes:**
 - [ADR-0004](0004-voice-input-and-provider-choice.md), in two places: its rule that microphone audio leaves the machine only after the user stops a recording, and its exclusion of voice triggers. Both apply only while the stop phrase is turned on.
 - [ADR-0005](0005-voice-send-and-session-locale.md), only in its statement that sending happens only on a key press.
