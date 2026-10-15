@@ -11,7 +11,7 @@ See `proposal.md` for the motivation and `specs/voice-conversation/spec.md` for 
 
 The Pi host provides what the tool needs. `pi.getActiveTools()` and `pi.setActiveTools()` decide which tools are declared to the model, and a tool's `promptGuidelines` enter the system prompt only while it is active (`host/pi/packages/coding-agent/src/core/extensions/types.ts`). Four host facts in `host/pi/packages/coding-agent/src/core/agent-session.ts` constrain the design:
 
-- **H1:** A tool registers active unless `defaultActive: false`. The installed 1.x hosts honor it. The 0.87.1 types that `pi-speak` type-checks against lack it, and `pi-speak`'s peer range is `*`.
+- **H1:** A tool registers active unless `defaultActive: false`. The installed 0.99.2 and 1.x hosts honor it. The 0.87.1 types that `pi-speak` type-checks against lack it, and `pi-speak`'s peer range is `*`.
 - **H2:** On session construction and after tree navigation, the host restores the recorded tool set (`_restoreToolsFromTranscript`). Names not yet registered, such as MCP tools whose servers are still connecting, stay pending and activate when they register.
 - **H3:** A `setActiveTools` call that deactivates any tool clears that pending set. A call that only adds keeps it.
 - **H4:** Each agent run clears the pending set at its start (`_runAgentPrompt`). A `setActiveTools` call made in a `before_agent_start` handler applies to the run that is starting.
@@ -41,13 +41,13 @@ Live mode reuses `openRealtime` exactly as the stop phrase does, plus ElevenLabs
 
 ### D3. One tool, activated only while live
 
-`speak_aloud(text)` is registered with `defaultActive: false` (H1). The definition is passed as an object typed `ToolDefinition & { defaultActive?: boolean }`, so the 0.87.1 types accept it and pre-1.0 hosts ignore the property.
+`speak_aloud(text)` is registered with `defaultActive: false` (H1). The definition is passed as an object typed `ToolDefinition & { defaultActive?: boolean }`, so the 0.87.1 types accept it. A host whose types lack the property, such as 0.87.1, ignores it and activates the tool on registration.
 
 The extension changes the active tools at three points and nowhere else:
 
 - **Live mode starts:** it adds the name with `setActiveTools([...getActiveTools(), "speak_aloud"])`. An add-only call keeps pending tools (H3).
 - **Live mode ends:** it removes the name, only if the tool is active.
-- **An agent run starts:** a `before_agent_start` handler removes the name when live mode is off and the tool is active. That happens only after the host restored a recorded tool set (H2), or on a pre-1.0 host that activated the tool on registration (H1). By H4 the removal applies to the run that is starting, and the host is about to drop unregistered pending tools anyway, so nothing that run would have kept is lost.
+- **An agent run starts:** a `before_agent_start` handler removes the name when live mode is off and the tool is active. That happens only after the host restored a recorded tool set (H2), or on a host that ignores `defaultActive` and activated the tool on registration (H1). A `/reload` while live mode is on is not such a case: its shutdown ends live mode, which removes the tool before the reload copies the active tools. By H4 the removal applies to the run that is starting, and the host is about to drop unregistered pending tools anyway, so nothing that run would have kept is lost. `before_agent_start` fires only for runs a prompt starts.
 
 The extension never calls `setActiveTools` when nothing would change. Loading, reloading, and resuming without live mode therefore leave every other tool, including MCP tools still connecting, untouched. The tool's own "live mode is off" result remains the backstop.
 
@@ -89,7 +89,28 @@ The new `live.ts` owns the live session: connection, streaming recorder, turn de
 
 ### D11. Flat settings
 
-`input.liveIdleMinutes` and `input.liveListenWhileSpeaking` follow the existing flat `input.*` style (`stopOnPhrase`, `holdSpace`) rather than a nested block.
+`input.liveIdleMinutes`, `input.liveListenWhileSpeaking`, and `input.liveStopPhrases` (D12) follow the existing flat `input.*` style (`stopOnPhrase`, `holdSpace`) rather than a nested block.
+
+### D12. Ending live mode by voice (amendment of 2026-10-15)
+
+While live mode is on, saying a configured phrase ends it exactly as `/talk live` does. The extension handles the phrase itself; it is never sent to Pi. Three questions were settled.
+
+**Whole turn, not "contains".** A turn matches only when all of its words equal a phrase. Pausing is already how a turn ends, so "Stop the conversation" said on its own is its own turn. A sentence such as "stop the conversation about tests and look at the loader" is a request to Pi, and it must not end live mode by accident.
+
+**Diacritics are ignored.** Words are compared as `matchStopPhrase` in `realtime.ts` compares them: lower-cased, in Unicode NFC, with whitespace and punctuation only separating words, and curly apostrophes made straight. In addition, combining marks are removed after NFD decomposition and `đ` counts as `d`. Transcription of Vietnamese often gets a tone mark wrong ("thoại" heard as "thoai"), and a whole-turn match on a four-word phrase keeps a false match, such as "Dùng cuộc hội thoại", unlikely as a turn on its own.
+
+**Not heard while Pi speaks, unless barge-in is on.** With `input.liveListenWhileSpeaking` off, the microphone sends silence during playback (D6), so a phrase said then never reaches the provider. The user presses the cut-off key first, or waits. With the setting on, the phrase first cuts Pi off through the partial transcript (D8), and the committed turn then ends live mode.
+
+**A built-in pair by default.** `input.liveStopPhrases` defaults to `["Dừng cuộc hội thoại", "Stop the conversation"]`, so the feature works out of the box for this bilingual user. Ending live mode is harmless and is undone with `/talk live`. `[]` turns it off. Validation follows `input.stopPhrases` (1 to 40 characters per phrase, at most 10), but allows an empty list, and rejects a phrase with no letter or digit, which could never match a turn the letter-or-digit filter keeps.
+
+Ordering: the match happens when the segment is committed, before the letter-or-digit filter. The end is chained after the turns already waiting to be sent (`On.sending`), so a turn said just before the phrase is still delivered. Segments committed after a match are dropped. The phrases are read at live start, with the other live settings.
+
+**Alternatives:**
+
+- **Reuse `input.stopPhrases`.** Rejected: those phrases end a dictation and send it, while these end live mode and send nothing. The push-to-talk default, "let's go", is also a natural phrase in a conversation.
+- **Match anywhere in the turn.** Rejected for the accidental-end risk above.
+- **Listen for the phrase during playback.** Rejected: it would reopen the echo path that muting exists to close.
+- **No default phrases.** Rejected: the user asked for the feature to work, and a default is easy to change or turn off.
 
 ## Risks / Trade-offs
 
@@ -100,8 +121,11 @@ The new `live.ts` owns the live session: connection, streaming recorder, turn de
 - **A 1 s pause splitting one thought into two turns** → while Pi is busy, the second turn steers the same run. The live check decides whether a longer pause is needed later.
 - **A long session reaching `realtime.ts`'s 1 MiB transcript cap** → that would take hours of speech. Live mode ends cleanly with the existing "too large" message, and the user restarts it.
 - **Toggling the tool changes the system prompt** → the prompt cache misses once per toggle, which is acceptable.
+- **A run started by another extension's message** (`sendCustomMessage` with `triggerTurn`) skips `before_agent_start`, so after a resume it can still declare `speak_aloud` → the tool answers that live mode is off and nothing is spoken, and the next prompt removes it. No extension in this repository starts runs that way.
 - **Ending live mode in a resumed session before its first agent run** clears MCP tools still connecting (H3) → this needs a resume, then `/talk live` on and off within seconds, before any prompt. It is accepted and not guarded; `/reload` restores the tools.
 - **Silence frames keep a billed connection open while Pi speaks** → this is the cost of a stable connection. The idle limit bounds the total.
+- **A misheard turn equals a live stop phrase** → live mode ends early. This is harmless: nothing is sent, the agent keeps working, and `/talk live` restarts it. The whole-turn rule keeps it rare.
+- **Ignoring diacritics merges Vietnamese words that differ only in tone** → a match still needs every word of the phrase as the whole turn, and the user can choose phrases that do not collide.
 
 ## Migration Plan
 

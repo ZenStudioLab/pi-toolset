@@ -455,3 +455,284 @@ DISPATCH_BUDGET wave 2: oracle=1/1 others=1/3
 
 REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
+
+## Wave 3 Review Sequence
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 3. Final gate reserved: task 3.5 [Oracle gate: `oracle`], run once after 3.1–3.3 are complete and 3.4 is complete or explicitly reported as unverified.
+
+Between-wave reuse: none. The Wave 2 worker ran on `anthropic/`, and the user moved all dispatches to `claude-bridge/`, so its context cannot carry over. Dispatches run in the background, because foreground bridge runs fail before starting (prompt capture).
+
+| Assignment | Tasks | Owner | Bounded responsibility | Files and topics |
+| --- | --- | --- | --- | --- |
+| W3-A | 3.1, 3.2, 3.3 | worker (`claude-bridge/claude-sonnet-5-5:high`, background) | The `speak_aloud` tool and its activation, the update queue, muting, cut-off, barge-in, the speaking status line, and the speaking side of the README and help | `extensions/speak/live.ts` (plus a speech-queue file if needed), `index.ts`, `talk.ts`, `help.ts`, `speech-job.ts` (hook guarding only), `speech-preflight.ts` (shared limit export only), `README.md`, `test/*` (the harness split allowed) |
+| W3-B | R3-F1 wording | orchestrator | Spec and design wording for tool activation, after 3.1 | `specs/voice-conversation/spec.md` "Spoken updates tool", design D3 |
+| W3-C | 3.4 | user | Live checks with real keys and audio | Recorded in `tasks.md`, or the change reported as unverified |
+
+Carried into W3-A:
+
+- **Wave 1 R1-F5 (task 3.1):** the tool's "too long" result uses the single effective length limit from `speech-preflight.ts`.
+- **Wave 1 R1-F2 (task 3.2):** `onPlayerExit` always follows a started player, even if a hook throws.
+- **Wave 2 R1-F4 (task 3.3):** help says the send key is not refused while live, and names the cut-off key and `input.liveListenWhileSpeaking`.
+- **F12 (task 3.2):** the "Session switched while Pi speaks" scenario.
+
+### W3-A (worker, run `2aa1d487`, background, `claude-bridge/claude-sonnet-5-5:high`, completed)
+
+Provider confirmed from the child transcript: all 61 model turns went through `claude-bridge`.
+
+Files, all in `extensions/speak`, with line counts:
+
+- **New:**
+  - `live-speech.ts` (90): the `LiveSpeech` queue, mute with `MUTE_TAIL_MS` = 500, and cut-off;
+  - `speak-aloud.ts` (57): `SPEAK_ALOUD`, `SpeakAloudSwitch`, and `registerSpeakAloud`;
+  - `test/fake-pi.ts` (75): the harness split;
+  - `test/live-tool.test.ts` (147) and `test/live-speech.test.ts` (194).
+- **Edited:**
+  - `live.ts` (370), `index.ts` (267), `help.ts` (66), `speech-job.ts` (498), `speech-preflight.ts` (118), `README.md`;
+  - `test/harness.ts` (477), `test/live-harness.ts`, `test/live-idle.test.ts`, `test/job.test.ts` (674, was 548), `test/command.test.ts` (645, was 590), `test/silence.test.ts`.
+- **Unchanged:** `talk.ts` (484).
+
+Carried items:
+
+- **Wave 1 R1-F5:** `effectiveHardLimit` is exported from `speech-preflight.ts` and used by both preflight and live mode.
+- **Wave 1 R1-F2:** `SpeechController.signalLive` guards both hook calls, and a test fails without the guard.
+- **Wave 2 R1-F4:** help says the send key cuts Pi off and is not refused. A new line names the cut-off keys, `/speak stop`, muting, and `input.liveListenWhileSpeaking` with its headphones requirement.
+- **F12:** the session-switch-while-speaking test.
+
+Host evidence for the `before_agent_start` removal is a source read, not a run:
+
+- `agent-session.ts:3603` (activation unless `defaultActive === false`);
+- `:1518–1525`, `:1810–1815`, and `:1822–1829`;
+- `:2062–2073` (`handlerEditedTools`);
+- `:2105` and `:1738–1741`;
+- `extensions/runner.ts:1475–1504`.
+
+Worker-declared deviations, for the gate to judge:
+
+- **`test/silence.test.ts`:** it now expects `before_agent_start` to be subscribed, as D3 requires, and its fake `pi` gained the tool methods. Loading still makes no `setActiveTools` call.
+- **`test/command.test.ts`:** the live-help regex was updated for the R1-F4 wording.
+- **`live-speech.ts`:** split out, as D7 names it, although `live.ts` would have fit.
+- **Idle limit:** an update in the queue counts as activity, as the "Live idle limit" requirement says, and `speakAloud` restarts the idle clock.
+- **Too-long limit:** computed once, at live start, so that calls enter the queue in call order. The speech job checks it again.
+- **Status line:** "Pi speaking" covers synthesis as well as playback. Muting still starts at the player's start.
+
+Worker's mutation checks: 11 behaviors, each detected.
+
+Orchestrator re-verification, inside the 4 GB scope:
+
+- `test/live-tool.test.ts` alone: 11 pass.
+- `test/live-speech.test.ts` alone: 12 pass.
+- Full suite: 806 pass, 0 fail (Wave 2: 780).
+- `npx tsc --noEmit`: clean.
+
+### W3-B (orchestrator) evidence: R3-F1 wording
+
+- **Spec "Spoken updates tool":**
+  - "registered with `defaultActive: false`" replaces "registered inactive";
+  - the run-start removal applies to runs started by a prompt;
+  - a run started by another extension's message may still declare the tool, whose result then says live mode is off;
+  - the "Tool absent when live mode is off" scenario is scoped to a prompt-started run.
+- **Design:**
+  - H1 names 0.99.2 and 1.x as honoring `defaultActive`;
+  - D3 says "a host whose types lack the property, such as 0.87.1" instead of "pre-1.0", names `/reload` while live as a covered case, and states that `before_agent_start` fires only for prompt-started runs;
+  - Risks gains a line for message-started runs.
+- `openspec validate add-speak-live-conversation --strict`: valid.
+
+### W3-C (user) evidence: task 3.4
+
+- **Result (2026-10-15):** the user reported that live mode works in their own live test with real keys and audio.
+- **Not reported individually, so unverified:** whether a one-second pause splits a turn; a one-syllable answer right after Pi stops (R2-F4); 3 minutes or more of silence (F6); voice barge-in with headphones; the billing basis.
+- **README cost wording:** unchanged, because the billing basis is unchecked.
+- **Where it is recorded:** in task 3.4 itself.
+
+### Change amendment (user handoff, 2026-10-15): ending live mode by voice
+
+The user asked for a live stop phrase. The orchestrator amended the change's own artifacts, with no parallel specification:
+
+- **Proposal:** a new bullet, and the capability description.
+- **Spec `voice-conversation`:**
+  - a new requirement "Live stop phrase" with six scenarios;
+  - "Live mode starts and ends…", "Live turn delivery", "Live mode ends cleanly", and "Live mode status, help, and settings" now refer to it.
+- **Design:** D12 settles the open questions (whole-turn match, diacritics ignored, not heard while muted, a default VI/EN pair, turn order kept). D11 names the new setting, and Risks gains two lines.
+- **Tasks:** a new Wave 4, tasks 4.1–4.5.
+- **ADR-0010 (task 4.1, orchestrator):** an "Ending by voice" Decision bullet, the Consequences bullet rewritten, and the Change line naming the amendment.
+- **Validation:** `openspec validate add-speak-live-conversation --strict` is valid; 20 tasks, 10 complete.
+
+Wave 3 is gated first, with the stop-phrase work excluded, so that Wave 4 builds on reviewed code.
+
+BASELINE_TARGET=Wave 3 of add-speak-live-conversation: tasks 3.1–3.3 as implemented, plus the W3-B wording
+BASELINE_TARGET_REVISION=sha256:6e584395b83e3a4b (git -C extensions/speak diff HEAD, then live-speech.ts, speak-aloud.ts, test/fake-pi.ts, test/live-speech.test.ts, test/live-tool.test.ts in that order)
+BASELINE_SOURCE=openspec/changes/add-speak-live-conversation (proposal, design, tasks, three spec deltas) as amended on 2026-10-15; docs/adr/0002, 0004, 0006, 0008, 0010; host/pi/packages/coding-agent/src/core/agent-session.ts (H1–H4, read only)
+BASELINE_INCLUSION_PREDICATE=files changed or created for tasks 3.1–3.3: extensions/speak/{live,live-speech,speak-aloud,index,help,speech-job,speech-preflight}.ts, extensions/speak/README.md, extensions/speak/test/{harness,fake-pi,live-harness}.ts, extensions/speak/test/{live-tool,live-speech,live-idle,job,command,silence}.test.ts
+BASELINE_EXCLUSIONS=Wave 4 (the "Live stop phrase" requirement, D12, the stop-phrase clauses in the status, help and end-cause lists, and the ADR-0010 amendment); Waves 1–2 code except as context; unrelated uncommitted add-pi-session-rename-tool files; host/pi edits
+
+DISPATCH_BUDGET wave 3: oracle=0/1 others=1/3 (before the gate)
+
+## Round 1 - Oracle Review
+
+Gate task consumed (once): 3.5 [Oracle gate: `oracle`] Final review gate for Wave 3, run once after 3.1–3.3 are complete and 3.4 is complete or explicitly reported as unverified. Mode: FULL (first review of this wave), under `review-convergence`. Output is advisory; the caller owns reconciliation, the authoritative action, and status. The Wave 4 stop-phrase work is excluded by `BASELINE_EXCLUSIONS` and is not judged here.
+
+Task and owner mapping reviewed:
+
+| Task | Owner | Reviewed against |
+| --- | --- | --- |
+| 3.1 | worker (W3-A) | `speak-aloud.ts`, `live.ts` (`speakAloud`, `removeToolOutsideLive`, `end`), `index.ts`, `speech-preflight.ts`, `test/fake-pi.ts`, `test/live-tool.test.ts`, `test/silence.test.ts`; D3, D7, H1–H4; "Spoken updates tool", "Speaking live updates"; carried Wave 1 R1-F5 |
+| 3.2 | worker (W3-A) | `live-speech.ts`, `live.ts` (mute, cut-off, barge-in, status line, idle), `speech-job.ts` (`signalLive`), `test/live-speech.test.ts`, `test/live-idle.test.ts`, `test/job.test.ts`; D6, D7, D8, D9, D10; "Microphone muted while Pi speaks", "Cutting Pi off", "Live mode ends cleanly", the status-line scenario, `manual-speech` "Stop during live mode"; carried Wave 1 R1-F2 and F12 |
+| 3.3 | worker (W3-A) | `help.ts`, `README.md`, `test/command.test.ts`; "Live mode status, help, and settings" (speaking side), "Cutting Pi off" (documentation); carried Wave 2 R1-F4 |
+| R3-F1 wording | orchestrator (W3-B) | spec "Spoken updates tool"; design H1, D3, Risks |
+| 3.4 | user (W3-C) | Recorded result and the unverified sub-checks in `tasks.md:44–45` |
+
+Baseline: recomputed `sha256` over `git -C extensions/speak diff HEAD`, then `live-speech.ts`, `speak-aloud.ts`, `test/fake-pi.ts`, `test/live-speech.test.ts`, `test/live-tool.test.ts`. The digest is `6e584395b83e3a4b11f8…`, so `BASELINE_TARGET_REVISION=sha256:6e584395b83e3a4b` is **confirmed**. `extensions/speak` is at `06d1733`, and its status shows exactly the twelve modified and five new files of the inclusion predicate (`talk.ts` unchanged).
+
+Independent checks, each inside `systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 timeout 300`, output in `/tmp/oracle-w3-*.log`:
+
+- `test/live-tool.test.ts` alone: 11 pass, 0 fail.
+- `test/live-speech.test.ts` alone: 12 pass, 0 fail.
+- `test/live-idle.test.ts` alone: 7 pass, 0 fail.
+- Host 1.1.0, `host/pi/packages/coding-agent`: `vitest --run test/system-prompt-updates.test.ts -t "setActiveTools in before_agent_start"`: 1 pass (7 skipped). See R1-F3.
+
+The full suite and `tsc` were not re-run; the recorded 806 pass and clean `tsc` stand.
+
+### What holds
+
+- **Host facts H1–H4, against `host/pi` 1.1.0 source.**
+  - H1: `_isActivatedOnRegistration` activates unless `defaultActive === false` (`agent-session.ts:3602–3604`).
+  - H2: `_restoreToolsFromTranscript` restores the recorded set and keeps unregistered names pending (`:1809–1816`).
+  - H3: `setActiveToolsByName` clears the pending set only when a tool is deactivated (`:1518–1525`).
+  - H4: `_runAgentPrompt` clears the pending set (`:1822–1829`), and after `before_agent_start` the live loadout becomes the run's `selectedTools` unless a handler edited them (`:2062–2071`).
+  - Session replacement emits `session_before_switch` and `session_shutdown` on the old runner before it is invalidated (`agent-session-runtime.ts:133–176`), so `tools.remove()` in `end()` reaches a live runner. The new session builds a new runtime in which the tool registers inactive.
+- **Activation (3.1, D3).** `SpeakAloudSwitch` (`speak-aloud.ts:12–28`) reads the active set and calls `setActiveTools` only when the name's state changes. That enforces the "never a no-op" invariant at its boundary, so it is not a pass-through layer. The three change points are the only callers:
+  - `tools.add()` at live start (`live.ts:256`), placed after the post-`listen` state check, so a failure while the recorder starts never adds it;
+  - `tools.remove()` in `end()`, only for an `on` state (`live.ts:342`);
+  - `removeToolOutsideLive()` from `before_agent_start` (`index.ts:207–209`, `live.ts:155–157`).
+
+  Nothing subscribes to `session_start` for tools. `session_tree` reaches `end()`, which does nothing when live mode is off. The definition is typed `ToolDefinition<…> & { defaultActive?: boolean }` with `defaultActive: false` (`speak-aloud.ts:40–51`).
+  - Tests: `test/live-tool.test.ts:11–19` fires every event but `session_start` plus `before_agent_start`, and asserts zero `setActiveTools` calls. `:33–39` checks that the removal keeps the other names and that a second run makes no call. `:41–57` covers add on start and removal on three end paths. `:59–69` covers no-op add and no-op remove. `:71–79` covers the failure while the recorder starts. Each test would fail under the matching mutation.
+- **Tool contract (3.1).**
+  - The description and guidance carry every element the requirement lists (`speak-aloud.ts:43–49`), and `test/live-tool.test.ts:21–31` asserts each one.
+  - `execute` returns synchronously after `enqueue`.
+  - The results cover live off (also while starting), empty (`trim`), too long, and queued (`live.ts:136–147`).
+  - The text is enqueued untrimmed and spoken as written; `:102–112` asserts the exact text, the ElevenLabs URL under a Deepgram configuration, and no player yet.
+- **Single limit (Wave 1 R1-F5, closed).** `effectiveHardLimit` (`speech-preflight.ts:15–16`) is used by preflight (`:50`) and by live start (`live.ts:238`). Both measure with `checkLength` on the same raw text, so the tool and the job agree. Tests cover both the configured limit and the provider ceiling (`test/live-tool.test.ts:81–100`).
+- **Queue (3.2, D7).** `LiveSpeech.drain` (`live-speech.ts:70–89`) speaks one update at a time through `speakLive`, whose promise never rejects, so a failed update has already been reported by `run()` and the loop continues.
+  - `cutOff` drops the waiting updates and cancels the current job through `stopOwnAudio`. `cancel` clears `this.job` synchronously, so the next `speakLive` is never refused as "already active".
+  - Order, no retry, the sanitized failure, and continuation are tested (`test/live-tool.test.ts:114–147`).
+- **Mute (3.2, D6).** `onChunk` sends `Buffer.alloc(chunk.length)` while `!liveListenWhileSpeaking && updates.muted` (`live.ts:218–219`). `muted` is `playing || now < exit + 500` (`live-speech.ts:43–45`), with `playing` set by the player hooks, so muting starts at the player's start and the tail applies after a cut-off too.
+  - The fake-clock test (`test/live-speech.test.ts:47–70`) proves heard → muted → muted at 300 and 499 ms → heard at 500 ms, with equal lengths. It compares lengths and first bytes, never buffers, so it is memory-safe.
+  - **Wave 1 R1-F2, closed:** `signalLive` (`speech-job.ts:483–496`) guards both hooks. `test/job.test.ts:652–674` shows that a throwing hook neither orphans the player nor skips the exit hook, and that `/speak stop` still ends playback.
+- **Cut-off (3.2).**
+  - The send key (`live.ts:112–117`) is routed only for `fromShortcut && phase === "on"`, so Wave 2 R1-F1 still holds.
+  - `/speak stop` drops waiting updates, then cancels (`index.ts:40–43`). With live mode off it is a no-op.
+  - Barge-in sets `onPartial` only with the setting on (`live.ts:250`), and `cutOff` acts only while `busy`.
+  - Nothing aborts the agent (`h.aborts === 0`), and live mode stays on.
+  - Tests cover the key during playback and during synthesis, `/speak stop`, barge-in on and off, and the "Nothing is being spoken." message (`test/live-speech.test.ts:81–148`).
+- **End paths (F12, closed).** `end()` stops the timer, recorder, and connection, then `updates.end()` (stop and drop), then the status line, then the tool, and it is idempotent.
+  - On a session change, `reset` cancels the job first and `live.resetSession()` follows synchronously, so the drain loop sees `ended` before it could start the next update.
+  - Tested for `/talk live`, a lost connection, and a session switch while Pi speaks (`test/live-speech.test.ts:163–194`).
+- **Idle and status.**
+  - `checkIdle` counts a busy queue as activity (`live.ts:321`). Test: `test/live-idle.test.ts:56–69`.
+  - `render()` reads `this.state`, so an ended `LiveSpeech` cannot write a newer session's line, and its `onChange` is suppressed after `end` (`live-speech.ts:87`).
+  - The status test asserts the exact listening, Pi speaking, and listening lines (`test/live-speech.test.ts:150–161`).
+- **Help and README (3.3; Wave 2 R1-F4, closed).**
+  - `help.ts:55` now says the send key is not refused and cuts Pi off. `help.ts:56` names the key, `/speak stop`, the mute and its tail, and `input.liveListenWhileSpeaking` with the headphones requirement.
+  - `README.md:253–261` covers the tool, the language, the results, order and failure, cut-off, muting, barge-in, status, and the end paths, including tool removal. `README.md:268` covers the setting.
+  - This matches the spec's speaking side. Stop-phrase text is Wave 4.
+- **Regressions.** With live mode off, `dropWaitingUpdates` and `removeToolOutsideLive` are no-ops: no state, and an inactive tool means no call. `signalLive` acts only on live jobs (`liveHooks?.`). The preflight change is an equivalent extraction, and `talk.ts` is unchanged. Push-to-talk, Space holds, and the `/speak` forms run the same code as at `06d1733`.
+- **Test memory safety.** Chunks are 1,600–3,200 bytes, and they are compared by length, first byte, and last byte. Loops are bounded (at most 8 ticks). `h.until` keeps its 3 s deadline, and `settle` is a short real timeout. No `deepEqual` on audio.
+- **Sizes.**
+  - Source files: `live.ts` 370, `live-speech.ts` 90, `speak-aloud.ts` 57, `speech-job.ts` 498, `index.ts` 267, `help.ts` 66 — all under 500.
+  - Handwritten test files are governed by `testing-governance`'s thresholds (review at 800, required split above 1,000), which are the specific contract for tests: `test/job.test.ts` 674, `test/command.test.ts` 645, `test/harness.ts` 477.
+  - Wave 3 added only 24 lines to `job.test.ts` and 14 to `command.test.ts`, and the harness shrank by moving the host fake to `test/fake-pi.ts`. No policy action is required.
+
+### Worker-declared deviations, judged
+
+- **`test/silence.test.ts`: accepted.** D3 requires the `before_agent_start` subscription, and the modified `manual-speech` requirement permits it. The fake now records any `setActiveTools` call as use, so "loading changes no active tool" is still enforced.
+- **`test/command.test.ts` regex: accepted.** It matches the full new sentence that carried Wave 2 R1-F4 required. That is a legitimate change of contract, not a weakened assertion.
+- **`live-speech.ts` split: accepted.**
+  - It is a cohesive responsibility: the queue and the mute state.
+  - It has one owner, since `LiveSession` constructs it per session and holds it in `On.updates`.
+  - It is part of the live module, as D7 places it.
+  - It keeps `live.ts` clear of the 500 lines that Wave 4 will push toward.
+- **Idle counting speech, and `speakAloud` restarting the idle clock: accepted.** It follows "Live idle limit". One residual nuance is in the notes below.
+- **Too-long limit computed at live start: accepted.** An async config read per call could reorder the enqueues. The job re-checks with fresh configuration, so a mid-session edit of `hardLimitChars` can only produce a preflight refusal later, never an oversized request.
+- **"Pi speaking" covering synthesis and waiting: accepted.**
+  - The status-line scenario (playback → "Pi speaking", then "listening") holds.
+  - The cut-off key acts during synthesis too, so the line's "cuts Pi off" stays truthful.
+  - Showing "listening" between queued updates would only flicker.
+
+### Findings (highest priority first; no P0, P1, or P2)
+
+**R1-F1 — family `tool-activation-window`, root `starting-phase-skips-run-start-removal`.** P3. In scope (3.1).
+- Evidence: `live.ts:155–157` removes the tool only when `!this.state`, so nothing is removed while live mode is starting. Yet `speakAloud` treats starting as off (`live.ts:138`), and the spec says the tool is declared "only while live mode is on" (`specs/voice-conversation/spec.md:90`).
+  - Trigger: a session resumed with `speak_aloud` restored (H2), and a prompt submitted during the second or so that `/talk live` is starting.
+  - Effect: that run declares the tool. If the start then fails, nothing removes it until the next prompt, and the backstop "live mode is off" result applies meanwhile.
+  - Severity: harmless in effect and very narrow.
+- SUGGESTED_CORRECTION: `if (this.state?.phase !== "on") this.tools.remove();`. If the start then succeeds, `tools.add()` re-adds it, and the host applies the change before the next request. One table row in `test/live-tool.test.ts` (prompt while starting with the tool restored) would cover it. Alternatively, the caller can record the window as accepted.
+
+**R1-F2 — family `design-wording` (W3-B), root `d3-reload-case-unreachable`.** P3. In scope (W3-B wording).
+- Evidence: `design.md:50` gives "a `/reload` while live mode was on, which carries every active tool across the reload" as a case for the run-start removal. On the 1.1.0 host, `reload()` first emits `session_shutdown` on the still-active runner (`agent-session.ts:3663`). The extension's handler then ends live mode, and `end()` removes `speak_aloud` (`index.ts:198–201` → `live.ts:342`). Only after that does reload copy the active names into the pending set (`agent-session.ts:3681`). So a reload does not carry the tool. The remaining real cases are a restored transcript (resume, or a tree point recorded in live mode) and a host that ignores `defaultActive`. The code is correct; only the rationale is inaccurate.
+- SUGGESTED_CORRECTION: in D3, replace the `/reload` clause with "a reload while live mode is on ends it at shutdown, which already removes the tool". Optionally, add that the Risks bullet "Ending live mode in a resumed session before its first agent run…" also applies to a `/reload` in that window, because the shutdown removal clears pending tools (H3). This is a wording-only edit.
+
+**R1-F3 — family `verification-evidence`, root `host-before-agent-start-confirmation`.** P3. In scope (3.1).
+- Evidence: `tasks.md:40` requires confirming on the 1.1.0 host, "a host-level test or a real-host check", that a removal in `before_agent_start` applies to that run's declarations. W3-A recorded only a source read. An existing host test proves exactly this: `host/pi/packages/coding-agent/test/system-prompt-updates.test.ts:235–272`, "setActiveTools in before_agent_start controls the same request". It asserts that the second request's system update removes the deactivated tool and that the active set is the new one. Oracle ran it inside the 4 GB scope: 1 pass.
+- SUGGESTED_CORRECTION: record that test and this run in task 3.1's result as the host-level confirmation. No new test.
+
+### Notes for the caller (not findings)
+
+- **Idle nuance (D9 coarse-timer family, already accepted in Wave 2).** `speakAloud` sets `idleSince` at call time (`live.ts:144`). If the agent run and the update both finish between two 15 s ticks, the next tick keeps that call time. The count then starts up to the length of the update (under 15 s) before the speech actually ended. The README says only "up to 15 seconds late". Bounded and minor against a 1–60 minute limit. Optional exact fix: restart `idleSince` when the drain ends, in the `LiveSpeech` `onChange` callback, instead of at call time.
+- **Another extension editing `selectedTools`.** If another extension's `before_agent_start` handler explicitly edits `event.systemPromptOptions.selectedTools`, the host lets that edit win for the run (`agent-session.ts:2067–2071`), so the removal would apply only from the next run. The tool's "live mode is off" result is the backstop. No such extension is known in this repository.
+- **3.4 residuals.** Still unverified on real hardware:
+  - the 500 ms tail clipping a quick one-syllable answer (R2-F4);
+  - voice barge-in with headphones;
+  - a one-second pause splitting a turn;
+  - three or more minutes of silence (F6);
+  - the billing basis.
+
+  The gate condition ("complete or explicitly reported as unverified") is met by `tasks.md:44–45`.
+- **Wave 4 seams.**
+  - `live.ts` is at 370 lines, so the stop phrase must stay small or move into its own module.
+  - `speech-job.ts` is at 498 and must not grow.
+  - The stop-phrase end should call the existing `end()`, which already stops speech, drops updates, removes the tool, and clears the status line.
+- **Bookkeeping.** `tasks.md` 3.1–3.3 are still unchecked. Carried items closed by this wave: Wave 1 R1-F2 and R1-F5, Wave 2 R1-F4, and F12. Remaining carried: F11 (commit `pi-speak` first, then the gitlink).
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 3, Round 1
+
+Mode: `FULL`. Gate: task 3.5. Oracle ran in the background on `claude-bridge/claude-opus-5-5:high` (run `18e26ecd`) and confirmed the baseline `sha256:6e584395b83e3a4b`.
+
+Oracle found no P0–P2 issues and closed every carried item (Wave 1 R1-F2 and R1-F5, Wave 2 R1-F4, F12). It accepted all six worker-declared deviations, with reasons in its section. File sizes are within policy.
+
+#### R1-F1 — the tool is not removed when a prompt-started run begins while live mode is starting
+- **Decision:** `ACCEPT_NONBLOCKING`. Family `tool-activation-lifecycle`. P3: a narrow window, and the tool's own "live mode is off" result keeps behavior safe.
+- **CORRECTION:** Carried to task 4.2, which edits `live.ts` anyway. `removeToolOutsideLive` (`live.ts:155–157`) removes the tool whenever the phase is not `on`, with one table row in `test/live-tool.test.ts`.
+
+#### R1-F2 — design D3's `/reload` remark cannot happen
+- **Decision:** `ACCEPT_NONBLOCKING`. Family `adr-design-wording`. It is the orchestrator's own W3-B wording.
+- **CORRECTION:** Applied now in `design.md` D3, which is source text, not the code under review. Shutdown ends live mode and so removes the tool before the reload copies the active tools, so `/reload` is not a case where the tool is carried over.
+
+#### R1-F3 — task 3.1's host confirmation was only a source read
+- **Decision:** `ACCEPT_NONBLOCKING`. Family `verification-evidence`.
+- **CORRECTION:** Recorded in task 3.1. The host test `host/pi/packages/coding-agent/test/system-prompt-updates.test.ts:235` shows that a `setActiveTools` call in `before_agent_start` applies to the starting run. Oracle ran it inside the 4 GB scope, and it passed.
+
+#### Oracle-noted risks (no edit)
+- The task 3.4 sub-checks remain unverified on real hardware.
+- The idle count may start up to about 15 s early, within D9's coarse timer.
+- An extension that explicitly edits `selectedTools` could override the removal for one run; the tool's live-off result covers it.
+
+### Summary
+- **Accepted blocking:** 0.
+- **Accepted nonblocking:** 3 (R1-F1 carried to 4.2; R1-F2 and R1-F3 applied now).
+- **Deferred:** 0.
+- **Rejected:** 0.
+
+### Terminal baseline validation
+- **Boundary:** `BASELINE_TARGET`, `BASELINE_SOURCE`, `BASELINE_INCLUSION_PREDICATE`, and `BASELINE_EXCLUSIONS` are unchanged. The design wording fix edits a source file's text, not its identity.
+- **Candidate:** recomputed `sha256:6e584395b83e3a4b`, equal to the recorded `BASELINE_TARGET_REVISION`.
+- **Rounds:** 1 of 4 Oracle rounds used, and no rebuild.
+
+DISPATCH_BUDGET wave 3: oracle=1/1 others=1/3
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD

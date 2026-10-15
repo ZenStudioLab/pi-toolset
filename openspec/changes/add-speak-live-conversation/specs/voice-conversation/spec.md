@@ -8,7 +8,7 @@ Lets a Pi user hold a hands-free spoken conversation with Pi: while live mode is
 
 ### Requirement: Live mode starts and ends only by user action or a stop condition
 
-The extension SHALL start live mode only when the user runs `/talk live` while live mode is off, and SHALL end it when the user runs `/talk live` while it is on, or on a stop condition in "Live mode ends cleanly". Loading, reloading, session start, prompts, tool execution, agent completion, and every other lifecycle event SHALL NOT start live mode. Live mode SHALL NOT survive a reload, a restart, or a session replacement. Live mode SHALL be available only in the interactive terminal.
+The extension SHALL start live mode only when the user runs `/talk live` while live mode is off, and SHALL end it when the user runs `/talk live` while it is on, when the user says a live stop phrase as "Live stop phrase" defines, or on a stop condition in "Live mode ends cleanly". Loading, reloading, session start, prompts, tool execution, agent completion, and every other lifecycle event SHALL NOT start live mode. Live mode SHALL NOT survive a reload, a restart, or a session replacement. Live mode SHALL be available only in the interactive terminal.
 
 #### Scenario: Toggle on and off
 
@@ -53,7 +53,7 @@ Live mode SHALL use ElevenLabs for listening and for speaking, whatever `input.p
 
 ### Requirement: Live turn delivery
 
-While live mode is on, each segment the provider commits after a pause SHALL be one turn. A turn whose text contains no letter or digit SHALL be dropped without a message. Every turn with at least one letter or digit, however short, SHALL be sent to Pi as one plain user message, with no expansion: slash commands, prompt templates, and skill commands in it SHALL NOT run. The extension SHALL NOT read, change, or send the composer's text when sending a turn. When the agent is idle, the turn SHALL start a new agent run. When the agent is working, `input.sendWhenBusy`, read at send time, SHALL decide: `interrupt` (default) delivers the turn to the running turn at once, and `wait` queues it until the run ends. When the extension can tell before sending that Pi would refuse the message (no model selected, or the conversation is being compacted), or when the send call fails, it SHALL append the turn to the composer instead, show a message saying why it was not sent, and keep live mode on. The configured stop phrases SHALL have no effect in live mode: a turn is sent with its words unchanged. A segment committed after live mode ended or after the session was replaced SHALL be dropped.
+While live mode is on, each segment the provider commits after a pause SHALL be one turn. A turn whose text contains no letter or digit SHALL be dropped without a message. Every turn with at least one letter or digit, however short, SHALL be sent to Pi as one plain user message, with no expansion: slash commands, prompt templates, and skill commands in it SHALL NOT run. The extension SHALL NOT read, change, or send the composer's text when sending a turn. When the agent is idle, the turn SHALL start a new agent run. When the agent is working, `input.sendWhenBusy`, read at send time, SHALL decide: `interrupt` (default) delivers the turn to the running turn at once, and `wait` queues it until the run ends. When the extension can tell before sending that Pi would refuse the message (no model selected, or the conversation is being compacted), or when the send call fails, it SHALL append the turn to the composer instead, show a message saying why it was not sent, and keep live mode on. The push-to-talk stop phrases (`input.stopPhrases`) SHALL have no effect in live mode: a turn is sent with its words unchanged. A turn that matches a live stop phrase is not sent; "Live stop phrase" defines it. A segment committed after live mode ended or after the session was replaced SHALL be dropped.
 
 #### Scenario: Turn sent while a draft is typed
 
@@ -87,12 +87,12 @@ While live mode is on, each segment the provider commits after a pause SHALL be 
 
 ### Requirement: Spoken updates tool
 
-The extension SHALL register a `speak_aloud` tool that takes one `text` parameter. The tool SHALL be registered inactive and SHALL be declared to the model in an agent run only while live mode is on: it SHALL be added to the active tools when live mode starts and removed when live mode ends, leaving the other active tools unchanged. Because the host can restore a session's recorded tool set, or activate a tool on registration, the extension SHALL also remove it, leaving the other active tools unchanged, when an agent run starts while live mode is off and the tool is active. The extension SHALL NOT change the active tools when the tool's state would not change, so loading, reloading, and resuming without live mode leave the tool set, including tools still being restored, untouched. Its description and guidance SHALL tell the model that the user is talking by voice; that it should call the tool to speak a short acknowledgement when it starts on a request, brief progress during long work, and a short summary when it finishes; that it should write the spoken text in the language of the user's latest spoken message; that spoken text stays short and speakable, without code blocks, tables, or long paths; and that the written answer remains the full record. The tool SHALL return promptly once the update is queued, without waiting for synthesis or playback. Its result SHALL say that the update was queued, or why nothing will be spoken: live mode is off, the text is empty, or the text exceeds the speech length limit. The text SHALL be spoken exactly as written, with no translation, summarization, or answer selection.
+The extension SHALL register a `speak_aloud` tool that takes one `text` parameter. The tool SHALL be registered with `defaultActive: false` and SHALL be declared to the model only while live mode is on: it SHALL be added to the active tools when live mode starts and removed when live mode ends, leaving the other active tools unchanged. Because the host can restore a session's recorded tool set, and a host that ignores `defaultActive` activates every tool on registration, the extension SHALL also remove it, leaving the other active tools unchanged, when an agent run started by a prompt begins while live mode is off and the tool is active. A run that another extension starts with a message skips that check and may still declare the tool; its result then says live mode is off, and nothing is spoken. The extension SHALL NOT change the active tools when the tool's state would not change, so loading, reloading, and resuming without live mode leave the tool set, including tools still being restored, untouched. Its description and guidance SHALL tell the model that the user is talking by voice; that it should call the tool to speak a short acknowledgement when it starts on a request, brief progress during long work, and a short summary when it finishes; that it should write the spoken text in the language of the user's latest spoken message; that spoken text stays short and speakable, without code blocks, tables, or long paths; and that the written answer remains the full record. The tool SHALL return promptly once the update is queued, without waiting for synthesis or playback. Its result SHALL say that the update was queued, or why nothing will be spoken: live mode is off, the text is empty, or the text exceeds the speech length limit. The text SHALL be spoken exactly as written, with no translation, summarization, or answer selection.
 
 #### Scenario: Tool absent when live mode is off
 
-- **WHEN** live mode is off
-- **THEN** `speak_aloud` is not among the tools declared to the model
+- **WHEN** live mode is off and the user submits a prompt
+- **THEN** `speak_aloud` is not among the tools declared to the model in that run
 
 #### Scenario: Resumed session does not bring the tool back
 
@@ -182,6 +182,44 @@ While live mode is on or starting, the transcribe-only, command, and skill short
 - **WHEN** live mode is on, the agent is working, and the user presses Escape
 - **THEN** Pi handles Escape as usual and live mode stays on
 
+### Requirement: Live stop phrase
+
+The configuration SHALL accept `input.liveStopPhrases`, a list of 0 to 10 phrases, each a string of 1 to 40 characters after trimming that contains at least one letter or digit, defaulting to `["Dừng cuộc hội thoại", "Stop the conversation"]`. Any other value SHALL be a configuration error reported when the user runs `/talk live`. An empty list SHALL turn the feature off. These phrases are separate from the push-to-talk `input.stopPhrases`.
+
+While live mode is on, each committed turn SHALL be compared with every live stop phrase before any other turn rule applies. A turn SHALL match only when its whole text, compared word by word, equals a phrase: case, whitespace, and punctuation SHALL be ignored, curly apostrophes SHALL count as straight ones, and diacritics SHALL be ignored, with `đ` counting as `d`. A turn that contains a phrase together with other words SHALL NOT match and SHALL be delivered as a normal turn.
+
+A matched turn SHALL NOT be sent to Pi, added to the composer, or stored. Turns committed before it SHALL still be delivered in order; then live mode SHALL end through the same path as `/talk live`, as "Live mode ends cleanly" defines, and a message SHALL say that live mode ended because the stop phrase was said, without repeating any transcript text. Segments committed after a match SHALL be dropped. Ending this way SHALL NOT abort the agent. While `input.liveListenWhileSpeaking` is off, the microphone is muted during Pi's speech, so a phrase said then is not heard; documentation SHALL say so.
+
+#### Scenario: Vietnamese stop phrase
+
+- **WHEN** live mode is on with the default phrases and the user says "Dừng cuộc hội thoại." and pauses
+- **THEN** nothing is sent to Pi, live mode ends, the microphone closes, and a message says it ended because of the stop phrase
+
+#### Scenario: Case, punctuation, and diacritics ignored
+
+- **WHEN** a committed turn reads `stop the conversation!` or `dung cuoc hoi thoai`
+- **THEN** it matches a default phrase and live mode ends
+
+#### Scenario: Phrase inside a longer turn
+
+- **WHEN** a committed turn reads `Okay, stop the conversation about tests and look at the loader`
+- **THEN** it is sent to Pi as a normal turn and live mode stays on
+
+#### Scenario: Earlier turn still delivered
+
+- **WHEN** a turn is committed and, before it has been sent, the next committed turn is a stop phrase
+- **THEN** the first turn is sent, the stop-phrase turn is not, and live mode then ends
+
+#### Scenario: Feature turned off
+
+- **WHEN** `input.liveStopPhrases` is `[]` and the user says "Stop the conversation"
+- **THEN** the turn is sent to Pi and live mode stays on
+
+#### Scenario: Invalid live stop phrases
+
+- **WHEN** `input.liveStopPhrases` is `"stop"` or contains `"..."`, and the user runs `/talk live`
+- **THEN** the configuration error is reported and live mode does not start
+
 ### Requirement: Live idle limit
 
 The configuration SHALL accept `input.liveIdleMinutes`, an integer from 1 to 60, defaulting to 5; an invalid value SHALL be a configuration error reported when the user runs `/talk live`. Live mode SHALL end when, for that many minutes in a row, the agent has been idle, no update has been synthesized or played, and no turn has been sent. A message SHALL say that live mode ended because it was idle.
@@ -198,7 +236,7 @@ The configuration SHALL accept `input.liveIdleMinutes`, an integer from 1 to 60,
 
 ### Requirement: Live mode ends cleanly
 
-Live mode SHALL end on `/talk live`, on the idle limit, on a provider error or an unexpected close of the connection, when the recorder exits on its own, and on session replacement, fork, tree navigation, reload, and shutdown. Ending SHALL stop the recorder, close the connection, stop the update being synthesized or played, drop waiting updates, remove `speak_aloud` from the active tools, and clear the status line. Except on shutdown and session changes, a message SHALL name why live mode ended. The extension SHALL NOT retry, reconnect, or fall back to another provider. Ending SHALL be idempotent.
+Live mode SHALL end on `/talk live`, on a live stop phrase, on the idle limit, on a provider error or an unexpected close of the connection, when the recorder exits on its own, and on session replacement, fork, tree navigation, reload, and shutdown. Ending SHALL stop the recorder, close the connection, stop the update being synthesized or played, drop waiting updates, remove `speak_aloud` from the active tools, and clear the status line. Except on shutdown and session changes, a message SHALL name why live mode ended. The extension SHALL NOT retry, reconnect, or fall back to another provider. Ending SHALL be idempotent.
 
 #### Scenario: Connection lost
 
@@ -212,7 +250,7 @@ Live mode SHALL end on `/talk live`, on the idle limit, on a provider error or a
 
 ### Requirement: Live mode status, help, and settings
 
-While live mode is on, a status line SHALL show whether the extension is listening or Pi is speaking, the key that cuts Pi off, and that `/talk live` ends live mode. `/speak status` SHALL show whether live mode is on and the effective `input.liveIdleMinutes` and `input.liveListenWhileSpeaking`. Help SHALL describe `/talk live`, the key that cuts Pi off, both settings, and that live mode uses ElevenLabs for listening and speaking. The configuration SHALL accept `input.liveListenWhileSpeaking` as a boolean defaulting to `false`; any other value SHALL be a configuration error. Other unknown keys SHALL still be rejected.
+While live mode is on, a status line SHALL show whether the extension is listening or Pi is speaking, the key that cuts Pi off, and that `/talk live` ends live mode, together with the first live stop phrase when any is configured. `/speak status` SHALL show whether live mode is on and the effective `input.liveIdleMinutes` and `input.liveListenWhileSpeaking`. Help SHALL describe `/talk live`, the key that cuts Pi off, the live settings, including `input.liveStopPhrases` and its whole-turn rule, and that live mode uses ElevenLabs for listening and speaking. The configuration SHALL accept `input.liveListenWhileSpeaking` as a boolean defaulting to `false`; any other value SHALL be a configuration error. Other unknown keys SHALL still be rejected.
 
 #### Scenario: Status line follows playback
 
