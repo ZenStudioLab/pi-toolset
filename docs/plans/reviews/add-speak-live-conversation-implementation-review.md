@@ -1404,3 +1404,14 @@ DISPATCH_BUDGET wave 6: oracle=1/1 others=1/3
 
 CONSENSUS_STATUS=MOSTLY_GOOD
 REVIEW_ACTION=PASS
+
+### Post-gate follow-up (Wave 6 P3 items)
+
+The reviewed revision is committed: pi-speak `4546980` and root `185f8e7`. The candidate equals `sha256:7d95f51d6f9250f9`.
+
+Then, in separate docs-only commits:
+
+- **R1-F1:** `extensions/speak/README.md` now says "the four push-to-talk shortcuts and the live key" and "only the five defaults are registered", in the Oracle's wording.
+- **R1-F2:** the ADR-0010 Status line now reads "Accepted and implemented". It says that tasks 3.4, 4.4, and 6.7 passed, and that 6.7 was reported together rather than one by one.
+
+No code or test changed, so no test rerun is needed for these edits. Nothing in the test suite asserts either sentence.
