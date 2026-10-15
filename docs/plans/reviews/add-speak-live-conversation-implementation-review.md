@@ -736,3 +736,215 @@ DISPATCH_BUDGET wave 3: oracle=1/1 others=1/3
 
 REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
+
+## Wave 4 Review Sequence
+
+## Round 1 - Implementation Assignments
+
+Wave handled: 4 (amendment of 2026-10-15, live stop phrase). Final gate reserved: task 4.5 [Oracle gate: `oracle`], run once after 4.1–4.3 are complete and 4.4 is complete or explicitly reported as unverified.
+
+Between-wave reuse check on the Wave 3 worker (`2aa1d487`), using the mechanical conditions only:
+
+| Gate | Condition | Value | Result |
+| --- | --- | --- | --- |
+| 1 | Same agent type, completed, and reconciled | — | pass |
+| 2 | Idle under 1 hour | about 30 minutes (03:51 to 04:20 UTC) | pass |
+| 3 | Last context plus about 150k under 350k | 233,334 + 150k ≈ 383k | **fail** |
+
+So a fresh `worker` is used, and no Jev check is needed. Dispatch: background, `claude-bridge/claude-sonnet-5-5:high`.
+
+| Assignment | Tasks | Owner | Bounded responsibility | Files and topics |
+| --- | --- | --- | --- | --- |
+| W4-A | 4.1 | orchestrator | ADR-0010 amendment | `docs/adr/0010-live-voice-conversation.md` (Change line, the "Ending by voice" Decision bullet, the ADR-0006 Consequences bullet) |
+| W4-B | 4.2, 4.3 | worker | `input.liveStopPhrases`, the whole-turn matcher, turn handling and ending, status line and help, the README, and the carried Wave 3 R1-F1 | `extensions/speak/input-settings.ts`, `realtime.ts` (matcher), `live.ts`, `help.ts`, `README.md`, `test/live-stop.test.ts` (new), `test/config.test.ts`, `test/live-tool.test.ts`, `test/command.test.ts` (help only) |
+| W4-C | 4.4 | user | Live check of both default phrases and a longer sentence containing one | Recorded in task 4.4, or reported as unverified |
+
+### W4-A (orchestrator) evidence
+
+ADR-0010 is amended, uncommitted until the Wave 4 PASS:
+
+- **Change line:** names the amendment of 2026-10-15 and design D12.
+- **Decision:** a new "Ending by voice" bullet covers the setting, the default pair, `[]` to turn it off, the whole-turn match, ignored case, punctuation, and diacritics, that the extension handles the phrase itself, and that it is the only spoken command and can only end live mode.
+- **Consequences:** the ADR-0006 bullet now says that live mode has its own stop phrases, that a misheard match is harmless, and that a phrase is not heard while Pi speaks with the microphone muted.
+- **Other ADRs:** none edited.
+
+### W4-B (worker, run `af8e687a`, background, `claude-bridge/claude-sonnet-5-5:high`, completed)
+
+Provider confirmed from the child transcript: all 35 model turns went through `claude-bridge`.
+
+Tasks 4.2 and 4.3. Files, all in `extensions/speak`, with line counts:
+
+- **Source:** `input-settings.ts` (196), `realtime.ts` (357), `live.ts` (384), `help.ts` (70), `README.md` (311).
+- **Tests:** new `test/live-stop.test.ts` (153), plus `test/config.test.ts` (469), `test/live-tool.test.ts` (160), `test/command.test.ts` (670), and `test/realtime.test.ts` (411).
+- **Two one-line assertions outside the listed scope:** `test/live.test.ts:20` and `KEY_LINE` in `test/live-speech.test.ts`.
+
+New export and fields:
+
+- `matchesLiveStopPhrase(text, phrases): boolean` in `realtime.ts`: `spokenWords` with diacritics folded (NFD, combining marks removed, `đ` → `d`).
+- `InputConfig.liveStopPhrases`.
+- `On.stopPhrases`, read when live mode starts.
+
+Behavior:
+
+- **Matching:** checked in `onCommitted` before the letter-or-digit filter. A match is never sent. The end is chained behind `on.sending`, then goes through `end()` with "Live mode ended because you said the stop phrase. The microphone is closed.", which repeats no transcript text. Later segments find live mode ended and are dropped.
+- **Status line:** appends ` · or say "<first phrase>"` when any phrase is configured.
+- **Help:** shows the current phrases ("off" when empty, "unknown" when the configuration cannot be read) and a rule line: defaults, `[]`, whole-turn, what matching ignores, and muting.
+- **README:** the example, the defaults paragraph, a new "Ending by voice" paragraph, and the status-line and ending text.
+- **`/speak status`:** unchanged.
+
+Carried Wave 3 R1-F1: `removeToolOutsideLive` removes the tool whenever the phase is not `on`, with a new case in `test/live-tool.test.ts`.
+
+Deviation, accepted by the caller: the spec requires the status line to name the first stop phrase, so the two existing exact-match status assertions were updated by one line each. That follows from the spec change, not from a behavior regression.
+
+Worker's mutation checks, each detected:
+
+- whole-turn changed to prefix (5 failures);
+- diacritic folding removed (5);
+- `đ` mapping removed (2);
+- matched turn also sent (9);
+- end called immediately instead of chained (2);
+- end delayed past later turns (1);
+- R1-F1 reverted (1).
+
+Orchestrator re-verification, inside the 4 GB scope:
+
+- `test/live-stop.test.ts` alone: 22 pass.
+- `test/live-tool.test.ts` alone: 12 pass.
+- Full suite: 859 pass, 0 fail (Wave 3: 806).
+- `npx tsc --noEmit`: clean.
+
+### W4-C (user) evidence: task 4.4
+
+- **Result (2026-10-15):** the user reported "stop the conversation work[s]", which the orchestrator reads as: the English default phrase ended live mode in their live test.
+- **Not reported, so unverified:** the Vietnamese phrase, which the config's `input.language: "en"` would likely garble, and the longer sentence containing a phrase. Both are covered by automated tests only.
+- **Where it is recorded:** in task 4.4 itself.
+
+BASELINE_TARGET=Wave 4 of add-speak-live-conversation: tasks 4.1–4.3 as implemented (live stop phrase, the ADR-0010 amendment, and the carried Wave 3 R1-F1)
+BASELINE_TARGET_REVISION=sha256:ea74699ccfa62b59 (git -C extensions/speak diff HEAD, then extensions/speak/test/live-stop.test.ts, then git diff HEAD -- docs/adr/0010-live-voice-conversation.md, in that order; pi-speak HEAD 8461c12, root HEAD 4861d6e)
+BASELINE_SOURCE=openspec/changes/add-speak-live-conversation (proposal, design D12 and D3, tasks, specs/voice-conversation/spec.md "Live stop phrase" and its referencing requirements) as committed in 4861d6e plus the task 4.4 result; docs/adr/0006 and 0010
+BASELINE_INCLUSION_PREDICATE=files changed or created for tasks 4.1–4.3: extensions/speak/{input-settings,realtime,live,help}.ts, extensions/speak/README.md, extensions/speak/test/{live-stop,config,live-tool,command,realtime,live,live-speech}.test.ts, docs/adr/0010-live-voice-conversation.md
+BASELINE_EXCLUSIONS=Waves 1–3 code except as context; unrelated uncommitted add-pi-session-rename-tool files and the staged session-rename move; host/pi; ~/.config/pi-speak/config.json
+
+DISPATCH_BUDGET wave 4: oracle=0/1 others=1/3 (before the gate)
+
+## Round 1 - Oracle Review
+
+Gate task consumed (once): 4.5 [Oracle gate: `oracle`] Final review gate for Wave 4, run once after 4.1–4.3 are complete and 4.4 is complete or explicitly reported as unverified. Mode: FULL (first review of this wave), under `review-convergence`. Output is advisory; the caller owns reconciliation, the authoritative action, and status.
+
+Task and owner mapping reviewed:
+
+| Task | Owner | Reviewed against |
+| --- | --- | --- |
+| 4.1 | orchestrator (W4-A) | `docs/adr/0010-live-voice-conversation.md` (Change line L5, Supersedes line L6, "Ending by voice" L25, ADR-0006 Consequences bullet L34); D12; ADR-0004 and ADR-0006 as context |
+| 4.2 | worker (W4-B) | `input-settings.ts`, `realtime.ts` (`matchesLiveStopPhrase`), `live.ts` (`onCommitted`, `render`, `removeToolOutsideLive`), `help.ts`; `test/live-stop.test.ts`, `test/config.test.ts`, `test/realtime.test.ts`, `test/command.test.ts`, `test/live-tool.test.ts`; D12, D3, D6, D8, D11; "Live stop phrase" and the requirements that refer to it; carried Wave 3 R1-F1 |
+| 4.2 deviation | worker (W4-B) | `test/live.test.ts:20`, `KEY_LINE` in `test/live-speech.test.ts:10` |
+| 4.3 | worker (W4-B) | `README.md` (example, defaults paragraph, "How turns are sent", "Ending by voice", status, "Ending", settings table) against the spec |
+| 4.4 | user (W4-C) | Recorded result and unverified parts in `tasks.md` task 4.4 |
+
+Baseline: recomputed `sha256` over `git -C extensions/speak diff HEAD`, then `extensions/speak/test/live-stop.test.ts`, then `git diff HEAD -- docs/adr/0010-live-voice-conversation.md`, in that order. The digest is `ea74699ccfa62b594ea0…`, so `BASELINE_TARGET_REVISION=sha256:ea74699ccfa62b59` is **confirmed**. `pi-speak` HEAD is `8461c12` and root HEAD is `4861d6e`, as recorded. `extensions/speak` status shows exactly the eleven modified files and the one new test of the inclusion predicate.
+
+Independent checks, each inside `systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 timeout 300`, output in `/tmp/oracle-w4-*.log`:
+
+- `test/live-stop.test.ts` alone: 22 pass, 0 fail.
+- `test/realtime.test.ts` alone: 73 pass, 0 fail.
+
+The full suite and `tsc` were not re-run; the recorded 859 pass and clean `tsc` stand.
+
+### What holds
+
+- **Setting (4.2, "Live stop phrase" ¶1).** `parseLiveStopPhrases` (`input-settings.ts:85–94`) accepts 0 to 10 entries, trims, requires 1–40 characters and `[\p{L}\p{N}]`, and fails with an `input.liveStopPhrases` message otherwise. The default is the spec pair (`:50`), the key is in `INPUT_KEYS` (`:68`), and it is a separate field from `stopPhrases`, whose rules (1 to 10, no letter check) are untouched. `null` falls back to the default through `??`, the same convention as every other `input.*` key. Length is counted in UTF-16 units, as `parseStopPhrases` counts it. Tests cover not a list, 11 entries, `""`, 41 characters, punctuation only, a non-string, `[]`, ten entries, both bounds after trim, and the default beside `stopPhrases` (`test/config.test.ts`). An invalid value refuses `/talk live` with the configuration error and opens nothing (`test/live-stop.test.ts:141–153`), through the existing `loadConfig` refusal at `live.ts:184`.
+- **Matcher (4.2, ¶2).** `matchesLiveStopPhrase` (`realtime.ts:343–357`) reuses `spokenWords` unchanged — lower-case, NFC, curly apostrophes straight, whitespace and punctuation as separators — then folds each word (NFD, `\p{M}` removed, `đ` → `d`) and requires equal word counts and equal words. The edge cases asked about all hold:
+  - An empty or whitespace-only turn yields no words, so `wanted.length === spoken.length` fails against any phrase with a word; it never matches.
+  - Folding happens after splitting, and a combining mark is neither `\s` nor `\p{P}`, so an NFD or mixed NFC/NFD transcript keeps the same word boundaries; folding never changes the word count.
+  - Uppercase `Đ` is lower-cased to `đ` before folding, and `đ` has no decomposition, so the explicit map is what makes it `d`; both directions are tested (`test/realtime.test.ts`, "a transcript with d against a phrase with đ" and "…Đ against a phrase with d").
+  - A phrase configured without diacritics matches an accented transcript, and the reverse.
+  - Any phrase that passes validation has at least one word, so `wanted.length > 0` only guards the matcher's own contract.
+- **Push-to-talk regression.** `matchStopPhrase` and `spokenWords` are byte-for-byte unchanged; the new code is appended after them. `talk.ts` is unchanged and still passes `input.stopPhrases` (`talk.ts:298`). The live test at `test/live-stop.test.ts:119–128` shows that `"let's go"` is sent as a turn and that the live list is the only one read.
+- **Turn order (4.2, ¶3).** In `onCommitted` (`live.ts:275–289`), `delivered` advances first, then the match, then the letter-or-digit filter. A match returns before `send`, so the turn is never sent, never reaches `keepInComposer`, and is never stored. The end is chained on `on.sending` and re-checks `this.state === on`, so:
+  - earlier turns finish `send` first (`test/live-stop.test.ts:76–84`);
+  - a `/talk live`, idle end, or connection failure in that window makes the chained end a no-op, with no second message;
+  - a new live session started in that window is not ended, because `on` is the old object;
+  - later segments either queue behind the end and stop at `send`'s `this.state !== on` check (`live.ts:298`), or arrive after `end()` and stop at `live.ts:276` (`test/live-stop.test.ts:86–99`).
+  The end goes through `end()`, the same function as `/talk live` (`live.ts:104`). It stops the recorder, closes the connection, stops and drops updates, clears the status line, and removes the tool; `test/live-stop.test.ts:23–55` asserts each, plus `h.aborts === 0`.
+- **Privacy.** The end message is a constant and contains no transcript (`live.ts:283`); the test checks that no notice contains the said text (`test/live-stop.test.ts:35`). Nothing is logged or written. The matched text stays only in the in-memory `session.text`, which is closed with the connection.
+- **Muting and barge-in (D6, D8).** Untouched. With muting on, a phrase said during playback is replaced by silence and cannot match, as D12 states. With `input.liveListenWhileSpeaking` on, the phrase's first partial transcript cuts Pi off through `cutOffByVoice`, and its commit then ends live mode; `end()` would stop the speech anyway. That composition is not tested end to end, but both halves are (barge-in in `test/live-speech.test.ts`, the ending here), and the spec has no scenario for it.
+- **Status line.** `render()` appends ` · or say "<first phrase>"` only when a phrase is configured (`live.ts:362`). The exact-line tests cover the default, a configured first phrase, and `[]` (`test/live-stop.test.ts:130–139`). A long phrase is bounded at 40 characters, so the line is at most about 125 columns. The host footer replaces newlines and tabs and truncates the status line to the terminal width with an ellipsis (`host/pi/packages/coding-agent/src/modes/interactive/components/footer.ts:14–19`, `:297`). The phrase comes last, so a narrow terminal loses it before the cut-off key or `/talk live`. A `"` inside a phrase would render doubled quotes, which is only cosmetic.
+- **Help (4.2).** `Live stop phrase:` shows the configured phrases, `off` for `[]`, or `unknown` when the configuration cannot be read (`help.ts:19–24`), each tested exactly (`test/command.test.ts` table). The rule line (`help.ts:60`) names the setting, the defaults, `[]`, the whole-turn rule, what matching ignores, that the agent keeps working, the muted caveat, and the separation from `input.stopPhrases`. `/speak status` is unchanged (`speech-status.ts` and `config.ts` are not in the diff), as the spec requires.
+- **README (4.3).** Read against the spec: the example and defaults paragraph carry the pair and `[]`; "How turns are sent" now says only the push-to-talk phrases have no effect; "Ending by voice" (`README.md:260`) states the whole-turn rule, the ignored case, punctuation, accents, `đ`, and curly apostrophes, both spec examples, the near-miss example, never sent, added, or stored, the turn order, the dropped later speech, the message, the agent not aborted, the muted caveat and barge-in behaviour, read at start, separation from `input.stopPhrases`, and the harmless misheard case. The status, "Ending", and settings-table text match the code. The `/speak status` sentence is narrowed to the two settings it really shows, which matches the spec.
+- **Carried Wave 3 R1-F1, closed.** `removeToolOutsideLive` now removes unless the phase is `on` (`live.ts:157–159`). The new test (`test/live-tool.test.ts:81–92`) restores the tool, fires `before_agent_start` while the socket is held in the starting phase, and checks the removal, the re-add at start, and that a run during live mode keeps it. Reverting to `!this.state` fails its first assertion.
+- **Test memory safety.** No audio buffers are compared; the new tests compare strings and lengths only. `h.until` keeps its 3 s deadline and `settle` is a short timeout. Loops are fixed tables of at most 16 rows.
+- **Sizes.** `live.ts` 384, `realtime.ts` 357, `input-settings.ts` 196, `help.ts` 70: all source files are under 500. Handwritten tests are governed by `testing-governance` (review at 800, required split above 1,000), as the Wave 3 gate judged: `test/command.test.ts` 670 (+25), `test/config.test.ts` 469, `test/realtime.test.ts` 411, `test/live-stop.test.ts` 153. No policy action is required.
+- **ADR consistency with ADR-0006 and D12.** The "Ending by voice" bullet and the rewritten Consequences bullet agree with D12: a separate list, the default pair, `[]`, whole turn, ignored case, punctuation, and diacritics, handled by the extension, never sent, the only spoken command, and only ending live mode. ADR-0006's "Related" line ("the stop phrase has no effect while live mode is on") is still true of the push-to-talk phrase. No other ADR was edited, as task 4.1 requires. Two wording findings follow.
+- **4.4 gate condition.** Met: the English phrase was reported working, and the Vietnamese phrase and the longer sentence are explicitly recorded as unverified in task 4.4.
+
+### Worker-declared deviation, judged
+
+- **Two one-line status assertions outside the listed files: accepted.** The spec now requires the status line to name the first phrase, so the existing exact-line assertions at `test/live.test.ts:20` and `test/live-speech.test.ts:10` (used with `assert.equal` at `:154–160`) had to change. Both still match the whole line exactly, not a prefix, so they keep their mutation sensitivity. Both files are in the frozen inclusion predicate.
+
+### Findings (highest priority first; no P0, P1, or P2)
+
+**R1-F1 — family `adr-consistency`, root `adr-0010-supersedes-sweep-clause`.** P3. In scope (4.1). Recurrence 2 of Wave 1 R1-F4 (caller family `adr-wording`).
+- Evidence: ADR-0004 decides "There are no spoken commands" (`docs/adr/0004-voice-input-and-provider-choice.md:20`) and rejects voice triggers (`:44`). Its status line records only ADR-0006 as superseding the voice-trigger exclusion, and only while the push-to-talk stop phrase is on (`:3`). ADR-0010's Supersedes line (`docs/adr/0010-live-voice-conversation.md:6`) lists every live-only override — the open microphone, automatic speech, the provider choice, Space holds — and then says "every other decision in ADR-0002 through ADR-0008 remains in force". The amendment's Decision bullet (`:25`) adds a spoken command in live mode, "the only spoken command in live mode", without adding it to that list. This is the same root as Wave 1 R1-F4: a new live-only override without a matching entry in the sweep clause. It is a list that was not updated with a new decision, not a structural defect, and there is no runtime effect, so it does not call for a rebuild.
+- SUGGESTED_CORRECTION: in ADR-0010's Supersedes line, extend the live-mode-only sentence with "and ADR-0004's exclusion of spoken commands: the live stop phrase is the one spoken command, and it can only end live mode". This edits only ADR-0010, within task 4.1's "no other ADR is edited". A matching clause in ADR-0004's status note, as the Wave 2 precedent did, would need the caller to relax that task clause first; it is optional.
+
+**R1-F2 — family `adr-consistency`, root `only-contains-reads-as-whole-turn`.** P3. In scope (4.1); the same sentence is in a source artifact.
+- Evidence: ADR-0010 says "a turn that only contains a phrase is sent to Pi as usual" (`docs/adr/0010-live-voice-conversation.md:25`), and the proposal says "A sentence that only contains the phrase is sent as usual" (`openspec/changes/add-speak-live-conversation/proposal.md:15`). "Only contains the phrase" naturally reads as "contains nothing but the phrase", which is exactly the turn that ends live mode. The spec states the intended rule unambiguously: "A turn that contains a phrase together with other words SHALL NOT match" (`specs/voice-conversation/spec.md:189`). The code, README, and help are correct; only these two sentences can be misread as the opposite.
+- SUGGESTED_CORRECTION: reword both to "a turn that contains a phrase among other words is sent to Pi as usual". The proposal edit is source wording, which the caller applied in place for Wave 3 R1-F2.
+
+**R1-F3 — family `test-value`, root `unobservable-order-test`.** P3. In scope (4.2).
+- Evidence: `test/live-stop.test.ts:101–108`, "the phrase is checked before the letter-or-digit filter, and dropped text does not join it", commits `...` then `stop the conversation` and asserts nothing is sent. Neither named property can fail it:
+  - Every valid phrase has a letter or digit (`input-settings.ts:90`), and folding only removes marks, so every matching turn passes `HAS_WORDS`. Swapping the order of `live.ts:280` and `:287` changes nothing observable.
+  - `session.text` joins segments with a space (`realtime.ts:245`), and `.` is punctuation. If `delivered` stopped advancing for dropped turns, the next turn would be `... stop the conversation`, which still matches.
+  The only effective assertion duplicates the default-phrase table (`:16–41`). Under test-value discipline it detects no distinct failure.
+- SUGGESTED_CORRECTION: delete the test. The ordering is safe by construction, and the comment at `live.ts:271–274` records it. The worker's mutation list has no entry for this test, consistent with its having no mutation to catch.
+
+### Notes for the caller (not findings)
+
+- **First phrase on the status line versus the user's language.** With `input.language: "en"` (the user's own configuration, per W4-C), the status line advertises the Vietnamese default, which a fixed English transcription would likely garble. This conforms to the spec ("the first live stop phrase"). The user can put "Stop the conversation" first. The README could optionally add that a fixed `input.language` may keep a phrase in another language from being recognized.
+- **Inherited send-chain residual (Wave 2 note).** If `send` ever rejected — only possible if the host's `context.model` getter threw on a stale runner, which every session change prevents by ending live mode first — `on.sending` would reject, and the chained stop-phrase end would be skipped along with later turns. No change is needed; the stop phrase only adds one more consumer of the same chain.
+- **Help's first live line.** `help.ts:57` lists ending "on /talk live again, on an error, or after input.liveIdleMinutes". It did not list session changes before this wave either, and the stop phrase has its own line just below (`:60`), so this is not an accuracy defect. Adding "or on a live stop phrase" is optional.
+- **A phrase said into the mute tail.** A phrase that starts during the 500 ms tail can be committed without its first words, such as "the conversation", and then be sent as an ordinary turn. The README and help already say to wait until Pi has finished or to cut Pi off first.
+- **Sizes for later work.** `test/command.test.ts` is at 670 lines. If it nears 800, the help tests are a cohesive group that can move to their own file.
+- **Bookkeeping.** `tasks.md` 4.1–4.3 are still unchecked. Remaining carried item: F11 (commit `pi-speak` first, then the gitlink).
+
+PROPOSED_REVIEW_ACTION=PASS
+
+## Caller Assessment — Wave 4, Round 1
+
+Mode: `FULL`. Gate: task 4.5. Oracle ran in the background on `claude-bridge/claude-opus-5-5:high` (run `53686811`) and confirmed the baseline `sha256:ea74699ccfa62b59`.
+
+Oracle found no P0–P2 issues. It closed the carried Wave 3 R1-F1 and accepted the worker's two status-assertion edits.
+
+#### R1-F1 — ADR-0010's Supersedes line does not set aside ADR-0004's "no spoken commands"
+- **Decision:** `ACCEPT_NONBLOCKING`. Family `adr-consistency`, the same root as Wave 1 R1-F4. This is wording, not structure.
+- **CORRECTION:** Carried to Wave 5 task 5.1 (orchestrator), so that this wave's commit matches the reviewed revision:
+  - add the spoken-command exclusion to ADR-0010's live-mode-only Supersedes list;
+  - add a matching line to ADR-0004's status note. The Oracle's question of relaxing task 4.1's "no other ADR is edited" is settled by moving the edit to 5.1.
+
+#### R1-F2 — "a turn that only contains a phrase is sent" reads as the opposite of the whole-turn rule
+- **Decision:** `ACCEPT_NONBLOCKING`. Family `adr-design-wording`.
+- **CORRECTION:** Applied now in `proposal.md:15` ("contains the phrase among other words"), which is not part of the reviewed revision. ADR-0010 line 25 is carried to task 5.1.
+
+#### R1-F3 — `test/live-stop.test.ts:101–108` cannot catch either property its name claims
+- **Decision:** `ACCEPT_NONBLOCKING`. Family `test-value`.
+- **CORRECTION:** Carried to Wave 5 task 5.2 (worker): delete the test.
+
+#### Oracle notes (no edit)
+- **The Vietnamese phrase shown first on the status line:** moot. The user removed `input.language: "en"` on 2026-10-15, so live mode detects the language, and Wave 5 adds a live language limit.
+- **The 500 ms mute tail can clip a phrase:** already documented in the README and help.
+
+### Summary
+- **Accepted blocking:** 0.
+- **Accepted nonblocking:** 3 (R1-F1 and R1-F3 carried to Wave 5; R1-F2 split between proposal.md now and the ADR in 5.1).
+- **Deferred:** 0.
+- **Rejected:** 0.
+
+### Terminal baseline validation
+- **Boundary:** the four boundary fields are unchanged.
+- **Candidate:** recomputed `sha256:ea74699ccfa62b59`, equal to the recorded `BASELINE_TARGET_REVISION`.
+- **Rounds:** 1 of 4 Oracle rounds used, and no rebuild.
+
+DISPATCH_BUDGET wave 4: oracle=1/1 others=1/3
+
+REVIEW_ACTION=PASS
+CONSENSUS_STATUS=MOSTLY_GOOD

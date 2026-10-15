@@ -2,7 +2,7 @@
 
 **Status:** Accepted for implementation; runtime qualification pending (task 3.4 of `add-speak-live-conversation`).
 **Owner:** Orchestrator.
-**Change:** [add-speak-live-conversation](../../openspec/changes/add-speak-live-conversation/design.md).
+**Change:** [add-speak-live-conversation](../../openspec/changes/add-speak-live-conversation/design.md), with the amendment of 2026-10-15 (live stop phrase, design D12).
 **Supersedes:** while live mode is on, and only then, [ADR-0002](0002-manual-speech-egress-boundary.md)'s rule that nothing is spoken unless the user runs a `/speak` subcommand, and [ADR-0004](0004-voice-input-and-provider-choice.md)'s exclusion of an open microphone and of automatic speech. While live mode is on, it also sets aside ADR-0004's choice of input and speech provider (live mode always uses ElevenLabs) and [ADR-0008](0008-hold-space-to-talk.md)'s Space holds (refused while live). Outside live mode all of these stand unchanged, and every other decision in ADR-0002 through ADR-0008 remains in force.
 
 ## Context
@@ -22,6 +22,7 @@ Add an explicit opt-in **live mode** to `extensions/speak/`. `/talk live` turns 
 - **ElevenLabs in both directions.** It is the only provider here with live transcription and voices that follow the user between languages. Live mode ignores the input and speech provider choices of ADR-0004.
 - **Muted while Pi speaks, by default.** From playback start until 500 ms after it ends, silence is sent in place of microphone audio, so Pi never hears itself. The send key or `/speak stop` cuts Pi off. `input.liveListenWhileSpeaking` keeps the microphone live for voice barge-in, for headphones or system echo cancellation.
 - **Bounded streaming.** `input.liveIdleMinutes` (default 5) ends live mode when nothing happens, and a status line is shown for as long as it is on. A connection failure ends live mode without retry or reconnect.
+- **Ending by voice (amendment of 2026-10-15).** Saying a live stop phrase as a whole turn ends live mode exactly as `/talk live` does. The phrases are in `input.liveStopPhrases`, default "Dừng cuộc hội thoại" and "Stop the conversation", and `[]` turns this off. Case, punctuation, and diacritics are ignored, and a turn that only contains a phrase is sent to Pi as usual. The extension handles the phrase itself and never sends it to Pi. It is the only spoken command in live mode, and it can only end live mode, never start or run anything.
 - **Idea borrowed, code not.** pi-realtime's split between a thin voice layer and Pi as the brain is adopted; none of its code or dependencies are.
 
 ## Consequences
@@ -30,7 +31,7 @@ Add an explicit opt-in **live mode** to `extensions/speak/`. `/talk live` turns 
 - **Spend is less predictable** than with explicit `/speak`. The connection is billed while open, and every update is a synthesis request. The idle limit, the status line, and the off-by-default design bound it.
 - **A misheard turn can act through Pi's tools.** The user accepted this for live mode. Turns are plain text that never run commands, and text with no letter or digit is dropped.
 - **The model may forget or overuse the tool.** The written answer remains the full record; there is no automatic fallback speech.
-- **The spoken stop phrase of [ADR-0006](0006-spoken-stop-phrase.md) has no effect in live mode.** Each pause already ends a turn. Push-to-talk keys and Space holds ([ADR-0008](0008-hold-space-to-talk.md)) are refused while live, except that the send key cuts Pi off.
+- **The push-to-talk stop phrase of [ADR-0006](0006-spoken-stop-phrase.md) has no effect in live mode.** Each pause already ends a turn. Live mode has its own stop phrases, which end live mode instead of sending. A misheard turn that equals one ends live mode early. That is harmless, because nothing is sent and `/talk live` restarts it. While Pi speaks with the microphone muted, a stop phrase is not heard. Push-to-talk keys and Space holds ([ADR-0008](0008-hold-space-to-talk.md)) are refused while live, except that the send key cuts Pi off.
 - **Mocked tests cannot prove echo, turn-taking, or recognition quality.** A user-run live check with speakers and headphones qualifies them.
 
 ## Alternatives
