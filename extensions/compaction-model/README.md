@@ -41,9 +41,9 @@ Add the path as the **last** entry of the `extensions` list in `~/.pi/agent/sett
 "extensions": ["/path/to/pi-toolset/extensions/compaction-model/index.ts"]
 ```
 
-Pi loads `packages` before `extensions`, so this runs after `pi-claude-bridge` and `@tian.zuo/pi-compact`, which the bridge's summary routing relies on. Use `pi -e <path>` only for ad-hoc tests.
+Pi loads `packages` before `extensions`, so this runs after `pi-claude-bridge` and `@tian.zuo/pi-compact`: the bridge's hook records the compaction's abort signal first, and `pi-compact` can cancel before this extension pays for a summary. Use `pi -e <path>` only for ad-hoc tests. Running Pi sessions pick up the changed settings only after a restart.
 
-- **Claude bridge sessions** need the bridge from this repo's `extensions/pi-claude-bridge` submodule (0.9.3 or later) instead of `npm:pi-claude-bridge@latest` 0.9.1, which writes its own summary with the session model.
+- **Claude bridge sessions** need the bridge from this repo's `extensions/pi-claude-bridge` submodule (0.9.3 or later) instead of `npm:pi-claude-bridge@latest` 0.9.1, which writes its own summary with the session model. After cloning or updating the submodule, run `npm ci --ignore-scripts` inside it before starting Pi, because the bridge now runs from that working tree.
 - **`openai-codex` sessions** are left alone: `@tian.zuo/pi-compact` compacts those on its own configured model.
 
 Remove the path or the config file to return to Pi's default compaction. Design: OpenSpec change `add-compaction-model`.
