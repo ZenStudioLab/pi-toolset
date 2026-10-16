@@ -4,7 +4,7 @@ ZenStudioLab's extensions and tools for [Pi](https://github.com/earendil-works/p
 
 ## Extensions
 
-Ten extensions live here. Five are part of this repository; five are separate repositories pulled in as [git submodules](#getting-the-code), so each can be used and versioned on its own.
+Eleven extensions live here. Six are part of this repository; five are separate repositories pulled in as [git submodules](#getting-the-code), so each can be used and versioned on its own. A sixth submodule, `extensions/pi-claude-bridge`, is a fork of the Claude bridge kept for [Compaction Model](#compaction-model).
 
 | Extension | What it gives you | How you use it | Where it lives |
 | --- | --- | --- | --- |
@@ -13,6 +13,7 @@ Ten extensions live here. Five are part of this repository; five are separate re
 | [Session Title](#session-title) | Name the session, and the Herdr tab with it | `/title [name]` | This repo |
 | [Session Delete](#session-delete) | Delete a session safely, via the system trash | `/delete-session` | This repo |
 | [Tool Block Borders](#tool-block-borders) | Themed left rail around Bash call and output blocks | Automatic once loaded | This repo |
+| [Compaction Model](#compaction-model) | Compaction summaries written by a model and thinking level you choose, with the chat model unchanged | `~/.pi/agent/compaction-model.json` | This repo |
 | [Speak](#speak) | Hear answers aloud and dictate prompts by push-to-talk | `/speak`, `/talk`, `alt+t` | Submodule: [pi-speak](https://github.com/ZenStudioLab/pi-speak) |
 | [pi-bookmark](#pi-bookmark) | A short, global list of sessions worth resuming | `/pin`, `/unpin`, `/bookmarks`, `ctrl+shift+b` | Submodule: [pi-bookmark](https://github.com/ZenStudioLab/pi-bookmark) |
 | [Subscription Usage](#subscription-usage) | Your subscription quota across providers in one view | Automatic once loaded | Submodule: [pi-subscription-usage](https://github.com/ZenStudioLab/pi-subscription-usage) |
@@ -88,6 +89,12 @@ A fork of [specode/pi-subscription-usage](https://github.com/specode/pi-subscrip
 `/subagents-show-profile` with no name shows every profile saved in `~/.pi/agent/profiles/pi-subagents/`; `/subagents-show-profile <name>` shows one. Each profile lists its default model, whether subagents start asynchronously, and every agent's model, thinking level and fast flag. The command only reads those files and never changes them, so it is a safe way to check what a profile sets.
 
 Source: [extensions/subagent-profiles](extensions/subagent-profiles). It ships in the published npm package.
+
+#### Compaction Model
+
+Writes every compaction summary with the model and thinking level set in `~/.pi/agent/compaction-model.json` — for example Haiku 5.5 summarizing an Opus session — while the chat keeps its own model and thinking level. `"thinkingLevel": "auto"` lets the Jev decision model choose `low`, `medium`, or `high`. When the config is invalid, the model is unavailable, the material does not fit it, or its request fails, Pi's default compaction runs with a warning. Load it as the last entry of `settings.json` `extensions`; Claude bridge sessions need the bridge from the `extensions/pi-claude-bridge` submodule, and `openai-codex` sessions are left to `@tian.zuo/pi-compact`.
+
+Guide: [extensions/compaction-model](extensions/compaction-model/README.md). Design: OpenSpec change `add-compaction-model`.
 
 ## Getting the code
 

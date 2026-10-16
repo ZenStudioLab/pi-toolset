@@ -13,3 +13,6 @@
 [submodule "extensions/speak"]
 	path = extensions/speak
 	url = https://github.com/ZenStudioLab/pi-speak.git
+[submodule "extensions/pi-claude-bridge"]
+	path = extensions/pi-claude-bridge
+	url = https://github.com/ZenStudioLab/pi-claude-bridge.git
