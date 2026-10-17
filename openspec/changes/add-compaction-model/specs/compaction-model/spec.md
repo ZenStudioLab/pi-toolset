@@ -114,6 +114,17 @@ When the user cancels compaction while the extension is choosing a thinking leve
 - **WHEN** the user presses Escape while Jev is choosing the thinking level
 - **THEN** compaction is cancelled and no summary request is sent to any model
 
+### Requirement: Compaction progress notification
+Before the extension sends the summary request, the system SHALL show one notification saying the conversation is being compacted, naming the summarizing model, the thinking level that will be applied, whether Jev chose it, and that the compaction-model extension is doing it. It SHALL NOT be shown when compaction falls back before the request, or is cancelled before the request starts.
+
+#### Scenario: Progress is announced before the summary request
+- **WHEN** compaction uses `anthropic/claude-haiku-5-5` at `low`
+- **THEN** the progress notification is shown before the summary request starts and names `anthropic/claude-haiku-5-5`, thinking `low`, and the compaction-model extension
+
+#### Scenario: No progress notification when compaction falls back first
+- **WHEN** the config is invalid, or the material does not fit the configured model
+- **THEN** only the fallback warning is shown, with no progress notification
+
 ### Requirement: Compaction outcome notification
 For each compaction the extension summarizes, the system SHALL show one outcome notification, separate from any config warning, naming the summarizing model and the thinking level actually applied, and whether Jev chose it. No success notification SHALL be shown for a cancelled compaction.
 

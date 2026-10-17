@@ -106,6 +106,12 @@ export function createCompactionHandler(pi: Pick<ExtensionAPI, "getThinkingLevel
       ? Object.fromEntries(Object.entries(auth.headers).filter((entry): entry is [string, string] => entry[1] !== null))
       : undefined;
     const requestModel = auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model;
+    const shown = level === undefined ? "no reasoning"
+      : level === "off" && model.provider === "claude-bridge" ? "off (Claude Code default effort)"
+      : level;
+    const summarizer = `${name}, thinking ${shown}${source}`;
+    // A summary takes from seconds to minutes; say so now, before the request starts.
+    ctx.ui.notify(`The conversation is being compacted with ${summarizer}, by the compaction-model extension…`, "info");
     let compaction;
     try {
       // Send through the registry like Pi's own summary request, so extension providers such as claude-bridge resolve.
@@ -117,10 +123,7 @@ export function createCompactionHandler(pi: Pick<ExtensionAPI, "getThinkingLevel
     }
     if (signal.aborted) return { cancel: true };
 
-    const shown = level === undefined ? "no reasoning"
-      : level === "off" && model.provider === "claude-bridge" ? "off (Claude Code default effort)"
-      : level;
-    ctx.ui.notify(`Compacted with ${name}, thinking ${shown}${source}.`, "info");
+    ctx.ui.notify(`Compacted with ${summarizer}.`, "info");
     return { compaction };
   };
 }

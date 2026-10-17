@@ -25,7 +25,7 @@ The file is read at the start of each compaction, so edits apply at the next one
 
 With `auto`, the Jev decision model picks `low`, `medium`, or `high` from a short description of the material: token and message counts, whether a previous summary exists, file counts, and the last 16,000 characters of the conversation. That is one extra classifier request per compaction. Jev never sees the request to write the summary. If Jev is unavailable — for example on a Pi build without classifier support — the configured model still summarizes at the session's thinking level. If the summarizing model has no reasoning, no level is applied and Jev is not asked. On a `claude-bridge` model, `off` means Claude Code's default effort, not less thinking.
 
-After each compaction it handles, the extension shows one notice with the model, the level applied, and whether Jev chose it.
+When it starts a summary, the extension says so — `The conversation is being compacted with <model>, thinking <level>, by the compaction-model extension…` — and after the summary is stored it shows one notice with the model, the level applied, and whether Jev chose it. A fallback shows a warning naming the reason instead, and Pi's own compaction then runs.
 
 ## When Pi's default compaction runs instead
 

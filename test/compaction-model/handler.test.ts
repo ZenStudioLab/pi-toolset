@@ -71,9 +71,10 @@ function setup(options: Options = {}) {
     } as SessionBeforeCompactEvent;
     return { event, result: handler(event, ctx) };
   };
-  const outcomes = () => notes.filter((n) => n.type === "info");
+  const starts = () => notes.filter((n) => n.message.startsWith("The conversation is being compacted"));
+  const outcomes = () => notes.filter((n) => n.message.startsWith("Compacted with"));
   const warnings = () => notes.filter((n) => n.type === "warning");
-  return { run, notes, outcomes, warnings, compactCalls, classifyCalls, sessionChanges, streamed };
+  return { run, notes, starts, outcomes, warnings, compactCalls, classifyCalls, sessionChanges, streamed };
 }
 
 test("Codex sessions and a missing config file are left to Pi without a word", async () => {
@@ -135,6 +136,16 @@ test("a summary passes Pi's preparation, auth, instructions, signal, and level t
   assert.deepEqual(t.sessionChanges, []);
 });
 
+test("the user is told the compaction is under way before the summary request starts, then told the outcome", async () => {
+  const seen: string[] = [];
+  let notes: { message: string }[] = [];
+  const t = setup({ compact: async () => { seen.push(...notes.map((n) => n.message)); return { summary: "s", firstKeptEntryId: "kept", tokensBefore: 1 }; } });
+  notes = t.notes;
+  await t.run().result;
+  assert.deepEqual(seen, ["The conversation is being compacted with anthropic/claude-haiku-5-5, thinking low, by the compaction-model extension…"]);
+  assert.deepEqual(t.notes.map((n) => n.message), [...seen, "Compacted with anthropic/claude-haiku-5-5, thinking low."]);
+});
+
 test("a threshold compaction without instructions passes none", async () => {
   const t = setup();
   await t.run({ reason: "threshold", customInstructions: undefined }).result;
@@ -183,6 +194,7 @@ test("a failed summary request falls back with its message and is not retried by
   assert.equal(await t.run().result, undefined);
   assert.equal(t.compactCalls.length, 1);
   assert.deepEqual(t.outcomes(), []);
+  assert.equal(t.starts().length, 1);
   assert.match(t.warnings()[0].message, /summary request to anthropic\/claude-haiku-5-5 failed: 529 overloaded/);
 });
 
@@ -198,8 +210,10 @@ test("cancelling during Jev, during the summary, or after it returns cancels wit
     const controller = new AbortController();
     const t = setup(options(controller));
     assert.deepEqual(await t.run({}, controller).result, { cancel: true }, label);
-    assert.deepEqual(t.notes, [], label);
-    assert.equal(t.compactCalls.length, label === "during Jev" || label === "before the request" ? 0 : 1, label);
+    const requestStarted = label !== "during Jev" && label !== "before the request";
+    assert.deepEqual([...t.outcomes(), ...t.warnings()], [], label);
+    assert.equal(t.starts().length, requestStarted ? 1 : 0, label);
+    assert.equal(t.compactCalls.length, requestStarted ? 1 : 0, label);
   }
 });
 
