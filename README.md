@@ -92,7 +92,7 @@ Source: [extensions/subagent-profiles](extensions/subagent-profiles). It ships i
 
 #### Compaction Model
 
-Writes every compaction summary with the model and thinking level set in `~/.pi/agent/compaction-model.json` — for example Haiku 5.5 summarizing an Opus session — while the chat keeps its own model and thinking level. `"thinkingLevel": "auto"` lets the Jev decision model choose `low`, `medium`, or `high`. When the config is invalid, the model is unavailable, the material does not fit it, or its request fails, Pi's default compaction runs with a warning. Load it as the last entry of `settings.json` `extensions`; Claude bridge sessions need the bridge from the `extensions/pi-claude-bridge` submodule, and `openai-codex` sessions are left to `@tian.zuo/pi-compact`.
+Writes every compaction summary with the first working model in the priority list in `~/.pi/agent/compaction-model.json` — for example Sonnet 5.5, then Haiku 5.5, summarizing an Opus session — each with its own thinking level, while the chat keeps its own model and thinking level. `"thinkingLevel": "auto"` lets the Jev decision model choose `low`, `medium`, or `high`. A model that is unavailable, too small for the material, or whose request fails is skipped with a warning and the next is tried; when the config is invalid or every model fails, Pi's default compaction runs. Load it as the last entry of `settings.json` `extensions`; Claude bridge sessions need the bridge from the `extensions/pi-claude-bridge` submodule, and `openai-codex` sessions are left to `@tian.zuo/pi-compact`.
 
 Guide: [extensions/compaction-model](extensions/compaction-model/README.md). Design: OpenSpec change `add-compaction-model`.
 
