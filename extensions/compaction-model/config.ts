@@ -3,10 +3,16 @@ export type ThinkingLevel = typeof THINKING_LEVELS[number];
 
 export type ModelRef = { provider: string; id: string };
 
-export type CompactionModelConfig = {
+/** One summarizing model and the thinking level to use with it. */
+export type SummaryModelEntry = {
   model: ModelRef;
   /** Absent means the session's thinking level. */
   thinkingLevel?: ThinkingLevel | "auto";
+};
+
+export type CompactionModelConfig = {
+  /** In priority order: the first that works writes the summary. */
+  models: SummaryModelEntry[];
   decisionModel: ModelRef;
 };
 
@@ -16,7 +22,8 @@ export type ParsedConfig =
 
 export const DEFAULT_DECISION_MODEL: ModelRef = { provider: "typesafe", id: "jev-latest" };
 
-const KNOWN_KEYS = new Set(["model", "thinkingLevel", "decisionModel"]);
+const KNOWN_KEYS = new Set(["models", "decisionModel"]);
+const KNOWN_ENTRY_KEYS = new Set(["model", "thinkingLevel"]);
 
 /** Splits on the first `/` only: model ids such as OpenRouter's contain `/` themselves. */
 export function parseModelRef(value: unknown): ModelRef | undefined {
@@ -40,12 +47,23 @@ export function parseConfig(raw: string): ParsedConfig {
   if (typeof json !== "object" || json === null || Array.isArray(json)) return { ok: false, error: "the file must contain a JSON object" };
   const fields = json as Record<string, unknown>;
 
-  const model = parseModelRef(fields.model);
-  if (!model) return { ok: false, error: '"model" must be a "provider/modelId" string' };
-
-  const thinkingLevel = fields.thinkingLevel;
-  if (thinkingLevel !== undefined && thinkingLevel !== "auto" && !THINKING_LEVELS.includes(thinkingLevel as ThinkingLevel)) {
-    return { ok: false, error: `"thinkingLevel" must be one of ${THINKING_LEVELS.join(", ")}, or auto` };
+  if (!Array.isArray(fields.models) || fields.models.length === 0) {
+    return { ok: false, error: '"models" must be a non-empty array of { "model", "thinkingLevel" } objects' };
+  }
+  const models: SummaryModelEntry[] = [];
+  const unknownKeys = Object.keys(fields).filter((key) => !KNOWN_KEYS.has(key));
+  for (const [index, item] of fields.models.entries()) {
+    const where = `models[${index}]`;
+    if (typeof item !== "object" || item === null || Array.isArray(item)) return { ok: false, error: `${where} must be an object` };
+    const entry = item as Record<string, unknown>;
+    const model = parseModelRef(entry.model);
+    if (!model) return { ok: false, error: `${where}.model must be a "provider/modelId" string` };
+    const thinkingLevel = entry.thinkingLevel;
+    if (thinkingLevel !== undefined && thinkingLevel !== "auto" && !THINKING_LEVELS.includes(thinkingLevel as ThinkingLevel)) {
+      return { ok: false, error: `${where}.thinkingLevel must be one of ${THINKING_LEVELS.join(", ")}, or auto` };
+    }
+    models.push({ model, thinkingLevel: thinkingLevel as SummaryModelEntry["thinkingLevel"] });
+    unknownKeys.push(...Object.keys(entry).filter((key) => !KNOWN_ENTRY_KEYS.has(key)).map((key) => `${where}.${key}`));
   }
 
   let decisionModel = DEFAULT_DECISION_MODEL;
@@ -55,9 +73,5 @@ export function parseConfig(raw: string): ParsedConfig {
     decisionModel = parsed;
   }
 
-  return {
-    ok: true,
-    config: { model, thinkingLevel: thinkingLevel as CompactionModelConfig["thinkingLevel"], decisionModel },
-    unknownKeys: Object.keys(fields).filter((key) => !KNOWN_KEYS.has(key)),
-  };
+  return { ok: true, config: { models, decisionModel }, unknownKeys };
 }

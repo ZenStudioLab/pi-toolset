@@ -20,7 +20,7 @@ type Options = {
   sessionLevel?: string;
   auth?: object;
   classify?: (signal: AbortSignal) => Promise<object>;
-  compact?: (signal: AbortSignal) => Promise<object>;
+  compact?: (signal: AbortSignal, model: { id: string }) => Promise<object>;
 };
 
 function setup(options: Options = {}) {
@@ -29,7 +29,7 @@ function setup(options: Options = {}) {
   const classifyCalls: unknown[] = [];
   const sessionChanges: string[] = [];
   const streamed: unknown[][] = [];
-  const configs = [...(options.configs ?? ['{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"low"}'])];
+  const configs = [...(options.configs ?? ['{"models":[{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"low"}]}'])];
   const deps: CompactionDeps = {
     readConfig: async () => {
       if (options.readError) throw options.readError;
@@ -37,7 +37,7 @@ function setup(options: Options = {}) {
     },
     compact: (async (...args: unknown[]) => {
       compactCalls.push(args);
-      if (options.compact) return options.compact(args[5] as AbortSignal);
+      if (options.compact) return options.compact(args[5] as AbortSignal, args[1] as { id: string });
       return { summary: "summary", firstKeptEntryId: "kept", tokensBefore: 1000 };
     }) as unknown as CompactionDeps["compact"],
   };
@@ -91,13 +91,13 @@ test("each fallback hands compaction back to Pi with one warning naming the reas
   const cases: [Options, RegExp, Partial<SessionBeforeCompactEvent>?][] = [
     [{ configs: ["{oops"] }, /invalid config, the file is not valid JSON/],
     [{ readError: new Error("EACCES: permission denied") }, /cannot read the config file: EACCES/],
-    [{ configs: ['{"model":"anthropic/nope"}'] }, /anthropic\/nope is not in the model registry/],
-    [{ configs: ['{"model":"anthropic/auto"}'] }, /virtual model/],
+    [{ configs: ['{"models":[{"model":"anthropic/nope"}]}'] }, /anthropic\/nope is not in the model registry/],
+    [{ configs: ['{"models":[{"model":"anthropic/auto"}]}'] }, /virtual model/],
     [{ auth: { ok: false, error: "no API key" } }, /no credentials for anthropic\/claude-haiku-5-5: no API key/],
-    [{ configs: ['{"model":"anthropic/claude-haiku-4-5"}'] }, /does not fit anthropic\/claude-haiku-4-5's 200000-token/, { preparation: huge }],
+    [{ configs: ['{"models":[{"model":"anthropic/claude-haiku-4-5"}]}'] }, /does not fit anthropic\/claude-haiku-4-5's 200000-token/, { preparation: huge }],
     // A 200K-token previous summary or turn prefix alone exceeds the 200K window.
-    [{ configs: ['{"model":"anthropic/claude-haiku-4-5"}'] }, /does not fit/, { preparation: preparation("hi", { previousSummary: "x".repeat(800_000) }) }],
-    [{ configs: ['{"model":"anthropic/claude-haiku-4-5"}'] }, /does not fit/, { preparation: preparation("hi", { turnPrefixMessages: [{ role: "user", content: "x".repeat(800_000), timestamp: 2 }] as never }) }],
+    [{ configs: ['{"models":[{"model":"anthropic/claude-haiku-4-5"}]}'] }, /does not fit/, { preparation: preparation("hi", { previousSummary: "x".repeat(800_000) }) }],
+    [{ configs: ['{"models":[{"model":"anthropic/claude-haiku-4-5"}]}'] }, /does not fit/, { preparation: preparation("hi", { turnPrefixMessages: [{ role: "user", content: "x".repeat(800_000), timestamp: 2 }] as never }) }],
   ];
   for (const [options, reason, event] of cases) {
     const t = setup(options);
@@ -160,31 +160,31 @@ test("the level comes from the config, the session, Jev, or nowhere for a non-re
   };
   const jevAnswer = (choice: string) => async () => ({ stopReason: "stop", answers: { thinkingLevel: { type: "choice", choice, probabilities: {}, confidence: 1 } } });
 
-  assert.equal((await levelOf({ configs: ['{"model":"anthropic/claude-haiku-5-5"}'], sessionLevel: "medium" })).level, "medium");
+  assert.equal((await levelOf({ configs: ['{"models":[{"model":"anthropic/claude-haiku-5-5"}]}'], sessionLevel: "medium" })).level, "medium");
 
-  const chosen = await levelOf({ configs: ['{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"auto"}'], classify: jevAnswer("high") });
+  const chosen = await levelOf({ configs: ['{"models":[{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"auto"}]}'], classify: jevAnswer("high") });
   assert.equal(chosen.level, "high");
   assert.match(chosen.note, /thinking high, chosen by Jev/);
 
-  const unavailable = await levelOf({ configs: ['{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"auto"}'], sessionLevel: "medium" });
+  const unavailable = await levelOf({ configs: ['{"models":[{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"auto"}]}'], sessionLevel: "medium" });
   assert.equal(unavailable.level, "medium");
   assert.match(unavailable.note, /session level because Jev was unavailable \(this Pi host has no classifier support\)/);
 
-  const failed = await levelOf({ configs: ['{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"auto"}'], sessionLevel: "low", classify: async () => ({ stopReason: "error", errorMessage: "quota" }) });
+  const failed = await levelOf({ configs: ['{"models":[{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"auto"}]}'], sessionLevel: "low", classify: async () => ({ stopReason: "error", errorMessage: "quota" }) });
   assert.equal(failed.level, "low");
   assert.match(failed.note, /Jev was unavailable \(quota\)/);
 
-  const noReasoning = await levelOf({ configs: ['{"model":"anthropic/plain","thinkingLevel":"auto"}'], classify: jevAnswer("high") });
+  const noReasoning = await levelOf({ configs: ['{"models":[{"model":"anthropic/plain","thinkingLevel":"auto"}]}'], classify: jevAnswer("high") });
   assert.equal(noReasoning.level, undefined);
   assert.equal(noReasoning.jevCalls, 0);
   assert.match(noReasoning.note, /thinking no reasoning\./);
 
-  const bridgeOff = await levelOf({ configs: ['{"model":"claude-bridge/claude-haiku-5-5","thinkingLevel":"off"}'] });
+  const bridgeOff = await levelOf({ configs: ['{"models":[{"model":"claude-bridge/claude-haiku-5-5","thinkingLevel":"off"}]}'] });
   assert.equal(bridgeOff.level, "off");
   assert.match(bridgeOff.note, /thinking off \(Claude Code default effort\)/);
   assert.equal(bridgeOff.notes, 1);
 
-  const capped = await levelOf({ configs: ['{"model":"claude-bridge/claude-haiku-5-5"}'], sessionLevel: "max" });
+  const capped = await levelOf({ configs: ['{"models":[{"model":"claude-bridge/claude-haiku-5-5"}]}'], sessionLevel: "max" });
   assert.equal(capped.level, "high");
   assert.match(capped.note, /thinking high\./);
 });
@@ -199,7 +199,7 @@ test("a failed summary request falls back with its message and is not retried by
 });
 
 test("cancelling during Jev, during the summary, or after it returns cancels with no outcome notification", async () => {
-  const auto = '{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"auto"}';
+  const auto = '{"models":[{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"auto"}]}';
   const scenarios: [string, (controller: AbortController) => Options][] = [
     ["before the request", (c) => { c.abort(); return {}; }],
     ["during Jev", (c) => ({ configs: [auto], classify: async () => { c.abort(); return { stopReason: "aborted" }; } })],
@@ -218,16 +218,16 @@ test("cancelling during Jev, during the summary, or after it returns cancels wit
 });
 
 test("the config is read at each compaction", async () => {
-  const t = setup({ configs: ['{"model":"anthropic/claude-haiku-5-5"}', '{"model":"anthropic/claude-sonnet-5-5"}'] });
+  const t = setup({ configs: ['{"models":[{"model":"anthropic/claude-haiku-5-5"}]}', '{"models":[{"model":"anthropic/claude-sonnet-5-5"}]}'] });
   await t.run().result;
   await t.run().result;
   assert.deepEqual(t.compactCalls.map((args) => (args[1] as { id: string }).id), ["claude-haiku-5-5", "claude-sonnet-5-5"]);
 });
 
 test("an unrecognized key still summarizes, with a separate warning", async () => {
-  const t = setup({ configs: ['{"model":"anthropic/claude-haiku-5-5","thinkinglevel":"low"}'] });
+  const t = setup({ configs: ['{"models":[{"model":"anthropic/claude-haiku-5-5","thinkinglevel":"low"}]}'] });
   assert.ok((await t.run().result)?.compaction);
-  assert.match(t.warnings()[0].message, /unrecognized config key\(s\) thinkinglevel/);
+  assert.match(t.warnings()[0].message, /unrecognized config key\(s\) models\[0\]\.thinkinglevel/);
   assert.equal(t.outcomes().length, 1);
 });
 
@@ -242,4 +242,70 @@ test("file lists carry over from an extension-written compaction only, even when
   assert.deepEqual(await filesAfter(true), { read: ["a.ts", "old-read.ts"], edited: ["b.ts", "c.ts", "old-edit.ts"] });
   assert.deepEqual(await filesAfter(false), { read: ["a.ts"], edited: ["b.ts", "c.ts"] });
   assert.deepEqual((await filesAfter(true, { compact: async () => { throw new Error("boom"); } })).read, ["a.ts", "old-read.ts"]);
+});
+
+const priority = (...entries: string[]) => `{"models":[${entries.map((e) => `{"model":"${e}","thinkingLevel":"low"}`).join(",")}]}`;
+const modelsTried = (t: { compactCalls: unknown[][] }) => t.compactCalls.map((args) => (args[1] as { id: string }).id);
+
+test("when a model's summary request fails, the next configured model writes the summary", async () => {
+  const t = setup({
+    configs: [priority("anthropic/claude-haiku-5-5", "anthropic/claude-sonnet-5-5")],
+    compact: async (_signal, model) => {
+      if (model.id === "claude-haiku-5-5") throw new Error("You've hit your session limit");
+      return { summary: "second", firstKeptEntryId: "kept", tokensBefore: 1 };
+    },
+  });
+  assert.deepEqual(await t.run().result, { compaction: { summary: "second", firstKeptEntryId: "kept", tokensBefore: 1 } });
+  assert.deepEqual(modelsTried(t), ["claude-haiku-5-5", "claude-sonnet-5-5"]);
+  assert.deepEqual(t.notes.map((n) => n.message), [
+    "The conversation is being compacted with anthropic/claude-haiku-5-5, thinking low, by the compaction-model extension…",
+    "Compaction model: the summary request to anthropic/claude-haiku-5-5 failed: You've hit your session limit. Trying anthropic/claude-sonnet-5-5.",
+    "The conversation is being compacted with anthropic/claude-sonnet-5-5, thinking low, by the compaction-model extension…",
+    "Compacted with anthropic/claude-sonnet-5-5, thinking low.",
+  ]);
+  assert.deepEqual(t.sessionChanges, []);
+});
+
+test("a model that cannot be used is skipped without a request, so a later model can still be used", async () => {
+  const material = preparation("x".repeat(2_400_000), { settings: { enabled: true, reserveTokens: 500_000, keepRecentTokens: 20_000 } });
+  const t = setup({ configs: [priority("anthropic/nope", "anthropic/auto", "anthropic/claude-haiku-4-5", "anthropic/claude-sonnet-5-5")] });
+  assert.ok((await t.run({ preparation: material }).result)?.compaction);
+  assert.deepEqual(modelsTried(t), ["claude-sonnet-5-5"]);
+  assert.deepEqual(t.warnings().map((n) => n.message.replace(/ \(about.*?\)/, "")), [
+    "Compaction model: anthropic/nope is not in the model registry. Trying anthropic/auto.",
+    "Compaction model: anthropic/auto is a virtual model, which is not supported for summaries. Trying anthropic/claude-haiku-4-5.",
+    "Compaction model: the material does not fit anthropic/claude-haiku-4-5's 200000-token context window. Trying anthropic/claude-sonnet-5-5.",
+  ]);
+});
+
+test("when every configured model fails, Pi's default compaction runs and the last warning says so", async () => {
+  const t = setup({ configs: [priority("anthropic/claude-haiku-5-5", "anthropic/claude-sonnet-5-5")], compact: async () => { throw new Error("529 overloaded"); } });
+  assert.equal(await t.run().result, undefined);
+  assert.deepEqual(modelsTried(t), ["claude-haiku-5-5", "claude-sonnet-5-5"]);
+  assert.deepEqual(t.outcomes(), []);
+  assert.deepEqual(t.warnings().map((n) => n.message.endsWith("Trying anthropic/claude-sonnet-5-5.") || n.message.endsWith("Compacting with the session model.")), [true, true]);
+  assert.match(t.warnings()[1].message, /sonnet-5-5 failed: 529 overloaded\. Compacting with the session model\.$/);
+});
+
+test("cancelling while a model is summarizing does not move on to the next model", async () => {
+  const controller = new AbortController();
+  const t = setup({
+    configs: [priority("anthropic/claude-haiku-5-5", "anthropic/claude-sonnet-5-5")],
+    compact: async () => { controller.abort(); throw new Error("Request was aborted"); },
+  });
+  assert.deepEqual(await t.run({}, controller).result, { cancel: true });
+  assert.deepEqual(modelsTried(t), ["claude-haiku-5-5"]);
+  assert.deepEqual(t.warnings(), []);
+});
+
+test("each configured model has its own level, and Jev is asked once however many models use auto", async () => {
+  const jev = async () => ({ stopReason: "stop", answers: { thinkingLevel: { type: "choice", choice: "medium", probabilities: {}, confidence: 1 } } });
+  const t = setup({
+    configs: ['{"models":[{"model":"anthropic/claude-haiku-5-5","thinkingLevel":"auto"},{"model":"anthropic/claude-sonnet-5-5","thinkingLevel":"auto"},{"model":"claude-bridge/claude-haiku-5-5","thinkingLevel":"high"}]}'],
+    classify: jev,
+    compact: async () => { throw new Error("down"); },
+  });
+  await t.run().result;
+  assert.deepEqual(t.compactCalls.map((args) => args[6]), ["medium", "medium", "high"]);
+  assert.equal(t.classifyCalls.length, 1);
 });
