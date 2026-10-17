@@ -211,3 +211,7 @@ DISPATCH_BUDGET wave 2: oracle=1/1 others=0/3
 
 REVIEW_ACTION=PASS
 CONSENSUS_STATUS=MOSTLY_GOOD
+
+## Post-gate change — progress notification (user request)
+
+After both gates passed, the user ran the extension with `claude-bridge/claude-sonnet-5-5` and saw only the fallback warning (a Claude Code session-limit error), then asked for a message while the extension is working. The handler now shows one progress notification just before the summary request ("The conversation is being compacted with <model>, thinking <level>, by the compaction-model extension…"); the new spec requirement "Compaction progress notification", the design's Notification section and the README were amended in the same change. Verification: a new handler test proves the message is shown before `compact()` is called and before the outcome notice; cancel and failure cases were updated; `npm run check` 1118/1118; `openspec validate --strict` valid. This is a small, user-directed addition on the same notification mechanism that the live runs already exercised; it was not sent to a third review round.

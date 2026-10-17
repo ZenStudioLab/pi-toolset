@@ -96,7 +96,7 @@ The handler checks `signal.aborted` after the Jev decision, when `compact()` thr
 
 ### Notification
 
-One outcome notification per compaction the extension summarizes, shown just before returning `{ compaction }`; a config warning such as an unrecognized key is separate and does not count as the outcome notification. The outcome notification states the model, the applied level (or "no reasoning", or "Claude Code default effort" for `off` on a bridge model), and whether Jev chose it or was unavailable. Fallbacks show one warning naming the reason. Proof that the extension's summary was the one stored comes from the compaction entry's `fromHook: true`, checked in the live verification tasks.
+A progress notification is shown just before the summary request starts ("The conversation is being compacted with <model>, thinking <level>, by the compaction-model extension…"), after the level is settled, so a Jev decision runs first and a cancel during it shows nothing. It uses the same model-and-level text as the outcome notification. A summary can take minutes, and Pi shows only its generic compaction indicator. One outcome notification per compaction the extension summarizes, shown just before returning `{ compaction }`; a config warning such as an unrecognized key is separate and does not count as the outcome notification. The outcome notification states the model, the applied level (or "no reasoning", or "Claude Code default effort" for `off` on a bridge model), and whether Jev chose it or was unavailable. Fallbacks show one warning naming the reason. Proof that the extension's summary was the one stored comes from the compaction entry's `fromHook: true`, checked in the live verification tasks.
 
 ### File layout
 
