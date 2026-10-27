@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -55,6 +55,11 @@ export async function trashSession(target: SessionTarget, activeFile: string | u
   const current = await captureSession(target.path, target.id);
   if (current.dev !== target.dev || current.ino !== target.ino) {
     throw new Error("The old session file was replaced; refusing to trash the replacement.");
+  }
+  // Pi keeps forks and subagent runs in a sibling folder named like the transcript; trash it too, folder first so a failure leaves the transcript intact.
+  const sibling = target.path.replace(/\.jsonl$/, "");
+  if (sibling !== target.path && existsSync(sibling)) {
+    await exec("gio", ["trash", "--", sibling], { timeout: 60000, maxBuffer: 64 * 1024 });
   }
   await exec("gio", ["trash", "--", target.path], { timeout: 15000, maxBuffer: 64 * 1024 });
   try {
