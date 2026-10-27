@@ -53,4 +53,4 @@ presets: {
 
 Load a profile with `/subagents-load-profile <name>` (user settings) or `/load-sub-agents <name>` (project settings). Verify the live mapping with `/subagents-models`.
 
-To view one profile in pi, type `/subagents-show-profile` and press Tab to pick a name from the list. It prints the agents, models, and thinking levels without calling any model. With no name, it prints every profile. `/subagents-check-profile <name>` also suggests names, but it probes each model, so it is slower.
+To view one profile in pi, type `/subagents-show-profile` and press Tab to pick a name from the list. It prints the agents, models, and thinking levels without calling any model. With no name, it prints every profile. `/subagents-show-profile --load <name>` (or `-l`) also applies the profile to this conversation only, without touching settings files; unlike `/subagents-load-profile`, it does not change other conversations. It covers direct single-agent `subagent` calls, not scripted workflows. `/subagents-check-profile <name>` also suggests names, but it probes each model, so it is slower.

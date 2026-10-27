@@ -86,7 +86,7 @@ A fork of [specode/pi-subscription-usage](https://github.com/specode/pi-subscrip
 
 #### Subagent Profiles
 
-`/subagents-show-profile` with no name shows every profile saved in `~/.pi/agent/profiles/pi-subagents/`; `/subagents-show-profile <name>` shows one. Each profile lists its default model, whether subagents start asynchronously, and every agent's model, thinking level and fast flag. The command only reads those files and never changes them, so it is a safe way to check what a profile sets.
+`/subagents-show-profile` with no name shows every profile saved in `~/.pi/agent/profiles/pi-subagents/`; `/subagents-show-profile <name>` shows one. Each profile lists its default model, whether subagents start asynchronously, and every agent's model, thinking level and fast flag. The command only reads those files and never changes them, so it is a safe way to check what a profile sets. Add `--load` (or `-l`) with a name to apply that profile to the current conversation only: while it is loaded, every `subagent` call for a single agent uses that profile's model, thinking level and fast flag for that agent, unless the call sets its own. Nothing is written to any settings file, and the choice is saved in the conversation, so it returns when you resume that conversation but never affects others. Scripted workflows are not changed by it.
 
 Source: [extensions/subagent-profiles](extensions/subagent-profiles). It ships in the published npm package.
 
