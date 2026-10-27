@@ -11,13 +11,15 @@ Advanced mode adds native activity registration, persistent settings, presets/co
 - Patch: `pi-v0.99.2.patch`, covering native integration and its focused regression tests.
 - Base revision: `abe508e1b89912adde45528136c3221eb69acdd7` (Pi v1.1.0, tag `v1.1.0`).
 - Patch: `pi-v1.1.0.patch`, the same native integration rebased onto v1.1.0. It includes the v1.1.0 extension selector, input, and editor dialog behavior (`blocked` status and `setBlocked`).
+- Base revision: `4a080252f06caf63a525d7873c5d94d3c23887e0` (Pi v1.4.0, tag `v1.4.0`).
+- Patch: `pi-v1.4.0.patch`, the same native integration rebased onto v1.4.0. v1.4.0 reworked extension dialogs into a stack where every dialog stays answerable, so the patch layers activity waiting, stale-component guards, and reset cleanup on that stack instead of replacing dialogs. It also adds the `activityIndicator` setting to `settings-schema.ts`, where v1.4.0 moved the `Settings` type.
 - License: MIT, copyright (c) 2025 Mario Zechner; the complete notice is retained in [LICENSE.pi](LICENSE.pi).
 
 Each patch is qualified only on its exact base. The patch includes modified upstream context and ZenStudioLab's changes; it does not transfer ownership of upstream code. It makes no provider/protocol schema changes and does not replace the active word bank.
 
 ## Prepare the optional source host
 
-The commands below retain the v0.99.2 preparation recipe. For v1.1.0, use revision `abe508e1b89912adde45528136c3221eb69acdd7`, patch `pi-v1.1.0.patch`, and catalog package/archive version `1.1.0` instead. Never apply both patches or reuse the v0.99.2 catalog with v1.1.0.
+The commands below retain the v0.99.2 preparation recipe. For v1.4.0, use revision `4a080252f06caf63a525d7873c5d94d3c23887e0`, patch `pi-v1.4.0.patch`, and catalog package/archive version `1.4.0` instead (for v1.1.0, revision `abe508e1b89912adde45528136c3221eb69acdd7`, `pi-v1.1.0.patch`, and `1.1.0`). Never apply both patches or reuse the v0.99.2 catalog with v1.1.0.
 
 Use Node >=22.19.0, Git, npm, GitHub CLI, and tar. Run these commands from the Pi Toolset repository root. The `host/pi` destination must not already exist; never overwrite an existing checkout. Keep it at this location because the focused host tests import the extension and fixtures using repository-relative paths.
 
@@ -93,6 +95,17 @@ env -u PI_PACKAGE_DIR ./host/pi/pi-test.sh
 This is a personal/global installation by default. Add `--local` from the target project if desired (using an absolute launcher path); project packages require trust. Do not combine this registered copy with the local `-e` trial, and do not pass `--no-extensions` for a registered-package launch. Other configured extensions will also load. Remove the exact source with `remove npm:@zenstudiolab/pi-toolset@0.1.2` through the same launcher, adding `--local` for a project declaration, then restart.
 
 ## Qualification
+
+The v1.4.0 migration was checked with Node 22.19.0:
+
+- The patch applies to pristine v1.4.0 and reproduces all 50 changed/new files byte-for-byte; reverse-apply checking passes on the installed host. `pix --version` reports `1.4.0`.
+- The host's complete `npm run check` passes. `npm ci --ignore-scripts` hydrated dependencies, the 1.4.0 provider catalog came from the publisher's `@earendil-works/pi-ai@1.4.0` package (npm-pack extraction verified against its registry SHA-512), and `npm run build:offline` built every workspace package.
+- `./test.sh` passes for coding-agent (2,900 passed, 50 skipped), AI (1,433 passed, 869 skipped), TUI, and the other packages. Six `packages/env` suites still fail because the native daemon is not built. Two `packages/durable` codemode timing tests failed once under full-suite load and passed 41/41 on two isolated reruns.
+- No test assertions were changed. The prototype-based dialog fixtures in `interactive-mode-status.test.ts` and `interactive-mode-extension-dialogs.test.ts` gained `activityDecoration`, `customUIEpoch`, `editorUIRevision`, and `customUICleanup`. Four displaced-dialog cases needed a one-time `settled` guard in the selector and input dialogs so a late key on a removed dialog cannot settle or dispose it twice. Two stale-custom-component cases needed custom components to stack (not invalidate each other) and a stale component's removal not to redraw the editor slot.
+- All 12 required peer aliases resolve through the installed `pi-subagents` `resolveHostPeerAliases` and load in a separate process; no live background-subagent run was done. Interactive display and live-provider behavior were not manually verified.
+- The previous v1.1.0 checkout is retained at `host/pi-v1.1.0-backup`.
+
+### Historical v1.1.0 qualification
 
 The v1.1.0 migration was checked with Node 24.3.0:
 
