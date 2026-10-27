@@ -6,7 +6,8 @@ const REFRESH_MS = 5 * 60 * 1000;
 
 interface ClaudeWindow {
 	usedPercent: number;
-	resetDescription: string;
+	// Absent when the window has not started yet.
+	resetDescription?: string;
 }
 
 // Runs the installed codexbar CLI without a shell; resolves undefined on any failure.
@@ -38,8 +39,9 @@ export default function (pi: ExtensionAPI) {
 		refreshing = true;
 		try {
 			const window = await readClaudeSession();
-			const resetTime = window?.resetDescription.split(" at ").pop();
-			const text = window ? `Claude ${100 - window.usedPercent}% · resets ${resetTime}` : "Claude n/a";
+			const resetTime = window?.resetDescription?.split(" at ").pop();
+			const reset = resetTime ? ` · resets ${resetTime}` : "";
+			const text = window ? `Claude ${100 - window.usedPercent}%${reset}` : "Claude n/a";
 			ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("dim", text));
 		} finally {
 			refreshing = false;
