@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { test } from "node:test";
 import { captureSession, requireTrash, trashSession } from "../../extensions/session-delete/session-file.ts";
@@ -83,6 +83,31 @@ test("trash receives one literal path; unavailable, failing and no-op backends n
     }
     assert.deepEqual((await host.calls("trash")).filter((args) => args[0] === "trash"),
       Array.from({ length: 3 }, () => ["trash", "--", file]));
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
+    Object.assign(process.env, previous);
+    await host.cleanup();
+  }
+});
+
+test("the sibling fork/run folder is trashed with its transcript, and a failure leaves the transcript in place", async () => {
+  const previous = { ...process.env };
+  const host = await disposableHost();
+  const trashDir = await fakeTrash(host);
+  try {
+    Object.assign(process.env, host.env);
+    const file = `${host.cwd}/2026-10-01T00-00-00-000Z_old.jsonl`;
+    const folder = file.replace(/\.jsonl$/, "");
+    await mkdir(`${folder}/forks`, { recursive: true });
+    await writeFile(`${folder}/forks/fork.jsonl`, "fork\n");
+    await writeFile(file, header("old"));
+    process.env.TEST_TRASH_FAIL = "1";
+    await assert.rejects(trashSession(await captureSession(file, "old"), undefined, "new"), /trash unavailable/);
+    assert(existsSync(file) && existsSync(folder));
+    delete process.env.TEST_TRASH_FAIL;
+    await trashSession(await captureSession(file, "old"), undefined, "new");
+    assert(!existsSync(file) && !existsSync(folder));
+    assert.equal(await readFile(`${trashDir}/${basename(folder)}/forks/fork.jsonl`, "utf8"), "fork\n");
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
     Object.assign(process.env, previous);
